@@ -223,7 +223,6 @@ namespace v2x {
             if (pPrevTail->pNext != nullptr) {
                 dealloc_chunk(lockTail);
                 segment--;
-                int currentsegment = segment;
             }
             lockTail = pPrevTail;
             lockTail->pNext = nullptr;

@@ -8,5 +8,6 @@ find_package(Threads REQUIRED)
 find_package(Boost REQUIRED)
 
 include_directories(${Boost_INCLUDE_DIRS})
-add_executable(TestCPP main.cpp LockFreeQueue.h LockFreeLinkedQueue.h)
+aux_source_directory(${CMAKE_CURRENT_SOURCE_DIR} SRC_DIR)
+add_executable(TestCPP ${SRC_DIR})
 target_link_libraries(TestCPP Threads::Threads -latomic)
