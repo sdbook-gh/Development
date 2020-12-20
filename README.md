@@ -1,2 +1,1 @@
-# Development
-Development
+Code used in daily development. 
