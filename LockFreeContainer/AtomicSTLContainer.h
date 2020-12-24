@@ -131,7 +131,7 @@ public:
 		GET_LOCK
 		if (_collection.empty())
 			return false;
-		auto elem = _collection.front();
+		value = _collection.front();
 		_collection.pop();
 		return true;
 	}
@@ -188,7 +188,7 @@ public:
 		GET_LOCK
 		if (_collection.empty())
 			return false;
-		auto elem = _collection.front();
+		value = _collection.front();
 		_collection.pop_front();
 		return true;
 	}
@@ -209,7 +209,7 @@ public:
 		GET_LOCK
 		if (_collection.empty())
 			return false;
-		auto elem = _collection.back();
+		value = _collection.back();
 		_collection.pop_back();
 		return true;
 	}
