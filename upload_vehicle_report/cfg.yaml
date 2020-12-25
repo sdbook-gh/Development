@@ -1,0 +1,19 @@
+global:
+  connect_server_retry_interval: 5
+  socket_send_timeout: 20
+  socket_recv_timeout: 3
+  client_cert: /share/v2x/ssl/cppsslclient/cert/G11E0001.crt
+  client_key: /share/v2x/ssl/cppsslclient/cert/G11E0001_pkcs1.key
+  ca_cert: /share/v2x/ssl/cppsslclient/cert/ca.crt
+  ssl_version: tls
+  vehicle_id: G11E0001
+uplink:
+  server_ip: 120.133.21.14
+#  server_ip: 127.0.0.1
+  server_port: 51001
+downlink:
+  server_ip: 120.133.21.14
+#  server_ip: 127.0.0.1
+  server_port: 51004
+vehicle:
+  vehiclereport_history_size: 5
