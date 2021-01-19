@@ -1,0 +1,3 @@
+NewType request
+----
+int32 result
