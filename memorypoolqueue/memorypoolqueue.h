@@ -4,6 +4,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <deque>
+#include <vector>
 
 template<typename bufferType, typename extraDataType, int capacity, int buffer_size, bool wait_on_empty>
 class BufferProcessQueue {
