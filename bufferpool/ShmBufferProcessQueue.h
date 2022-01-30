@@ -214,7 +214,7 @@ public:
     ShmBufferProcessQueue(const std::string &qName)
             : shm_name(qName),
               process_queue(qName + "_pq", is_master, capacity),
-              buffer_queue(qName + "bq", is_master, capacity) {
+              buffer_queue(qName + "_bq", is_master, capacity) {
     }
 
     ~ShmBufferProcessQueue() {
