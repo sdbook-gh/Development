@@ -2,6 +2,7 @@
 
 #include <string>
 #include <cstdio>
+#include <cstring>
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
@@ -9,6 +10,30 @@
 #include <fcntl.h>      /* For O_CREAT, O_RDWR */
 #include <sys/mman.h>   /* shared memory and mmap() */
 #include <sys/stat.h>   /* S_IRWXU */
+
+static void *get_shared_memory(const std::string &shm_name, bool master, int shm_size) {
+    int shm_fd = 0;
+    if (master) {
+        shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, S_IRWXU | S_IRWXG);
+    } else {
+        shm_fd = shm_open(shm_name.c_str(), O_RDWR, S_IRWXU | S_IRWXG);
+    }
+    if (shm_fd < 0) {
+        perror("shm_open failed");
+        return nullptr;
+    }
+    if (master) {
+        if (ftruncate(shm_fd, shm_size) != 0) {
+            perror("ftruncate failed");
+        }
+    }
+    void *shm_header = mmap(nullptr, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (shm_header == MAP_FAILED || shm_header == nullptr) {
+        perror("mmap failed");
+        return nullptr;
+    }
+    return shm_header;
+}
 
 class ShmMutex {
 public:
@@ -85,24 +110,9 @@ public:
 
     bool init() {
         shm_size = sizeof(ShmHeader) + buffer_capacity * sizeof(T);
-        int shm_fd = 0;
-        if (master) {
-            shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, S_IRWXU | S_IRWXG);
-        } else {
-            shm_fd = shm_open(shm_name.c_str(), O_RDWR, S_IRWXU | S_IRWXG);
-        }
-        if (shm_fd < 0) {
-            perror("shm_open failed");
-            return false;
-        }
-        if (master) {
-            if (ftruncate(shm_fd, shm_size) != 0) {
-                perror("ftruncate failed");
-            }
-        }
-        shm_header = (ShmHeader *) mmap(nullptr, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-        if (shm_header == MAP_FAILED || shm_header == nullptr) {
-            perror("mmap failed");
+        shm_header = (ShmHeader *) get_shared_memory(shm_name, master, shm_size);
+        if (shm_header == nullptr) {
+            printf("shared memory alloc failed");
             return false;
         }
         buffer_header = (T *) ((uint8_t *) shm_header + sizeof(ShmHeader));
@@ -122,7 +132,7 @@ public:
 
     void clear() {
         if (shm_header == nullptr) {
-            perror("ShmRingBufferQueue init failed");
+            printf("ShmRingBufferQueue init failed\n");
             return;
         }
         shm_header->_begin = shm_header->_end = shm_header->_size = 0;
@@ -139,7 +149,7 @@ public:
         buffer_header[shm_header->_end] = e;
         shm_header->_end = (shm_header->_end + 1) % shm_header->_capacity;
         ++shm_header->_size;
-//        printf("push_back\n");
+        //        printf("push_back\n");
         return true;
     }
 
@@ -154,7 +164,7 @@ public:
         e = buffer_header[shm_header->_begin];
         shm_header->_begin = (shm_header->_begin + 1) % shm_header->_capacity;
         --shm_header->_size;
-//        printf("pop_front\n");
+        //        printf("pop_front\n");
         return true;
     }
 
@@ -190,21 +200,21 @@ private:
 
 #include <functional>
 
-template<typename bufferType, typename extraDataType, int capacity, bool is_master, bool wait_on_empty>
+template<typename bufferType, int bufferBlockSize, int capacity, bool is_master, bool wait_on_empty>
 class ShmBufferProcessQueue {
 public:
     typedef bufferType BufferType;
     struct BufferBlock {
-        typedef extraDataType ExtraDataType;
-        ExtraDataType extraData;
-        BufferType buffer;
+        BufferType buffer[bufferBlockSize];
+        int real_size{0};
     };
     static const int capacity_val{capacity};
     static const bool wait_on_empty_val{wait_on_empty};
 
-    ShmBufferProcessQueue(const std::string &qName) : shm_name(qName),
-                                                      process_queue(qName + "_pq", is_master, capacity),
-                                                      buffer_queue(qName + "bq", is_master, capacity) {
+    ShmBufferProcessQueue(const std::string &qName)
+            : shm_name(qName),
+              process_queue(qName + "_pq", is_master, capacity),
+              buffer_queue(qName + "bq", is_master, capacity) {
     }
 
     ~ShmBufferProcessQueue() {
@@ -212,24 +222,9 @@ public:
 
     bool init() {
         int shm_size = sizeof(ShmMutex) + sizeof(ShmCond) + sizeof(BufferBlock) * capacity;
-        int shm_fd = 0;
-        if (is_master) {
-            shm_fd = shm_open(shm_name.c_str(), O_CREAT | O_RDWR, S_IRWXU | S_IRWXG);
-        } else {
-            shm_fd = shm_open(shm_name.c_str(), O_RDWR, S_IRWXU | S_IRWXG);
-        }
-        if (shm_fd < 0) {
-            perror("ShmBufferProcessQueue shm_open failed");
-            return false;
-        }
-        if (is_master) {
-            if (ftruncate(shm_fd, shm_size) != 0) {
-                perror("ShmBufferProcessQueue ftruncate failed");
-            }
-        }
-        void *basePtr = mmap(nullptr, shm_size, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
-        if (basePtr == MAP_FAILED || basePtr == nullptr) {
-            perror("ShmBufferProcessQueue mmap failed");
+        void *basePtr = get_shared_memory(shm_name, is_master, shm_size);
+        if (basePtr == nullptr) {
+            perror("ShmBufferProcessQueue shared memory alloc failed\n");
             return false;
         }
         m_qmutex = (ShmMutex *) basePtr;
@@ -243,19 +238,30 @@ public:
             m_qcv->init(is_master);
         }
         if (!process_queue.init()) {
-            perror("ShmBufferProcessQueue process_queue init failed");
+            perror("ShmBufferProcessQueue process_queue init failed\n");
             return false;
         }
         if (!buffer_queue.init()) {
-            perror("ShmBufferProcessQueue buffer_queue init failed");
+            printf("ShmBufferProcessQueue buffer_queue init failed\n");
             return false;
         }
-        buffer_queue.resize(capacity);
+        if (is_master) {
+            for (int i = 0; i < capacity; ++i) {
+                m_buf_blk_array[i].buffer[0] = i;
+                m_buf_blk_array[i].real_size = 0;
+                printf("%d, %d\n", m_buf_blk_array[i].buffer[0], m_buf_blk_array[i].real_size);
+                buffer_queue.push_back(i);
+            }
+        } else {
+            for (int i = 0; i < capacity; ++i) {
+                printf("%d, %d\n", m_buf_blk_array[i].buffer[0], m_buf_blk_array[i].real_size);
+            }
+        }
         return true;
     }
 
-    int produce(const std::function<void(BufferBlock &)> &call_back) {
-        BufferBlock bufBlk;
+    int produce(const std::function<void(BufferBlock *)> &call_back) {
+        int bufBlkIdx;
         {
             m_qmutex->lock();
             if (buffer_queue.empty()) {
@@ -269,20 +275,20 @@ public:
                     m_qmutex->unlock();
                     return -1;
                 }
-                process_queue.pop_front(bufBlk);
+                process_queue.pop_front(bufBlkIdx);
             } else {
-                buffer_queue.pop_front(bufBlk);
+                buffer_queue.pop_front(bufBlkIdx);
             }
             m_qmutex->unlock();
         }
-        call_back(bufBlk);
+        call_back(m_buf_blk_array + bufBlkIdx);
         {
             m_qmutex->lock();
-            process_queue.push_back(bufBlk);
+            process_queue.push_back(bufBlkIdx);
             m_qmutex->unlock();
         }
         if (wait_on_empty) {
-            m_qcv->broadcast();
+            m_qcv->signal();
         }
         {
             m_qmutex->lock();
@@ -293,24 +299,24 @@ public:
         return 0;
     }
 
-    int consume(const std::function<void(BufferBlock &)> &call_back) {
-        BufferBlock bufBlk;
+    int consume(const std::function<void(BufferBlock *)> &call_back) {
+        int bufBlkIdx;
         bool empty = true;
         {
             m_qmutex->lock();
             if (!process_queue.empty()) {
-                process_queue.pop_front(bufBlk);
+                process_queue.pop_front(bufBlkIdx);
                 empty = false;
             }
             m_qmutex->unlock();
         }
         if (!empty) {
-            call_back(bufBlk);
+            call_back(m_buf_blk_array + bufBlkIdx);
             {
                 m_qmutex->lock();
-                buffer_queue.push_back(bufBlk);
+                buffer_queue.push_back(bufBlkIdx);
                 if (wait_on_empty) {
-                    m_qcv->broadcast();
+                    m_qcv->signal();
                 }
                 m_qmutex->unlock();
             }
@@ -334,8 +340,8 @@ public:
     }
 
 private:
-    ShmRingBufferQueue<BufferBlock> process_queue;
-    ShmRingBufferQueue<BufferBlock> buffer_queue;
+    ShmRingBufferQueue<int> process_queue;
+    ShmRingBufferQueue<int> buffer_queue;
     std::string shm_name;
     ShmMutex *m_qmutex{nullptr};
     ShmCond *m_qcv{nullptr};
