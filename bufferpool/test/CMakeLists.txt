@@ -1,0 +1,6 @@
+set(CMAKE_CXX_STANDARD 11)
+include_directories(${CMAKE_CURRENT_LIST_DIR}/..)
+add_executable(shmq_client ${CMAKE_CURRENT_LIST_DIR}/client.cpp)
+target_link_libraries(shmq_client rt pthread)
+add_executable(shmq_server ${CMAKE_CURRENT_LIST_DIR}/server.cpp)
+target_link_libraries(shmq_server rt pthread)

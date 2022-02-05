@@ -42,19 +42,21 @@ public:
 
     void init(bool pshared = false) {
         pthread_mutexattr_init(&_attr);
-        if (pshared)
+        if (pshared) {
             pthread_mutexattr_setpshared(&_attr, PTHREAD_PROCESS_SHARED);
-        else
+            pthread_mutexattr_setrobust(&_attr,PTHREAD_MUTEX_ROBUST);
+        } else {
             pthread_mutexattr_setpshared(&_attr, PTHREAD_PROCESS_PRIVATE);
+        }
         pthread_mutex_init(&_mutex, &_attr);
     }
 
     int lock() {
-        return pthread_mutex_lock(&_mutex);
-    }
-
-    int trylock() {
-        return pthread_mutex_trylock(&_mutex);
+        int err = pthread_mutex_lock(&_mutex);
+        if (err != 0) {
+            printf("pthread_mutex_lock error\n");
+        }
+        return err;
     }
 
     int unlock() {
@@ -263,7 +265,7 @@ public:
     int produce(const std::function<void(BufferBlock *)> &call_back) {
         int bufBlkIdx;
         {
-            m_qmutex->lock();
+            if (m_qmutex->lock() != 0) return -1;
             if (buffer_queue.empty()) {
                 if (process_queue.empty()) {
                     printf("producer need to wait\n");
@@ -283,7 +285,7 @@ public:
         }
         call_back(m_buf_blk_array + bufBlkIdx);
         {
-            m_qmutex->lock();
+            if (m_qmutex->lock() != 0) return -1;
             process_queue.push_back(bufBlkIdx);
             m_qmutex->unlock();
         }
@@ -291,7 +293,7 @@ public:
             m_qcv->signal();
         }
         {
-            m_qmutex->lock();
+            if (m_qmutex->lock() != 0) return -1;
             printf("produce buffer queue size %d\n", buffer_queue.size());
             printf("produce process queue size %d\n", process_queue.size());
             m_qmutex->unlock();
@@ -303,7 +305,7 @@ public:
         int bufBlkIdx;
         bool empty = true;
         {
-            m_qmutex->lock();
+            if (m_qmutex->lock() != 0) return -1;
             if (!process_queue.empty()) {
                 process_queue.pop_front(bufBlkIdx);
                 empty = false;
@@ -313,7 +315,7 @@ public:
         if (!empty) {
             call_back(m_buf_blk_array + bufBlkIdx);
             {
-                m_qmutex->lock();
+                if (m_qmutex->lock() != 0) return -1;
                 buffer_queue.push_back(bufBlkIdx);
                 if (wait_on_empty) {
                     m_qcv->signal();
@@ -322,7 +324,7 @@ public:
             }
         } else {
             if (wait_on_empty) {
-                m_qmutex->lock();
+                if (m_qmutex->lock() != 0) return -1;
                 do {
                     m_qcv->wait(*m_qmutex);
                 } while (process_queue.empty());
@@ -331,7 +333,7 @@ public:
             return -1;
         }
         {
-            m_qmutex->lock();
+            if (m_qmutex->lock() != 0) return -1;
             printf("consume buffer queue size %d\n", buffer_queue.size());
             printf("consume process queue size %d\n", process_queue.size());
             m_qmutex->unlock();
