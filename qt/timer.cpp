@@ -37,8 +37,8 @@ Timer::Timer(QWidget *parent)
     ql.push_back(tr("是"));
     ql.push_back(tr("否"));
     ql.push_back(tr("全部"));
-    ql.clear();
     _qc_type->addItems(ql);
+    ql.clear();
     _qc_type->setCurrentIndex(2);
     _lt_lable = new QLabel(tr("Type"));
     _lt_type = new QComboBox;
@@ -46,8 +46,8 @@ Timer::Timer(QWidget *parent)
     ql.push_back(tr("WARNING"));
     ql.push_back(tr("ERROR"));
     ql.push_back(tr("全部"));
-    ql.clear();
     _lt_type->addItems(ql);
+    ql.clear();
     _lt_type->setCurrentIndex(3);
     _ls_lable = new QLabel(tr("Source"));
     _ls_content = new QLineEdit;
