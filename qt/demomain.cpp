@@ -4,17 +4,17 @@
 #include "mainwindow.h"
 #include "test_signal_slot.h"
 
-//#include "timer.h"
+#include "timer.h"
 
 int main(int argc, char *argv[]) {
 	QApplication app(argc,argv);
 
-	MainWindow mainWindow;
+	/*MainWindow mainWindow;
 	mainWindow.resize(600, 600);
-	mainWindow.show();
+	mainWindow.show();*/
 
-	//Timer timer;
-    //timer.show();
+	Timer timer;
+    timer.show();
 
 	std::cout << "in func main" << std::endl;
 	return app.exec();
