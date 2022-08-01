@@ -1,0 +1,11 @@
+project(test)
+set(CMAKE_C_FLAGS "-g")
+set(CMAKE_CXX_FLAGS "-g")
+set(CMAKE_CXX_STANDARD 11)
+
+include_directories(${CMAKE_CURRENT_LIST_DIR})
+file(GLOB SRCS ${CMAKE_CURRENT_LIST_DIR}/test.cpp)
+add_executable(test ${SRCS})
+find_package(Boost REQUIRED)
+target_link_libraries(test pthread)
+target_link_libraries(test ${Boost_LIBRARIES} wsock32 ws2_32)
