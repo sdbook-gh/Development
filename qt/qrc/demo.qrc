@@ -1,4 +1,7 @@
 <RCC>
+    <qresource prefix="/qss">
+        <file>skin.qss</file>
+    </qresource>
     <qresource prefix="/icon">
         <file>dog.png</file>
     </qresource>
