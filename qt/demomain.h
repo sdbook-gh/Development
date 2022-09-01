@@ -27,3 +27,12 @@ public:
 };
  
 Q_DECLARE_METATYPE(MyPic)
+
+#include <QVariant>
+#include <QStandardItemModel>
+class MyModel : public QStandardItemModel
+{
+public:
+    MyModel();
+    QVariant data(const QModelIndex &index, int role = Qt::DisplayRole) const;
+};
