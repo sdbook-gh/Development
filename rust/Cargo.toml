@@ -1,0 +1,13 @@
+[package]
+name = "test_rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+num = "0"
+image = "0"
+crossbeam = "0"
+text-colorizer = "1"
+regex = "1"
