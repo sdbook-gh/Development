@@ -9,6 +9,9 @@ use std::fs::File;
 use std::str::FromStr;
 use text_colorizer::Colorize;
 
+type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
+type GenericResult<T> = Result<T, GenericError>;
+
 // struct Complex<T> {
 //     /// Real portion of the complex number
 //     re: T,
@@ -100,17 +103,29 @@ fn write_image(
 }
 
 fn do_test_sub(val: i32) -> Result<i32, String> {
-    if val > 0 {
-        return Ok(1);
-    } else if val < 0 {
-        return Ok(-1);
-    }
-    Err(String::from("cannot be 0"))
+    let val1 = match File::create("test") {
+        Ok(v) => v,
+        Err(e) => return Err(e.to_string()),
+    };
+    Ok(0)
 }
 
 fn do_test(val: i32) -> Result<i32, String> {
     do_test_sub(val)?;
     Ok(100)
+}
+
+fn do_test_sub_generic(pattern: &str) -> GenericResult<i32> {
+    let regex_handler = Regex::new(pattern)?;
+    Ok(0)
+}
+
+fn do_test_generic(pattern: &str) -> i32 {
+    if let Some(err_result) = do_test_sub_generic("").as_ref().err() {
+        eprintln!("do_test_sub_generic error {:?}", err_result);
+        return -1;
+    }
+    0
 }
 
 #[derive(Debug)]
@@ -121,7 +136,7 @@ struct Arguments {
     out_filename: String,
 }
 
-fn print_usage(cmd_name: &String) {
+fn print_usage(cmd_name: &str) {
     eprintln!(
         "{} - change occurrences of one string into another",
         cmd_name.green()
@@ -151,11 +166,7 @@ fn parse_args() -> Result<Arguments, i32> {
     })
 }
 
-fn replace_string(
-    content: &String,
-    replace: &String,
-    replace_with: &String,
-) -> Result<String, i32> {
+fn replace_string(content: &str, replace: &str, replace_with: &str) -> Result<String, i32> {
     let regex_handler = match Regex::new(replace) {
         Ok(handler) => handler,
         Err(error) => {
@@ -170,11 +181,106 @@ fn replace_string(
     };
     Ok(regex_handler.replace_all(content, replace_with).to_string())
 }
+
+fn print_vec<T: std::fmt::Display>(n: &[T]) {
+    for elt in n {
+        println!("-- {} --", elt);
+    }
+}
+
+fn test_ownership(strval: String) {
+    println!("{}", strval);
+}
+
 fn main() {
+    {
+        let v = ["1", "2", "3"];
+        let val = match do_test(1) {
+            Ok(success_value) => success_value,
+            Err(err) => return,
+        };
+        let fun = |x: i32| -> ! { loop {} };
+    }
+    return;
+    {
+        let strings: Vec<String> = vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+        ];
+        for rs in &strings {
+            println!("String {:?} is at address {:p}.", rs, rs);
+        }
+    }
+    return;
+    {
+        let r;
+        {
+            let x = 1;
+            r = &x;
+        }
+        // assert_eq!(*r, 1); // bad: reads memory `x` used to occupy
+        fn smallest<'life>(v: &'life [i32]) -> &i32 {
+            let mut s = &v[0];
+            for r in &v[1..] {
+                if r < s {
+                    s = r;
+                }
+            }
+            s
+        }
+        let v = vec![1, 2, 3, 4, 5];
+        let _v = smallest(&v);
+        dbg!(_v);
+    }
+    {
+        fn max<'life>(x: &'life i32, y: &'life i32) -> &'life i32 {
+            if x > y {
+                x
+            } else {
+                y
+            }
+        }
+        fn smallest<'life>(v1: &'life [i32], v2: &'life [i32]) -> &'life i32 {
+            if v1[0] < v2[0] {
+                &v1[0]
+            } else {
+                &v2[0]
+            }
+        }
+    }
+    return;
+    {
+        let x = 10;
+        let y = 10;
+        let rx = &x;
+        let ry = &y;
+        let rrx = &rx;
+        let rry = &ry;
+        assert!(rrx <= rry);
+        assert!(rrx == rry);
+
+        fn factorial(n: usize) -> usize {
+            (1..n + 1).product()
+        }
+        let r = &factorial(6);
+        assert_eq!(r + &1009, &1729 + 0);
+    }
+    return;
+    {
+        let string_replacen = "I like rust. Learning rust is my favorite!";
+        let new_string_replacen = string_replacen.replacen("rust", "RUST", 1);
+        dbg!(new_string_replacen);
+        let mut s = "test".to_string();
+        s.replace_range(0..2, "TE");
+        dbg!(s);
+    }
+    return;
     // let regex_handler = match Regex::new("[0-9]x[0-9]") {
     //     Err(_) => {
     //         return;
-    //     }, 
+    //     },
     //     Ok(handler) => handler
     // };
     // let result = regex_handler.replace("123x456", "X").to_string();
@@ -182,10 +288,104 @@ fn main() {
     // return;
 
     let val = (123, String::from("123"));
-    let box_val = Box::<(i32, String)>::new(val);
+    // let box_val = Box::<(i32, String)>::new(val);
+    // let box_val : Box<(i32, String)> = Box::new(val);
     let mut primes = vec![2, 3, 5, 7];
     assert_eq!(primes.iter().product::<i32>(), 210);
-    let test_vec = Vec::<u8>::new();
+    let mut test_vec = Vec::<u8>::new();
+    test_vec.resize(100, 0);
+    test_vec.reserve(1000);
+    let mut new_test_vec = (0..100).collect::<Vec<u8>>();
+    let languages: Vec<String> = std::env::args().skip(1).collect();
+    for l in languages {
+        println!(
+            "{}: {}",
+            l,
+            if l.len() % 2 == 0 {
+                "functional"
+            } else {
+                "imperative"
+            }
+        );
+    }
+
+    let v: Vec<f64> = vec![0.0, 0.707, 1.0, 0.707];
+    let a: [f64; 4] = [0.0, -0.707, -1.0, -0.707];
+    // let v_str = vec![String::from("a"), String::from("b"), String::from("c")];
+    let v_str: Vec<String> = std::env::args().skip(1).collect();
+    print_vec(&v_str);
+    let str = "ABC";
+    let method = br##"GE""T"##;
+    println!("method {:?}", v);
+    let noodles = "noodles".to_string();
+    let oodles = &noodles[1..];
+    let poodles = "某些卡纳达语字符";
+    println!(
+        "noodles len {} oodles len {} poodles len {} poodles chars count {}",
+        noodles.len(),
+        oodles.len(),
+        poodles.len(),
+        poodles.chars().count()
+    );
+    {
+        let mut update_str = "test 1234";
+        // update_str.make_ascii_uppercase();
+        let sub_update_str = &update_str[5..];
+        println!(
+            "update_str: {} sub_update_str {}",
+            update_str, sub_update_str
+        );
+    }
+    {
+        let mut update_str = "test 1234".to_string();
+        // update_str[0] = ' ';
+        println!("update_str: {}", update_str);
+    }
+    let fmt_str = format!("{}{}", "123", "456");
+    println!("fmt_str: {}", fmt_str);
+    assert!("peanut".contains("nut"));
+    assert_eq!(" clean\n".trim(), "clean");
+    for word in "veni, vidi, vici".split(", ") {
+        assert!(word.starts_with("v"));
+    }
+    let fruits = ["mango", "apple", "banana", "litchi", "watermelon"];
+    for a in fruits.iter() {
+        print!("{} ", a);
+    }
+    println!("");
+
+    let str1 = "str".to_string();
+    let str2 = str1;
+    test_ownership(str1);
+    println!("value of str1 :{}", str1);
+
+    struct Person {
+        name: Option<String>,
+        birth: i32,
+    }
+    let mut composers = Vec::new();
+    composers.push(Person {
+        name: Some("Palestrina".to_string()),
+        birth: 1525,
+    });
+    let first_name = std::mem::replace(&mut composers[0].name, None);
+    assert_eq!(first_name, Some("Palestrina".to_string()));
+    assert_eq!(composers[0].name, None);
+    {
+        let mut v = vec!["a", "b", "c"];
+        let rep_val = "R".to_string();
+        let val = std::mem::replace(&mut v[1], &rep_val);
+        println!("v replaced {:?} val {}", v, val);
+    }
+    {
+        use std::rc::Rc;
+        let s: Rc<String> = Rc::new("shirataki".to_string());
+        let t: Rc<String> = s.clone();
+        let u: Rc<String> = s.clone();
+        assert!(s.contains("shira"));
+        assert_eq!(t.find("taki"), Some(5));
+        println!("{} are quite chewy, almost bouncy, but lack flavor", u);
+    }
 
     // let args = match parse_args() {
     //     Ok(val) => val,
