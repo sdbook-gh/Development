@@ -120,12 +120,19 @@ fn do_test_sub_generic(pattern: &str) -> GenericResult<i32> {
     Ok(0)
 }
 
-fn do_test_generic(pattern: &str) -> i32 {
+fn do_test_generic1(pattern: &str) -> i32 {
     if let Some(err_result) = do_test_sub_generic("").as_ref().err() {
         eprintln!("do_test_sub_generic error {:?}", err_result);
         return -1;
     }
     0
+}
+fn do_test_generic2(pattern: &str) -> GenericResult<i32> {
+    if let Some(err_result) = do_test_sub_generic("").err() {
+        eprintln!("do_test_sub_generic error {:?}", &err_result);
+        return Err(err_result);
+    }
+    Ok(0)
 }
 
 #[derive(Debug)]
