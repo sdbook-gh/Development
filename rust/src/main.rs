@@ -199,28 +199,32 @@ fn test_ownership(strval: String) {
     println!("{}", strval);
 }
 
+use actix_web::{web, App, HttpResponse, HttpServer};
+
+fn http_server_main() {
+    let server = HttpServer::new(|| App::new().route("/", web::get().to(handle_get)));
+    server
+        .bind("0.0.0.0:8088")
+        .expect("server bind error")
+        .run()
+        .expect("server run error");
+}
+
+fn handle_get() -> HttpResponse {
+    HttpResponse::Ok().content_type("text/html").body(
+        r####"
+        <!DOCTYPE html>
+        <html>
+        <body>
+        <h1>server is running</h1>
+        <p>server status is running</p>
+        </body>
+        </html>
+    "####,
+    )
+}
+
 fn main() {
-    {
-        let v = ["1", "2", "3"];
-        let val = match do_test(1) {
-            Ok(success_value) => success_value,
-            Err(err) => return,
-        };
-        let fun = |x: i32| -> ! { loop {} };
-    }
-    return;
-    {
-        let strings: Vec<String> = vec![
-            "1".to_string(),
-            "2".to_string(),
-            "3".to_string(),
-            "4".to_string(),
-        ];
-        for rs in &strings {
-            println!("String {:?} is at address {:p}.", rs, rs);
-        }
-    }
-    return;
     {
         let r;
         {
@@ -249,12 +253,206 @@ fn main() {
                 y
             }
         }
+        // return &i32, so need to specify lifetime
+        // fn max_bad(x: &i32, y: &i32) -> &i32 {
+        //     if x > y {
+        //         x
+        //     } else {
+        //         x
+        //     }
+        // }
         fn smallest<'life>(v1: &'life [i32], v2: &'life [i32]) -> &'life i32 {
             if v1[0] < v2[0] {
                 &v1[0]
             } else {
                 &v2[0]
             }
+        }
+        let v = max(&1, &2);
+        dbg!(v);
+    }
+    return;
+    {
+        #[derive(Debug)]
+        enum BinaryTree<T> {
+            Empty,
+            NonEmpty(Box<TreeNode<T>>),
+        }
+        #[derive(Debug)]
+        struct TreeNode<T> {
+            element: T,
+            left: BinaryTree<T>,
+            right: BinaryTree<T>,
+        }
+        impl<T: Ord + Clone> BinaryTree<T> {
+            fn add(&mut self, val: &T) {
+                match *self {
+                    Empty => {
+                        *self = NonEmpty(Box::new(TreeNode {
+                            element: val.clone(),
+                            left: Empty,
+                            right: Empty,
+                        }));
+                    }
+                    NonEmpty(ref mut current) => {
+                        if val < &(current.element) {
+                            current.left.add(val);
+                        } else {
+                            current.right.add(val);
+                        }
+                    }
+                }
+            }
+        }
+        use BinaryTree::*;
+        // let jupiter_tree = NonEmpty(Box::new(TreeNode {
+        //     element: "Jupiter",
+        //     left: Empty,
+        //     right: Empty,
+        // }));
+        // let mercury_tree = NonEmpty(Box::new(TreeNode {
+        //     element: "Mercury",
+        //     left: Empty,
+        //     right: Empty,
+        // }));
+        // let mars_tree = NonEmpty(Box::new(TreeNode {
+        //     element: "Mars",
+        //     left: jupiter_tree,
+        //     right: mercury_tree,
+        // }));
+        // let tree = NonEmpty(Box::new(TreeNode {
+        //     element: "Saturn",
+        //     left: mars_tree,
+        //     right: Empty,
+        // }));
+        // println!("tree {:?}", &tree);
+        let mut tree = BinaryTree::<String>::Empty;
+        tree.add(&"2".to_string());
+        println!("tree {:?}", &tree);
+        tree.add(&"1".to_string());
+        println!("tree {:?}", &tree);
+        tree.add(&"3".to_string());
+        println!("tree {:?}", &tree);
+    }
+    return;
+    {
+        fn get_point_position(x: &i32, y: &i32) -> &'static str {
+            use std::cmp::Ordering;
+            match (x.cmp(&0), y.cmp(&0)) {
+                (Ordering::Equal, Ordering::Equal) => "on center",
+                (Ordering::Equal, _) => "on x-axis",
+                (_, Ordering::Equal) => "on y-axis",
+                _ => "somewhere else",
+            }
+        }
+        let x = 10;
+        let y = 10;
+        println!("{} and {} position {}", x, y, get_point_position(&x, &y));
+        struct MyStruct {
+            a: i32,
+            b: i32,
+            c: i32,
+            d: i32,
+        }
+        let val = MyStruct {
+            a: 0,
+            b: 0,
+            c: 0,
+            d: 0,
+        };
+        match &val {
+            MyStruct { a: 1, .. } => println!("a is correct"),
+            MyStruct { b: 2, .. } => println!("b is correct"),
+            MyStruct { c: 3, .. } => println!("c is correct"),
+            MyStruct { d: 4, .. } => println!("d is correct"),
+            _ => println!("val all fields are wrong"),
+        }
+        match &val {
+            MyStruct { b, c, .. } => println!("val b {} c {}", b, c),
+        }
+        println!("val a {} b {} c {} d {}", val.a, val.b, val.c, val.d);
+        let vec = [1, 2, 3, 4];
+        let vec_ref = &vec;
+        let vec_str = ["1", "2", "3", "4"];
+        let vec_str_ref: &[&str] = &vec_str;
+    }
+    return;
+    {
+        #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+        enum TimeUnit {
+            Seconds,
+            Minutes,
+            Hours,
+            Days,
+            Months,
+            Years,
+        }
+        impl TimeUnit {
+            fn plural(self) -> &'static str {
+                match self {
+                    TimeUnit::Seconds => "seconds",
+                    TimeUnit::Minutes => "minutes",
+                    TimeUnit::Hours => "hours",
+                    TimeUnit::Days => "days",
+                    TimeUnit::Months => "months",
+                    TimeUnit::Years => "years",
+                }
+            }
+            fn singular(self) -> &'static str {
+                self.plural().trim_end_matches('s')
+            }
+        }
+        enum RoughTime {
+            InThePast(TimeUnit, i32),
+            JustNow,
+            InTheFuture(TimeUnit, i32),
+        }
+        fn get_rt_str(rt: &RoughTime) -> String {
+            match rt {
+                RoughTime::JustNow => "now".to_string(),
+                RoughTime::InThePast(unit, 1) => format!("1 {} ago", unit.singular()),
+                RoughTime::InThePast(unit, count) => format!("{} {} ago", count, unit.plural()),
+                RoughTime::InTheFuture(unit, 1) => format!("1 {} later", unit.singular()),
+                RoughTime::InTheFuture(unit, count) => format!("{} {} later", count, unit.plural()),
+            }
+        }
+        let rt_val = RoughTime::InThePast(TimeUnit::Months, 18);
+        println!("{}", get_rt_str(&rt_val));
+    }
+    return;
+    {
+        use std::collections::HashMap;
+        #[derive(Debug)]
+        enum Json {
+            Null,
+            Boolean(bool),
+            Number(f64),
+            String(String),
+            Array(Vec<Json>),
+            Object(Box<HashMap<String, Json>>),
+        }
+        let json_val = Json::String(("Test Json".to_string()));
+        println!("json_val {:?}", &json_val);
+    }
+    return;
+    {
+        let v = ["1", "2", "3"];
+        let val = match do_test(1) {
+            Ok(success_value) => success_value,
+            Err(err) => return,
+        };
+        let fun = |x: i32| -> ! { loop {} };
+    }
+    return;
+    {
+        let strings: Vec<String> = vec![
+            "1".to_string(),
+            "2".to_string(),
+            "3".to_string(),
+            "4".to_string(),
+        ];
+        for rs in &strings {
+            println!("String {:?} is at address {:p}.", rs, rs);
         }
     }
     return;
