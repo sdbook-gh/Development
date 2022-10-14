@@ -6,6 +6,7 @@ use std::env;
 use std::fs::read_to_string;
 use std::fs::write;
 use std::fs::File;
+use std::result;
 use std::str::FromStr;
 use text_colorizer::Colorize;
 
@@ -225,6 +226,104 @@ fn handle_get() -> HttpResponse {
 }
 
 fn main() {
+    {
+        let mut buf = std::vec::Vec::new();
+        let writer: &mut dyn std::io::Write;
+        writer = &mut buf;
+        let val = std::io::Result::Ok("test");
+        fn compare<T>(val1: &T, val2: &T) -> i32
+        where
+            T: Ord + Eq,
+        {
+            if val1 == val2 {
+                0
+            } else if val1 < val2 {
+                -1
+            } else {
+                1
+            }
+        }
+        trait Vegetable {}
+        struct Salad {
+            veggies: Vec<Box<dyn Vegetable>>,
+        }
+        trait Meat {}
+        let val_ref: &dyn Vegetable;
+        struct Mywriter {};
+        impl std::io::Write for Mywriter {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                println!("write {}", buf.len());
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                dbg!("flush");
+                Ok(())
+            }
+        }
+        use std::io::Write;
+        let mut my_writer = Mywriter {};
+        my_writer.write(b"test").expect("write to Mywriter failed");
+
+        struct HtmlDocument {
+            content: String,
+        }
+        trait WriteHtml {
+            fn write_html(&mut self, doc: &HtmlDocument) -> std::io::Result<()>;
+        }
+        impl<W: std::io::Write> WriteHtml for W {
+            fn write_html(&mut self, doc: &HtmlDocument) -> std::io::Result<()> {
+                self.write(&"<HTML>".to_string().as_bytes())?;
+                self.write(&doc.content.as_bytes())?;
+                self.write(&"</HTML>".to_string().as_bytes())?;
+                Ok(())
+            }
+        }
+        let mut html_content = Vec::new();
+        let html_document = HtmlDocument {
+            content: "test html".to_string(),
+        };
+        html_content.write_html(&html_document);
+        use std::str;
+        let html_content_str = str::from_utf8(&html_content).expect("convert to str failed!").to_string();
+        dbg!(html_content_str);
+    }
+    return;
+    {
+        fn output_txt(out: &mut dyn std::io::Write, txt: &[u8]) -> GenericResult<()> {
+            out.write_all(txt)?;
+            Ok(())
+        }
+        let mut out_buf = Vec::new();
+        let result = output_txt(&mut out_buf, b"hello Rust!");
+        match result {
+            Err(ref err) => {
+                eprintln!("error {}", err.to_string());
+            }
+            Ok(..) => {}
+        }
+        if let Ok(_) = result.as_ref() {
+            println!("ok {:?}", &out_buf);
+        } else {
+            if let Some(ref err) = result.as_ref().err() {
+                eprintln!("error {}", err.to_string());
+            }
+        }
+        let result_ref = result.as_ref();
+        match result_ref {
+            Err(err) => {
+                eprintln!("error {}", err.to_string());
+            }
+            Ok(..) => {}
+        }
+        if let Ok(_) = result_ref {
+            println!("ok {:?}", &out_buf);
+        } else {
+            if let Some(err) = result_ref.err() {
+                eprintln!("error {}", err.to_string());
+            }
+        }
+    }
+    return;
     {
         let r;
         {
