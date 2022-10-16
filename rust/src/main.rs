@@ -2,11 +2,12 @@ use image::png::PNGEncoder;
 use image::ColorType;
 use num::Complex;
 use regex::Regex;
+use std::collections::HashMap;
 use std::env;
 use std::fs::read_to_string;
 use std::fs::write;
 use std::fs::File;
-use std::result;
+use std::ops::Add;
 use std::str::FromStr;
 use text_colorizer::Colorize;
 
@@ -227,6 +228,258 @@ fn handle_get() -> HttpResponse {
 
 fn main() {
     {
+        struct RcBox<T: ?Sized> {
+            ref_count: usize,
+            value: T,
+        }
+        let boxed_lunch: RcBox<String> = RcBox {
+            ref_count: 1,
+            value: "lunch".to_string(),
+        };
+        let boxed_displayable: &RcBox<dyn std::fmt::Display> = &boxed_lunch;
+        fn display(boxed: &RcBox<dyn std::fmt::Display>) {
+            println!("For your enjoyment: {}", &boxed.value);
+        }
+        display(boxed_displayable);
+        struct Selector<T> {
+            elements: Vec<T>,
+            current: usize,
+        }
+        use std::ops::{Deref, DerefMut};
+        impl<T> Deref for Selector<T> {
+            type Target = T;
+            fn deref(&self) -> &T {
+                &self.elements[self.current]
+            }
+        }
+        impl<T> DerefMut for Selector<T> {
+            fn deref_mut(&mut self) -> &mut T {
+                &mut self.elements[self.current]
+            }
+        }
+        let mut s = Selector {
+            elements: vec!['x', 'y', 'z'],
+            current: 2,
+        };
+        assert_eq!(*s, 'z');
+        assert!(s.is_alphabetic());
+        *s = 'w';
+        assert_eq!(s.elements, ['x', 'y', 'w']);
+        fn show_it(thing: &str) {
+            println!("{}", thing);
+        }
+        let s = Selector {
+            elements: vec!["good", "bad", "ugly"],
+            current: 2,
+        };
+        show_it(*s);
+        use std::fmt::Display;
+        fn show_it_generic<T: Display>(thing: T) {
+            println!("{}", thing);
+        }
+        show_it_generic(*s);
+        use std::collections::HashSet;
+        let squares = [4, 9, 16, 25, 36, 49, 64];
+        let (set1, set2): (HashSet<i32>, HashSet<i32>) = squares.iter().partition(|n| **n < 25);
+        dbg!(set1);
+        dbg!(set2);
+        let (upper, lower): (String, String) = "Great Teacher Onizuka"
+            .chars()
+            .partition(|&c| c.is_uppercase());
+        assert_eq!(upper, "GTO");
+        assert_eq!(lower, "reat eacher nizuka");
+    }
+    return;
+    {
+        struct Image<T> {
+            width: usize,
+            height: usize,
+            pixels: Vec<T>,
+        }
+        impl<T: Default + Copy> Image<T> {
+            fn new(width: usize, height: usize) -> Image<T> {
+                Image {
+                    width: width,
+                    height: height,
+                    pixels: vec![T::default(); width * height],
+                }
+            }
+        }
+        impl<T> std::ops::Index<usize> for Image<T> {
+            type Output = [T];
+            fn index(&self, row: usize) -> &[T] {
+                let start = row * self.width;
+                &self.pixels[start..start + self.width]
+            }
+        }
+        impl<T> std::ops::IndexMut<usize> for Image<T> {
+            fn index_mut(&mut self, row: usize) -> &mut [T] {
+                let start = row * self.width;
+                &mut self.pixels[start..start + self.width]
+            }
+        }
+    }
+    return;
+    {
+        #[derive(Clone, Copy, Debug)]
+        struct Complex<T> {
+            re: T,
+            im: T,
+        }
+        impl<T> std::ops::Add<Complex<T>> for Complex<T>
+        where
+            T: std::ops::Add<Output = T>,
+        {
+            type Output = Complex<T>;
+            fn add(self, rhs: Self) -> Self::Output {
+                Complex {
+                    re: self.re + rhs.re,
+                    im: self.im + rhs.im,
+                }
+            }
+        }
+        #[derive(Debug, PartialEq)]
+        struct Interval<T> {
+            lower: T, // 包括
+            upper: T, // 不包括
+        }
+        use std::cmp::{Ordering, PartialOrd};
+        impl<T> PartialOrd<Interval<T>> for Interval<T>
+        where
+            T: PartialOrd,
+        {
+            fn partial_cmp(&self, other: &Interval<T>) -> Option<Ordering> {
+                if self == other {
+                    Some(Ordering::Equal)
+                } else if self.lower >= other.upper {
+                    Some(Ordering::Greater)
+                } else if self.upper <= other.lower {
+                    Some(Ordering::Less)
+                } else {
+                    None
+                }
+            }
+        }
+        let mut vec = Vec::<Interval<i32>>::new();
+        vec.push(Interval::<i32> { lower: 1, upper: 4 });
+        vec.push(Interval::<i32> { lower: 2, upper: 3 });
+        vec.push(Interval::<i32> { lower: 3, upper: 2 });
+        vec.push(Interval::<i32> { lower: 4, upper: 1 });
+        dbg!(&vec);
+        vec.sort_by_key(|v| v.upper);
+        dbg!(&vec);
+        vec.sort_by_key(|v| std::cmp::Reverse(v.upper));
+        dbg!(&vec);
+    }
+    return;
+    {
+        struct MyStruct {
+            a: String,
+            b: String,
+        }
+        impl std::clone::Clone for MyStruct {
+            fn clone(&self) -> Self {
+                MyStruct {
+                    a: self.a.clone(),
+                    b: self.b.clone(),
+                }
+            }
+        }
+        trait Mytrait {
+            fn compare(&self, val: &Self) -> i32;
+            fn compare2(val1: &Self, val2: &Self) -> i32;
+        }
+        impl Mytrait for MyStruct {
+            fn compare(&self, val: &Self) -> i32 {
+                if self.a == val.a && self.b == val.b {
+                    return 0;
+                }
+                -1
+            }
+            fn compare2(val1: &Self, val2: &Self) -> i32 {
+                if val1.a == val2.a && val1.b == val2.b {
+                    return 0;
+                }
+                -1
+            }
+        }
+        trait StringSet {
+            fn new() -> Self;
+            fn from_slice(strings: &[&str]) -> Self;
+            fn contains(&self, string: &str) -> bool;
+            fn add(&mut self, string: &str);
+        }
+        fn unknown_words<S: StringSet>(document: &[String], wordlist: &S) -> S {
+            let mut unknowns = S::new();
+            for word in document {
+                if !wordlist.contains(word) {
+                    unknowns.add(word)
+                }
+            }
+            unknowns
+        }
+        // trait StringSetNew {
+        //     fn new() -> Self
+        //     where
+        //         Self: Sized;
+        //     fn from_slice(strings: &[&str]) -> Self
+        //     where
+        //         Self: Sized;
+        //     fn contains(&self, string: &str) -> bool;
+        //     fn add(&mut self, string: &str);
+        // }
+        fn dump<I>(iter: &mut I)
+        where
+            I: Iterator,
+            I::Item: std::fmt::Debug,
+        {
+            for (ref index, ref s) in iter.enumerate() {
+                println!("{}: {:?}", index, s);
+            }
+        }
+        fn dump_string(iter: &mut dyn Iterator<Item = String>) {
+            for (index, s) in iter.enumerate() {
+                println!("{}: {:?}", index, s);
+            }
+        }
+        use std::ops::{Add, Mul};
+        fn do_calc<N>(val1: &N, val2: &N) -> N
+        where
+            N: Add<Output = N> + Mul<Output = N> + Default + Clone,
+        {
+            let mut val = N::default();
+            val = val1.clone() + val2.clone() + val1.clone() * val2.clone();
+            val
+        }
+    }
+    return;
+    {
+        use serde::Serialize;
+        use serde_json;
+        use std::io::Write;
+        pub fn write_json(map: &HashMap<String, String>) -> std::io::Result<()> {
+            let mut file = std::fs::File::create("./json")?;
+            let mut serializer = serde_json::Serializer::new(file);
+            map.serialize(&mut serializer)?;
+            Ok(())
+        }
+        let mut map = HashMap::<String, String>::new();
+        map.insert("1".to_string(), "one".to_string());
+        map.insert("2".to_string(), "two".to_string());
+        map.insert("3".to_string(), "three".to_string());
+        map.insert("4".to_string(), "four".to_string());
+        write_json(&map).expect("write json failed");
+    }
+    return;
+    {
+        let mut val_str = String::new();
+        val_str.insert_str(0, "hello");
+        let pos = val_str.len();
+        val_str.insert_str(pos, " world");
+        dbg!(val_str);
+    }
+    return;
+    {
         let mut buf = std::vec::Vec::new();
         let writer: &mut dyn std::io::Write;
         writer = &mut buf;
@@ -284,7 +537,9 @@ fn main() {
         };
         html_content.write_html(&html_document);
         use std::str;
-        let html_content_str = str::from_utf8(&html_content).expect("convert to str failed!").to_string();
+        let html_content_str = str::from_utf8(&html_content)
+            .expect("convert to str failed!")
+            .to_string();
         dbg!(html_content_str);
     }
     return;
