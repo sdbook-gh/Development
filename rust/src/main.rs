@@ -2,13 +2,8 @@ use image::png::PNGEncoder;
 use image::ColorType;
 use num::Complex;
 use regex::Regex;
-use std::collections::HashMap;
-use std::env;
-use std::fs::read_to_string;
-use std::fs::write;
-use std::fs::File;
-use std::ops::Add;
-use std::str::FromStr;
+use std::num::TryFromIntError;
+use std::{collections::LinkedList, fs::File};
 use text_colorizer::Colorize;
 
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -32,7 +27,7 @@ fn escape_time(c: Complex<f64>, limit: usize) -> Option<usize> {
     None
 }
 
-fn parse_pair<T: FromStr>(s: &str, separator: char) -> Option<(T, T)> {
+fn parse_pair<T: std::str::FromStr>(s: &str, separator: char) -> Option<(T, T)> {
     match s.find(separator) {
         None => None,
         Some(index) => match (T::from_str(&s[..index]), T::from_str(&s[index + 1..])) {
@@ -157,7 +152,7 @@ fn print_usage(cmd_name: &str) {
 }
 
 fn parse_args() -> Result<Arguments, i32> {
-    let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = std::env::args().collect();
     if args.len() != 5 {
         print_usage(&args[0]);
         eprintln!(
@@ -227,6 +222,641 @@ fn handle_get() -> HttpResponse {
 }
 
 fn main() {
+    {
+        //当字符串行以反斜杠结尾时，Rust并不会把下一行的缩进包含进字符串里
+        let message = "\
+To: jimb\r\n\
+From: superego <editor@oreilly.com>\r\n\
+\r\n\
+Did you get any writing done today?\r\n\
+When will you stop wasting time plotting fractals?\r\n";
+        for header in message.lines().take_while(|l| !l.is_empty()) {
+            println!("header: {}", header);
+        }
+        for body in message.lines().skip_while(|l| !l.is_empty()).skip(1) {
+            println!("body: {}", body);
+        }
+        let val = std::env::args().skip(1);
+        println!("{:#?}", val);
+
+        use std::iter::Peekable;
+        fn parse_number<I>(tokens: &mut Peekable<I>) -> u32
+        where
+            I: Iterator<Item = char>,
+        {
+            let mut n = 0;
+            loop {
+                match tokens.peek() {
+                    Some(r) if r.is_digit(10) => {
+                        n = n * 10 + r.to_digit(10).unwrap();
+                    }
+                    _ => {
+                        return n;
+                    }
+                }
+                tokens.next();
+            }
+        }
+        let mut chars = "226153980,1766319049".chars().peekable();
+        assert_eq!(parse_number(&mut chars), 226153980);
+        assert_eq!(chars.next(), Some(','));
+        assert_eq!(parse_number(&mut chars), 1766319049);
+        assert_eq!(chars.next(), None);
+
+        struct Flaky(bool);
+        impl Iterator for Flaky {
+            type Item = &'static str;
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.0 {
+                    self.0 = false;
+                    Some("totally the last item")
+                } else {
+                    self.0 = true; // D'oh!
+                    None
+                }
+            }
+        }
+        let mut flaky = Flaky(true);
+        assert_eq!(flaky.next(), Some("totally the last item"));
+        assert_eq!(flaky.next(), None);
+        assert_eq!(flaky.next(), Some("totally the last item"));
+        let mut not_flaky = Flaky(true).fuse();
+        assert_eq!(not_flaky.next(), Some("totally the last item"));
+        assert_eq!(not_flaky.next(), None);
+        assert_eq!(not_flaky.next(), None);
+        #[derive(Debug)]
+        struct MyStruct(String, String);
+        /*struct MyStruct {
+            val1: (String, String),
+            val2: (i32, i32),
+        }*/
+        let val = MyStruct("1".to_string(), "2".to_string());
+        dbg!(&val);
+        println!("{:#?}", &val);
+
+        let bee_parts = ["head", "thorax", "abdomen"];
+        let mut iter = bee_parts.into_iter();
+        assert_eq!(iter.next(), Some("head"));
+        assert_eq!(iter.next_back(), Some("abdomen"));
+        assert_eq!(iter.next(), Some("thorax"));
+        assert_eq!(iter.next_back(), None);
+        assert_eq!(iter.next(), None);
+        let meals = ["breakfast", "lunch", "dinner"];
+        let mut iter = meals.iter().rev();
+        assert_eq!(iter.next(), Some(&"dinner"));
+        assert_eq!(iter.next(), Some(&"lunch"));
+        assert_eq!(iter.next(), Some(&"breakfast"));
+        assert_eq!(iter.next(), None);
+
+        let upper_case: String = "große"
+            .chars()
+            .inspect(|c| println!("before: {:?}", c))
+            //.flat_map(char::to_uppercase)
+            .flat_map(|x| x.to_uppercase())
+            .inspect(|c| println!("after: {:?}", c))
+            .collect();
+        let endings = vec!["once", "twice", "chicken soup with rice"];
+        let val = endings
+            .iter()
+            .inspect(|c| println!("{:#?}", c))
+            .map(|x| x.to_uppercase())
+            .collect::<Vec<_>>();
+        dbg!(val);
+        let v: Vec<_> = (1..4).chain(vec![20, 30, 40]).collect();
+        dbg!(v);
+
+        let v: Vec<_> = (0..).zip("ABCD".chars()).collect();
+        dbg!(v);
+        let v: Vec<_> = std::ops::Range {
+            start: 0,
+            end: u32::MAX,
+        }
+        .zip("ABCD".chars())
+        .collect();
+        dbg!(v);
+
+        use std::iter::repeat;
+        let endings = vec!["once", "twice", "chicken soup with rice"];
+        let rhyme: Vec<_> = repeat("going").zip(endings).collect();
+        dbg!(rhyme);
+
+        let val:Vec<_> = ["1", "2"].iter().map(|x| x.to_owned()).collect();
+        dbg!(val);
+    }
+    return;
+    {
+        let text = " ponies \n giraffes\niguanas \nsquid";
+        let l: LinkedList<String> = text
+            .lines()
+            .map(str::trim)
+            .map(String::from)
+            .filter(|s| s != "iguanas")
+            .collect();
+        dbg!(l);
+        let text = "1\nfrond .25 289\n3.1415 estuary\n";
+        use std::str::FromStr;
+        for number in text
+            .split_whitespace()
+            .filter_map(|w| f64::from_str(w).ok())
+        {
+            println!("{:4.2}", number.sqrt());
+        }
+        use std::collections::HashMap;
+        let mut major_cities = HashMap::new();
+        major_cities.insert("Japan", vec!["Tokyo", "Kyoto"]);
+        major_cities.insert("The United States", vec!["Portland", "Nashville"]);
+        major_cities.insert("Brazil", vec!["São Paulo", "Brasilia"]);
+        major_cities.insert("Kenya", vec!["Nairobi", "Mombasa"]);
+        major_cities.insert("The Netherlands", vec!["Amsterdam", "Utrecht"]);
+        let countries = ["Japan", "Brazil", "Kenya", "China"];
+        let empty_vec = Vec::<&str>::new();
+        for &city in countries.into_iter().flat_map(|country| {
+            // &major_cities[country] // panic since China is not in map
+            if major_cities.contains_key(country) {
+                return &major_cities[country];
+            }
+            &empty_vec
+        }) {
+            println!("{}", city);
+        }
+        let v = ["1", "2"];
+        let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
+        map.insert("1", vec!["10", "11"]);
+        map.insert("2", vec!["20", "21"]);
+        for element in &map {
+            element.1.iter().all(|x| {
+                print!("{}", x);
+                true
+            });
+            println!("");
+        }
+        println!("{}", map.len());
+        for element in v.iter().flat_map(|x| &map[x]) {
+            println!("{}", element);
+        }
+        println!("{}", map.len());
+        let v = "test".to_string();
+        let v_chars = v.chars();
+        dbg!(v_chars);
+        let v_u: Vec<char> = v.chars().flat_map(char::to_uppercase).collect();
+        dbg!(v_u);
+        let v_u: String = v.chars().flat_map(char::to_uppercase).collect();
+        dbg!(v_u);
+        let val = vec![None, Some("day"), None, Some("one")]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        dbg!(val);
+        let val = vec![["1"], ["2"]].into_iter().flatten().collect::<Vec<_>>();
+        dbg!(val);
+    }
+    return;
+    {
+        let v = vec!["antimony", "arsenic", "alumium", "selenium"];
+        let mut iterator = v.into_iter();
+        while let Some(element) = iterator.next() {
+            println!("{}", element);
+        }
+
+        let v = vec![4, 20, 12, 8, 6];
+        let mut iterator = v.iter();
+        assert_eq!(iterator.next(), Some(&4));
+        assert_eq!(iterator.next(), Some(&20));
+        assert_eq!(iterator.next(), Some(&12));
+        assert_eq!(iterator.next(), Some(&8));
+        assert_eq!(iterator.next(), Some(&6));
+        assert_eq!(iterator.next(), None);
+
+        use std::ffi::OsStr;
+        use std::path::Path;
+        let path = Path::new("C:/Users/JimB/Downloads/Fedora.iso");
+        let mut iterator = path.iter();
+        assert_eq!(iterator.next(), Some(OsStr::new("C:")));
+        assert_eq!(iterator.next(), Some(OsStr::new("Users")));
+        assert_eq!(iterator.next(), Some(OsStr::new("JimB")));
+
+        use std::collections::BTreeSet;
+        let mut favorites = BTreeSet::new();
+        favorites.insert("Lucy in the Sky With Diamonds".to_string());
+        favorites.insert("Liebesträume No. 3".to_string());
+        let mut it = favorites.into_iter();
+        assert_eq!(it.next(), Some("Liebesträume No. 3".to_string()));
+        assert_eq!(it.next(), Some("Lucy in the Sky With Diamonds".to_string()));
+        assert_eq!(it.next(), None);
+
+        let v = vec![4, 20, 12, 8, 6];
+        let mut iterator = v.into_iter();
+        assert_eq!(iterator.next(), Some(4));
+        let v = vec![4, 20, 12, 8, 6];
+        let mut iterator = (&v).into_iter();
+        assert_eq!(iterator.next(), Some(&4));
+        let mut v = vec![4, 20, 12, 8, 6];
+        let mut iterator = (&mut v).into_iter();
+        assert_eq!(iterator.next(), Some(&mut 4));
+
+        use std::fmt::Debug;
+        fn dump<T, U>(t: T)
+        where
+            T: IntoIterator<Item = U>,
+            U: Debug,
+        {
+            for u in t {
+                println!("{:?}", u);
+            }
+        }
+
+        use rand::random;
+        let lengths: Vec<f64> =
+            std::iter::from_fn(|| Some((random::<f64>() - random::<f64>()).abs()))
+                .take(1000)
+                .collect();
+        dbg!(lengths);
+        use num::Complex;
+        fn escape_time(c: Complex<f64>, limit: usize) -> Option<usize> {
+            let zero = Complex { re: 0.0, im: 0.0 };
+            std::iter::successors(Some(zero), |&z| Some(z * z + c))
+                .take(limit)
+                .enumerate()
+                .find(|(_i, z)| z.norm_sqr() > 4.0)
+                .map(|(i, _z)| i)
+        }
+        fn fibonacci() -> impl Iterator<Item = usize> {
+            let mut state = (0, 1);
+            std::iter::from_fn(move || {
+                state = (state.1, state.0 + state.1);
+                Some(state.0)
+            })
+        }
+        use std::iter::FromIterator;
+        use std::string::String;
+        let mut outer = "Earth".to_string();
+        let inner = String::from_iter(outer.drain(1..4));
+        assert_eq!(outer, "Eh");
+        assert_eq!(inner, "art");
+    }
+    return;
+    {
+        let val_str = "test string";
+        let val_byte_vec: Vec<u8> = val_str.bytes().into_iter().collect();
+        let val_char_vec: Vec<char> = val_str.chars().into_iter().collect();
+        dbg!(val_byte_vec);
+        dbg!(val_char_vec);
+
+        let val_str: std::borrow::Cow<str> = format!("value is {}", 1.00f64).into();
+        let mut val_str_vec: Vec<String> = Vec::new();
+        val_str_vec.push(val_str.into());
+    }
+    return;
+    {
+        use std::collections::HashMap;
+        #[derive(Debug)]
+        struct Request {
+            method: String,
+            url: String,
+            headers: HashMap<String, String>,
+            body: Vec<u8>,
+        }
+        #[derive(Debug)]
+        struct Response {
+            code: u32,
+            headers: HashMap<String, String>,
+            body: Vec<u8>,
+        }
+        type BoxedCallback = Box<dyn Fn(&Request) -> Response>;
+        struct BasicRouter {
+            routes: HashMap<String, BoxedCallback>,
+        }
+        impl BasicRouter {
+            fn new() -> BasicRouter {
+                BasicRouter {
+                    routes: HashMap::new(),
+                }
+            }
+            fn add_route<C>(&mut self, route: &str, f: C)
+            where
+                C: Fn(&Request) -> Response + 'static,
+            {
+                self.routes.insert(route.to_string(), Box::new(f));
+            }
+        }
+        impl BasicRouter {
+            fn handle_request(&self, r: &Request) -> Response {
+                match self.routes.get(&r.url) {
+                    None => Response {
+                        code: 404,
+                        headers: HashMap::new(),
+                        body: Vec::new(),
+                    },
+                    Some(c) => c(r),
+                }
+            }
+        }
+        fn root_response(r: &Request) -> Response {
+            let headers = HashMap::new();
+            Response {
+                code: 100,
+                headers,
+                body: "/".into(),
+            }
+        }
+        fn test_response(r: &Request) -> Response {
+            let headers = HashMap::new();
+            Response {
+                code: 100,
+                headers,
+                body: "/test".into(),
+            }
+        }
+        let mut router = BasicRouter::new();
+        router.add_route("/", root_response);
+        router.add_route("/test", test_response);
+        let req = Request {
+            method: "GET".to_string(),
+            url: "/".to_string(),
+            headers: HashMap::new(),
+            body: Vec::new(),
+        };
+        let resp = router.handle_request(&req);
+        dbg!(req);
+        dbg!(resp);
+
+        type CallBack = fn(&Request) -> Response;
+        struct NewRouter {
+            routes: HashMap<String, CallBack>,
+        }
+        impl NewRouter {
+            fn new() -> NewRouter {
+                NewRouter {
+                    routes: HashMap::new(),
+                }
+            }
+            fn add_route(&mut self, route: &str, c: CallBack) {
+                self.routes.insert(route.to_string(), c);
+            }
+            fn handle_request(&self, r: &Request) -> Response {
+                match self.routes.get(&r.url) {
+                    Some(c) => c(r),
+                    None => Response {
+                        code: 404,
+                        headers: HashMap::new(),
+                        body: Vec::new(),
+                    },
+                }
+            }
+        }
+        let mut router = NewRouter {
+            routes: HashMap::new(),
+        };
+        // let mut router = NewRouter::new();
+        router.add_route("/", root_response);
+        router.add_route("/new", |r: &Request| -> Response {
+            Response {
+                code: 100,
+                headers: HashMap::new(),
+                body: "new".into(),
+            }
+        });
+        let req = Request {
+            method: "GET".into(),
+            url: "/new".into(),
+            headers: [
+                ("1".to_string(), "1".to_string()),
+                ("2".to_string(), "2".to_string()),
+            ]
+            .into_iter()
+            .collect(),
+            body: Vec::new(),
+        };
+        let resp = router.handle_request(&req);
+        dbg!(req);
+        dbg!(resp);
+    }
+    return;
+    {
+        let haystack: Vec<String> = vec!["some", "long", "list", "of", "strings"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+
+        struct City {
+            name: String,
+            population: i64,
+            country: String,
+        }
+        fn city_population_descending(city: &City) -> i64 {
+            -city.population
+        }
+        fn sort_cities(cities: &mut Vec<City>) {
+            cities.sort_by_key(city_population_descending);
+        }
+        use std::thread;
+        fn start_sorting_thread(
+            mut cities: Vec<City>,
+            criterias: Vec<i64>,
+        ) -> thread::JoinHandle<Vec<City>> {
+            let key_fn = move |city: &City| -> i64 {
+                // if let Some(_) = criterias.into_iter().find(|x| *x == city.population) {
+                //     return 0;
+                // }
+                if criterias.contains(&city.population) {
+                    return 0;
+                }
+                if let Some(_) = criterias.iter().find(|&x| *x == city.population) {
+                    return 0;
+                }
+                -city.population
+            };
+            thread::spawn(move || {
+                cities.sort_by_key(key_fn);
+                cities
+            })
+        }
+        fn start_sorting_thread_new(
+            mut cities: Vec<City>,
+            criterias: Vec<i64>,
+        ) -> thread::JoinHandle<Vec<City>> {
+            let mut iters = criterias.into_iter();
+            let key_fn = move |city: &City| -> i64 {
+                if let Some(_) = iters.find(|x| *x == city.population) {
+                    return 0;
+                }
+                -city.population
+            };
+            thread::spawn(move || {
+                cities.sort_by_key(key_fn);
+                cities
+            })
+        }
+        fn count_selected_cities(cities: &Vec<City>, test_fn: fn(&City) -> bool) -> usize {
+            let mut count = 0;
+            for city in cities {
+                if test_fn(city) {
+                    count += 1;
+                }
+            }
+            count
+        }
+        fn has_monster_attacks(city: &City) -> bool {
+            city.population > 1000000
+        }
+        let my_cities = vec![
+            City {
+                name: "a".to_string(),
+                population: 100000,
+                country: "a".to_string(),
+            },
+            City {
+                name: "b".to_string(),
+                population: 1010000,
+                country: "b".to_string(),
+            },
+        ];
+        let n = count_selected_cities(&my_cities, has_monster_attacks);
+        dbg!(n);
+        fn count_selected_cities_new<F>(cities: &Vec<City>, test_fn: F) -> usize
+        where
+            F: Fn(&City) -> bool,
+        {
+            let mut count = 0;
+            for city in cities {
+                if test_fn(city) {
+                    count += 1;
+                }
+            }
+            count
+        }
+        let n = count_selected_cities(&my_cities, |city: &City| city.population > 10000);
+        dbg!(n);
+        let n = count_selected_cities_new(&my_cities, |city: &City| city.population > 10000);
+        dbg!(n);
+
+        let dict: Vec<String> = vec!["1", "2", "3", "4"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let debug_dump_dict = || {
+            for value in &dict {
+                // no need to move
+                println!("{:?}", value);
+            }
+        };
+        fn call_twice<F>(f: F) -> ()
+        where
+            F: Fn() -> (),
+        {
+            f();
+            f();
+        }
+        call_twice(debug_dump_dict);
+        let mut i = 0;
+        let incr = || {
+            i += 1; // incr借用了 i的一个可变引用
+            println!("Ding! i is now: {}", i);
+        };
+        fn call_twice_new<F>(mut f: F)
+        where
+            F: FnMut(),
+        {
+            f();
+            f();
+        }
+        call_twice_new(incr);
+
+        let y = 10;
+        let add_y = |x| x + y;
+        let copy_of_add_y = add_y; // 这个闭包是`Copy`，因此...
+        assert_eq!(add_y(copy_of_add_y(22)), 42); // ...我们可以使用这两个
+        let mut x = 0;
+        let mut add_to_x = |n: i32| {
+            x += n;
+            x
+        };
+        let copy_of_add_to_x = add_to_x; // 移动，而不是拷贝
+                                         // assert_eq!(add_to_x(copy_of_add_to_x(1)), 2); // 错误：使用了被移动的值
+        let mut greeting = "Hello, ".to_string();
+        let mut greet = move |name| {
+            greeting.push_str(name);
+            println!("{}", greeting);
+        };
+        greet("Test");
+        greet.clone()("Alfred");
+        greet.clone()("Bruce");
+    }
+    return;
+    {
+        use std::borrow::Cow;
+        enum Error {
+            OutOfMemory,
+            StackOverflow,
+            MachineOnFire,
+            Unfathomable,
+            FileNotFound(String),
+        }
+        fn describe(error: &Error) -> Cow<'static, str> {
+            match *error {
+                Error::OutOfMemory => "out of memory".into(),
+                Error::StackOverflow => "stack overflow".into(),
+                Error::MachineOnFire => "machine on fire".into(),
+                Error::Unfathomable => "machine bewildered".into(),
+                Error::FileNotFound(ref path) => format!("file not found: {}", path).into(),
+            }
+        }
+        let err = Error::MachineOnFire;
+        println!("Disaster has struct: {}", describe(&err));
+        let mut log = Vec::<String>::new();
+        log.push(describe(&err).into_owned());
+    }
+    return;
+    {
+        let huge = 2_000_000_000_000i64;
+        let smaller = huge as i32;
+        println!("{}", smaller);
+        use std::convert::TryInto;
+        let smaller: i32 = huge.try_into().unwrap_or_else(|e: TryFromIntError| {
+            println!("error: {}", e.to_string());
+            if huge >= 0 {
+                println!("i32::MAX");
+                i32::MAX
+            } else {
+                println!("i32::MIN");
+                i32::MIN
+            }
+        });
+        dbg!(smaller);
+        struct Transform {
+            val: i32,
+        }
+        #[derive(Debug)]
+        enum TransformErr {
+            BAD_GT_0,
+            BAD_LT_0,
+        }
+        #[derive(Debug)]
+        struct TransformResult {
+            result: i32,
+        };
+        impl std::convert::TryInto<TransformResult> for Transform {
+            type Error = TransformErr;
+            fn try_into(self) -> Result<TransformResult, Self::Error> {
+                if self.val == 0 {
+                    return Ok(TransformResult { result: 0 });
+                } else if self.val < 0 {
+                    return Err(TransformErr::BAD_LT_0);
+                }
+                Err(TransformErr::BAD_GT_0)
+            }
+        }
+        let err_handler = |e: TransformErr| -> TransformResult {
+            println!("error: {:?}", e);
+            TransformResult { result: -1 }
+        };
+        let transform = Transform { val: 11 };
+        let transform_result: TransformResult = transform.try_into().unwrap_or_else(err_handler);
+        let transform = Transform { val: 0 };
+        let transform_result: TransformResult = transform.try_into().unwrap_or_else(err_handler);
+        dbg!(transform_result);
+    }
+    return;
     {
         struct RcBox<T: ?Sized> {
             ref_count: usize,
@@ -456,6 +1086,7 @@ fn main() {
     {
         use serde::Serialize;
         use serde_json;
+        use std::collections::HashMap;
         use std::io::Write;
         pub fn write_json(map: &HashMap<String, String>) -> std::io::Result<()> {
             let mut file = std::fs::File::create("./json")?;
@@ -608,13 +1239,13 @@ fn main() {
             }
         }
         // return &i32, so need to specify lifetime
-        // fn max_bad(x: &i32, y: &i32) -> &i32 {
-        //     if x > y {
-        //         x
-        //     } else {
-        //         x
-        //     }
-        // }
+        fn max_i32<'life>(x: &'life i32, y: &'life i32) -> &'life i32 {
+            if x > y {
+                x
+            } else {
+                x
+            }
+        }
         fn smallest<'life>(v1: &'life [i32], v2: &'life [i32]) -> &'life i32 {
             if v1[0] < v2[0] {
                 &v1[0]
@@ -659,27 +1290,27 @@ fn main() {
             }
         }
         use BinaryTree::*;
-        // let jupiter_tree = NonEmpty(Box::new(TreeNode {
-        //     element: "Jupiter",
-        //     left: Empty,
-        //     right: Empty,
-        // }));
-        // let mercury_tree = NonEmpty(Box::new(TreeNode {
-        //     element: "Mercury",
-        //     left: Empty,
-        //     right: Empty,
-        // }));
-        // let mars_tree = NonEmpty(Box::new(TreeNode {
-        //     element: "Mars",
-        //     left: jupiter_tree,
-        //     right: mercury_tree,
-        // }));
-        // let tree = NonEmpty(Box::new(TreeNode {
-        //     element: "Saturn",
-        //     left: mars_tree,
-        //     right: Empty,
-        // }));
-        // println!("tree {:?}", &tree);
+        let jupiter_tree = NonEmpty(Box::new(TreeNode {
+            element: "Jupiter",
+            left: Empty,
+            right: Empty,
+        }));
+        let mercury_tree = NonEmpty(Box::new(TreeNode {
+            element: "Mercury",
+            left: Empty,
+            right: Empty,
+        }));
+        let mars_tree = NonEmpty(Box::new(TreeNode {
+            element: "Mars",
+            left: jupiter_tree,
+            right: mercury_tree,
+        }));
+        let tree = NonEmpty(Box::new(TreeNode {
+            element: "Saturn",
+            left: mars_tree,
+            right: Empty,
+        }));
+        println!("tree {:?}", &tree);
         let mut tree = BinaryTree::<String>::Empty;
         tree.add(&"2".to_string());
         println!("tree {:?}", &tree);
@@ -836,16 +1467,17 @@ fn main() {
         dbg!(s);
     }
     return;
-    // let regex_handler = match Regex::new("[0-9]x[0-9]") {
-    //     Err(_) => {
-    //         return;
-    //     },
-    //     Ok(handler) => handler
-    // };
-    // let result = regex_handler.replace("123x456", "X").to_string();
-    // println!("result {}", result);
-    // return;
-
+    {
+        let regex_handler = match Regex::new("[0-9]x[0-9]") {
+            Err(_) => {
+                return;
+            }
+            Ok(handler) => handler,
+        };
+        let result = regex_handler.replace("123x456", "X").to_string();
+        println!("result {}", result);
+        return;
+    }
     let val = (123, String::from("123"));
     // let box_val = Box::<(i32, String)>::new(val);
     // let box_val : Box<(i32, String)> = Box::new(val);
@@ -945,44 +1577,46 @@ fn main() {
         assert_eq!(t.find("taki"), Some(5));
         println!("{} are quite chewy, almost bouncy, but lack flavor", u);
     }
-
-    // let args = match parse_args() {
-    //     Ok(val) => val,
-    //     Err(_error_code) => {
-    //         std::process::exit(-1);
-    //     }
-    // };
-    // println!("{:?}", args);
-    // let file_content = match read_to_string(&args.in_filename) {
-    //     Ok(data) => data,
-    //     Err(error) => {
-    //         eprintln!(
-    //             "{}: {} read_to_string: {:?}",
-    //             "error".red().bold(),
-    //             &args.in_filename,
-    //             error
-    //         );
-    //         std::process::exit(-1);
-    //     }
-    // };
-    // let replaced_content = match replace_string(&file_content, &args.target, &args.replacement) {
-    //     Ok(val) => val,
-    //     Err(_error_code) => {
-    //         std::process::exit(-1);
-    //     }
-    // };
-    // match write(&args.out_filename, &replaced_content) {
-    //     Ok(_) => (),
-    //     Err(error) => {
-    //         eprintln!(
-    //             "{}: {} write: {:?}",
-    //             "error".red().bold(),
-    //             &args.out_filename,
-    //             error
-    //         );
-    //         std::process::exit(-1);
-    //     }
-    // }
+    {
+        let args = match parse_args() {
+            Ok(val) => val,
+            Err(_error_code) => {
+                std::process::exit(-1);
+            }
+        };
+        println!("{:?}", args);
+        let file_content = match std::fs::read_to_string(&args.in_filename) {
+            Ok(data) => data,
+            Err(error) => {
+                eprintln!(
+                    "{}: {} read_to_string: {:?}",
+                    "error".red().bold(),
+                    &args.in_filename,
+                    error
+                );
+                std::process::exit(-1);
+            }
+        };
+        let replaced_content = match replace_string(&file_content, &args.target, &args.replacement)
+        {
+            Ok(val) => val,
+            Err(_error_code) => {
+                std::process::exit(-1);
+            }
+        };
+        match std::fs::write(&args.out_filename, &replaced_content) {
+            Ok(_) => (),
+            Err(error) => {
+                eprintln!(
+                    "{}: {} write: {:?}",
+                    "error".red().bold(),
+                    &args.out_filename,
+                    error
+                );
+                std::process::exit(-1);
+            }
+        }
+    }
     return;
 
     let _test_integer_var = 0;
@@ -996,7 +1630,7 @@ fn main() {
     // println!("do_test return {}", do_test_ret);
     // do_test(0).expect("do_test error");
 
-    let mut args: Vec<String> = env::args().collect();
+    let mut args: Vec<String> = std::env::args().collect();
     // print_usage(&args[0]);
     if args.len() != 5 {
         eprintln!("Usage: {} FILE PIXELS UPPERLEFT LOWERRIGHT", args[0]);
