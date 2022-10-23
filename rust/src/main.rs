@@ -223,6 +223,318 @@ fn handle_get() -> HttpResponse {
 
 fn main() {
     {
+        struct I32Range {
+            start: i32,
+            end: i32,
+        }
+        impl Iterator for I32Range {
+            // impl Iterator will also impl IntoIterator
+            type Item = i32;
+            fn next(&mut self) -> Option<Self::Item> {
+                if self.start >= self.end {
+                    return None;
+                }
+                self.start += 1;
+                Some(self.start - 1)
+            }
+        }
+        let mut pi: f64 = 0.0;
+        let mut numerator: f64 = 1.0;
+        for k in (I32Range { start: 0, end: 64 }.into_iter()) {
+            pi += numerator / (2 * k + 1) as f64;
+            numerator /= -3.0;
+        }
+        pi *= f64::sqrt(12.0);
+        dbg!(pi);
+
+        // An ordered collection of `T`s.
+        enum BinaryTree<T> {
+            Empty,
+            NonEmpty(Box<TreeNode<T>>),
+        }
+        // A part of a BinaryTree.
+        struct TreeNode<T> {
+            element: T,
+            left: BinaryTree<T>,
+            right: BinaryTree<T>,
+        }
+        impl<T: Ord> BinaryTree<T> {
+            fn add(&mut self, value: T) {
+                match *self {
+                    BinaryTree::Empty => {
+                        *self = BinaryTree::NonEmpty(Box::new(TreeNode {
+                            element: value,
+                            left: BinaryTree::Empty,
+                            right: BinaryTree::Empty,
+                        }))
+                    }
+                    BinaryTree::NonEmpty(ref mut node) => {
+                        if value <= node.element {
+                            node.left.add(value);
+                        } else {
+                            node.right.add(value);
+                        }
+                    }
+                }
+            }
+        }
+        use BinaryTree::*;
+        // The state of an in-order traversal of a `BinaryTree`.
+        struct TreeIter<'a, T> {
+            // A stack of references to tree nodes. Since we use `Vec`'s
+            // `push` and `pop` methods, the top of the stack is the end of the
+            // vector.
+            //
+            // The node the iterator will visit next is at the top of the stack,
+            // with those ancestors still unvisited below it. If the stack is empty,
+            // the iteration is over.
+            unvisited: Vec<&'a TreeNode<T>>,
+        }
+        impl<'a, T: 'a> TreeIter<'a, T> {
+            fn push_left_edge(&mut self, mut tree: &'a BinaryTree<T>) {
+                while let NonEmpty(ref node) = *tree {
+                    self.unvisited.push(node);
+                    tree = &node.left;
+                }
+            }
+        }
+        impl<T> BinaryTree<T> {
+            fn iter(&self) -> TreeIter<T> {
+                let mut iter = TreeIter {
+                    unvisited: Vec::new(),
+                };
+                iter.push_left_edge(self);
+                iter
+            }
+        }
+        impl<'a, T> Iterator for TreeIter<'a, T> {
+            type Item = &'a T;
+            fn next(&mut self) -> Option<&'a T> {
+                // Find the node this iteration must produce,
+                // or finish the iteration. (Use the `?` operator
+                // to return immediately if it's `None`.)
+                let node = self.unvisited.pop()?;
+
+                // After `node`, the next thing we produce must be the leftmost
+                // child in `node`'s right subtree, so push the path from here
+                // down. Our helper method turns out to be just what we need.
+                self.push_left_edge(&node.right);
+
+                // Produce a reference to this node's value.
+                Some(&node.element)
+            }
+        }
+        impl<'a, T: 'a> IntoIterator for &'a BinaryTree<T> {
+            type Item = &'a T;
+            type IntoIter = TreeIter<'a, T>;
+            fn into_iter(self) -> Self::IntoIter {
+                self.iter()
+            }
+        }
+        let mut tree = BinaryTree::Empty;
+        tree.add("jaeger");
+        tree.add("robot");
+        tree.add("droid");
+        tree.add("mecha");
+        let mut iterator = tree.iter();
+        assert_eq!(iterator.next(), Some(&"droid"));
+        assert_eq!(iterator.next(), Some(&"jaeger"));
+        assert_eq!(iterator.next(), Some(&"mecha"));
+        assert_eq!(iterator.next(), Some(&"robot"));
+        assert_eq!(iterator.next(), None);
+    }
+    return;
+    {
+        use core::fmt::{Display, Formatter, Result};
+        #[derive(Debug)]
+        enum Platform {
+            Linux,
+            MacOS,
+            Windows,
+            Unknown,
+        }
+        impl Display for Platform {
+            fn fmt(&self, f: &mut Formatter) -> Result {
+                match self {
+                    Platform::Linux => write!(f, "Linux"),
+                    Platform::MacOS => write!(f, "MacOS"),
+                    Platform::Windows => write!(f, "Windows"),
+                    Platform::Unknown => write!(f, "unknown"),
+                }
+            }
+        }
+        impl From<Platform> for String {
+            fn from(platform: Platform) -> Self {
+                match platform {
+                    Platform::Linux => "Linux".into(),
+                    Platform::MacOS => "MacOS".into(),
+                    Platform::Windows => "Windows".into(),
+                    Platform::Unknown => "unknown".into(),
+                }
+            }
+        }
+        impl From<String> for Platform {
+            fn from(platform: String) -> Self {
+                match platform {
+                    platform if platform == "Linux" => Platform::Linux,
+                    platform if platform == "MacOS" => Platform::MacOS,
+                    platform if platform == "Windows" => Platform::Windows,
+                    platform if platform == "unknown" => Platform::Unknown,
+                    _ => Platform::Unknown,
+                }
+            }
+        }
+        fn test() {
+            let platform: String = Platform::MacOS.to_string();
+            println!("{}", platform);
+            let platform: String = Platform::Linux.into();
+            println!("{}", platform);
+            let platform: Platform = "Windows".to_string().into();
+            println!("{}", platform);
+        }
+        test();
+    }
+    return;
+    {
+        // use std::io::prelude::BufRead;
+        // let stdin = std::io::stdin();
+        // println!("{}", stdin.lock().lines().count());
+        let text = "1\n2\n3\n4";
+        println!("count: {}", text.lines().count());
+        println!(
+            "sum: {}",
+            text.lines()
+                .map(|x| x.trim().parse::<i32>().unwrap_or(0))
+                .sum::<i32>()
+        );
+        println!(
+            "product: {}",
+            text.lines()
+                .map(|x| x.trim().parse::<i32>().unwrap_or(1))
+                .product::<i32>()
+        );
+
+        use std::cmp::Ordering;
+        fn cmp(lhs: &f64, rhs: &f64) -> Ordering {
+            lhs.partial_cmp(rhs).unwrap() // 比较两个 f64值，如果有 NaN就 panic
+        }
+        let numbers = [1.0, 4.0, 2.0];
+        assert_eq!(numbers.iter().copied().max_by(cmp), Some(4.0));
+        assert_eq!(numbers.iter().copied().min_by(cmp), Some(1.0));
+
+        let mut map = std::collections::HashMap::new();
+        map.insert("1", 100);
+        map.insert("2", 200);
+        assert_eq!(map.iter().max_by_key(|x| x.1), Some((&"2", &200)));
+
+        let packed = "Helen of Troy";
+        let spaced = "Helen    of  Troy";
+        assert!(packed != spaced);
+        assert!(packed.split_whitespace().eq(spaced.split_whitespace()));
+
+        let text = "Xerxes";
+        assert_eq!(text.chars().position(|c| c == 'e'), Some(1));
+        assert_eq!(text.chars().position(|c| c == 'z'), None);
+
+        let a = [5, 6, 7, 8, 9, 10];
+        assert_eq!(a.iter().fold(0, |n, _| n + 1), 6); // count
+        assert_eq!(a.iter().fold(0, |n, i| n + i), 45); // sum
+        assert_eq!(a.iter().fold(1, |n, i| n * i), 151200); // product
+        let v = [
+            "Pack", "my", "box", "with", "five", "dozen", "liquor", "jugs",
+        ];
+        let val1 = v.iter().fold(String::new(), |val, elem| val + elem + "_"); // trailing _
+        let val2 = v.join("_"); // no trailing _
+        dbg!(val1);
+        dbg!(val2);
+
+        // {
+        //     let stdin = std::io::stdin();
+        //     use std::io::prelude::BufRead;
+        //     let sum = stdin
+        //         .lock()
+        //         .lines()
+        //         .try_fold(0, |val, elem| -> Result<i32, Box<dyn std::error::Error>> {
+        //             Ok(val + elem.unwrap().trim().parse::<i32>().unwrap())
+        //         })
+        //         .unwrap();
+        //     dbg!(sum);
+        // }
+
+        let mut squares = (0..10).map(|i| i * i);
+        let val: Vec<_> = squares.clone().collect();
+        dbg!(val);
+        assert_eq!(squares.nth(4), Some(16));
+        assert_eq!(squares.nth(0), Some(25));
+        assert_eq!(squares.nth(6), None);
+
+        let val = (1..100).into_iter().find(|x| x % 13 == 0);
+        assert_eq!(val, Some(13));
+        let val = (1..100).into_iter().find_map(|x| {
+            if x % 13 == 0 {
+                return Some("Found");
+            }
+            None
+        });
+        assert_eq!(val, Some("Found"));
+
+        {
+            use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, LinkedList};
+            let args: HashSet<String> = std::env::args().collect();
+            let args: BTreeSet<String> = std::env::args().collect();
+            let args: LinkedList<String> = std::env::args().collect();
+            let args: HashMap<String, usize> = std::env::args().zip(0..).collect();
+            let args: BTreeMap<String, usize> = std::env::args().zip(0..).collect();
+            let args: Vec<(String, usize)> = std::env::args().zip(0..).collect();
+            let args: Vec<(usize, String)> = (0..).zip(std::env::args()).collect();
+        }
+        let mut v: Vec<i32> = (0..5).map(|i| 1 << i).collect();
+        v.extend(&[31, 57, 99, 163]);
+        assert_eq!(v, &[1, 2, 4, 8, 16, 31, 57, 99, 163]);
+
+        let v = [1, 2, 3, 11, 12, 13];
+        let (v1, v2): (Vec<i32>, Vec<i32>) = v.iter().partition(|&x| {
+            if *x < 10 {
+                return true;
+            }
+            false
+        });
+        dbg!(v1);
+        dbg!(v2);
+
+        ["doves", "hens", "birds"]
+            .iter()
+            .zip(["turtle", "french", "calling"].iter())
+            .zip(2..5)
+            .rev()
+            .map(|((item, kind), quantity)| format!("{} {} {}", quantity, kind, item))
+            .for_each(|gift| {
+                println!("You have received: {}", gift);
+            });
+        use std::io::Write;
+        let mut output: std::fs::File =
+            std::fs::File::create("test.txt").expect("create file error");
+        ["1", "2", "3", "4"]
+            .iter()
+            .try_for_each(|&x| write!(&mut output, "{}", x))
+            .unwrap();
+    }
+    return;
+    {
+        let lines = "1\n2".lines();
+        let mut it = lines.into_iter();
+        it.by_ref().inspect(|&e| println!("{}", e)).all(|_| true);
+        it.by_ref().inspect(|&e| println!("{}", e)).all(|_| true); // empty, since it is consumed totally
+        let lines: Vec<_> = "1\n2".lines().into_iter().collect();
+        lines.iter().all(|&l| {
+            println!("{}", l);
+            true
+        });
+        lines.iter().all(|&l| {
+            println!("{}", l);
+            true
+        });
+
         //当字符串行以反斜杠结尾时，Rust并不会把下一行的缩进包含进字符串里
         let message = "\
 To: jimb\r\n\
@@ -340,8 +652,44 @@ When will you stop wasting time plotting fractals?\r\n";
         let rhyme: Vec<_> = repeat("going").zip(endings).collect();
         dbg!(rhyme);
 
-        let val:Vec<_> = ["1", "2"].iter().map(|x| x.to_owned()).collect();
-        dbg!(val);
+        let mut lines = message.lines();
+        println!("Headers:");
+        for header in lines.by_ref().take_while(|l| !l.is_empty()) {
+            println!("{}", header);
+        }
+        println!("\nBody:");
+        for body in lines {
+            println!("{}", body);
+        }
+
+        let mut it = "1\n2".lines().into_iter();
+        it.by_ref()
+            .inspect(|&e| println!("-{}", e))
+            .take(1)
+            .all(|_| true); // -1
+        it.by_ref().inspect(|&e| println!("--{}", e)).all(|_| true); // --2
+        let lines: Vec<_> = "1\n2".lines().into_iter().collect();
+        lines.iter().all(|&l| {
+            println!("{}", l);
+            true
+        });
+        lines.iter().all(|&l| {
+            println!("{}", l);
+            true
+        });
+
+        let a = ['1', '2', '3', '='];
+        assert_eq!(a.iter().next(), Some(&'1'));
+        assert_eq!(a.iter().cloned().next(), Some('1'));
+
+        let dirs = ["North", "East", "South", "West"];
+        let mut spin = dirs.iter().cycle();
+        assert_eq!(spin.next(), Some(&"North"));
+        assert_eq!(spin.next(), Some(&"East"));
+        assert_eq!(spin.next(), Some(&"South"));
+        assert_eq!(spin.next(), Some(&"West"));
+        assert_eq!(spin.next(), Some(&"North"));
+        assert_eq!(spin.next(), Some(&"East"));
     }
     return;
     {
@@ -465,9 +813,8 @@ When will you stop wasting time plotting fractals?\r\n";
             }
         }
 
-        use rand::random;
         let lengths: Vec<f64> =
-            std::iter::from_fn(|| Some((random::<f64>() - random::<f64>()).abs()))
+            std::iter::from_fn(|| Some((rand::random::<f64>() - rand::random::<f64>()).abs()))
                 .take(1000)
                 .collect();
         dbg!(lengths);
@@ -488,7 +835,6 @@ When will you stop wasting time plotting fractals?\r\n";
             })
         }
         use std::iter::FromIterator;
-        use std::string::String;
         let mut outer = "Earth".to_string();
         let inner = String::from_iter(outer.drain(1..4));
         assert_eq!(outer, "Eh");
