@@ -223,6 +223,76 @@ fn handle_get() -> HttpResponse {
 
 fn main() {
     {
+        let mut old_heap: std::collections::BinaryHeap<i32> = std::collections::BinaryHeap::new();
+        old_heap.extend([2, 3, 8].iter());
+        [21, 46, 63].iter().for_each(|&x| old_heap.push(x));
+        let mut heap = std::collections::BinaryHeap::from(vec![6, 9, 5, 4]);
+        heap.append(&mut old_heap);
+        if let Some(mut top) = heap.peek_mut() {
+            *top += 10;
+            std::collections::binary_heap::PeekMut::pop(top);
+        }
+        println!("top: {}", heap.peek().unwrap_or(&-1));
+
+        let vec = [("1".to_string(), 1), ("2".to_string(), 2)];
+        let mut map = std::collections::HashMap::from(vec);
+        dbg!(&map);
+        let entry = map.entry("1".into());
+        entry.or_insert(10);
+        dbg!(&map);
+        let entry = map.entry("1".into());
+        let val_ref = entry.or_insert(10);
+        *val_ref += 10;
+        dbg!(&map);
+
+        let mut word_frequency =
+            std::collections::HashMap::from([("a".to_string(), 0), ("b".to_string(), 0)]);
+        let text = "a\na b\nb\nb\nc c c";
+        for line in text.lines() {
+            let entry = word_frequency.entry(line.to_string());
+            let val_ref = entry.and_modify(|v| *v += 1).or_insert(0);
+            if *val_ref == 0 {
+                *val_ref = 1;
+            }
+        }
+        dbg!(&word_frequency);
+        word_frequency
+            .iter()
+            .for_each(|(k, v)| println!("{}-{}", k, v));
+        let mut btree_map: std::collections::BTreeMap<&String, &i32> =
+            std::collections::BTreeMap::new();
+        word_frequency.iter().for_each(|(k, v)| {
+            btree_map.insert(k, v);
+        });
+        btree_map
+            .iter()
+            .for_each(|(&k, &v)| println!("{}-{}", k, v));
+
+        #[derive(Clone, PartialEq, Eq, Hash)]
+        struct MyStruct {
+            val1: String,
+        }
+        type MuseumNumber = u32;
+        type Culture = String;
+        struct Artifact {
+            id: MuseumNumber,
+            name: String,
+            cultures: Vec<Culture>,
+        }
+        impl PartialEq for Artifact {
+            fn eq(&self, other: &Artifact) -> bool {
+                self.id == other.id
+            }
+        }
+        impl Eq for Artifact {}
+        impl std::hash::Hash for Artifact {
+            fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+                self.id.hash(hasher); // 把哈希操作委托给 MuseumNumber
+            }
+        }
+    }
+    return;
+    {
         struct I32Range {
             start: i32,
             end: i32,
