@@ -293,6 +293,160 @@ fn main() {
     }
     return;
     {
+        let v = std::collections::VecDeque::from(vec![1, 2, 3, 4]);
+        let v = std::collections::VecDeque::from([1, 2, 3, 4]);
+
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
+        println!("timestamp: {time}");
+        use chrono::prelude::*;
+        let time = Utc::now().timestamp();
+        println!("timestamp: {time}");
+    }
+    return;
+    {
+        // Vec
+        #[derive(Debug, Clone)]
+        enum Spec {
+            Int(i32),
+            Float(f64),
+            Bool(bool),
+            Text(String),
+        }
+        impl std::fmt::Display for Spec {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                match *self {
+                    Spec::Int(val) => write!(f, "Int {}", val),
+                    Spec::Float(val) => write!(f, "Float {}", val),
+                    Spec::Bool(val) => write!(f, "Bool {}", val),
+                    Spec::Text(ref val) => write!(f, "Text {}", val),
+                }
+            }
+        }
+        let mut v = vec![
+            Spec::Int(1),
+            Spec::Float(2.2),
+            Spec::Bool(true),
+            Spec::Text(String::from("hello")),
+        ];
+        println!("{:?}", &v);
+        dbg!(&v);
+        let first = v[3].clone();
+        v.push(Spec::Int(6));
+        println!("The first element is: {}", first);
+
+        let mut my_vec = vec![1, 3, 5, 7, 9];
+        for (index, &val) in my_vec.iter().enumerate() {
+            if val > 4 {
+                // my_vec.remove(index); // error: can't borrow `my_vec` as mutable
+            }
+        }
+        println!("{:?}", my_vec);
+
+        let v = vec!["1", "2", "3"];
+        let v_slice = &v[..1];
+        let v_copy = v[..1].to_vec();
+        if let Some(item) = v.first() {
+            println!("We got one! {}", item);
+        }
+        let slice = [0, 1, 2, 3];
+        assert_eq!(slice.get(2), Some(&2));
+        assert_eq!(slice.get(4), None);
+        let mut slice = [0, 1, 2, 3];
+        {
+            let last = slice.last_mut().unwrap(); // 最后一个元素类型：&mut i32
+            assert_eq!(*last, 3);
+            *last = 100;
+        }
+        let v = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        assert_eq!(v.to_vec(), vec![1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        assert_eq!(v[0..6].to_vec(), vec![1, 2, 3, 4, 5, 6]);
+        let mut byte_vec = b"Missssssissippi".to_vec();
+        byte_vec.dedup();
+        assert_eq!(&byte_vec, b"Misisipi");
+        let mut byte_vec = b"Missssssissippi".to_vec();
+        let mut seen = std::collections::HashSet::new();
+        byte_vec.retain(|r| seen.insert(*r));
+        assert_eq!(&byte_vec, b"Misp");
+        assert_eq!([[1, 2], [3, 4], [5, 6]].concat(), vec![1, 2, 3, 4, 5, 6]);
+        assert_eq!(
+            [[1, 2], [3, 4], [5, 6]].join(&0),
+            vec![1, 2, 0, 3, 4, 0, 5, 6]
+        );
+        let v = vec![vec![1, 2], vec![3, 4], vec![5, 6]];
+        let sep = &vec![9, 9][..];
+        assert_eq!(
+            [[1, 2], [3, 4], [5, 6]].join(sep),
+            vec![1, 2, 9, 9, 3, 4, 9, 9, 5, 6]
+        );
+        let v = v.join(sep);
+        dbg!(v);
+        let v = vec!["1", "2"];
+        let v = v.join("--");
+        dbg!(v);
+        // 很容易一次获得数组、切片、vector中的很多元素的非 mut 引用
+        let v = vec![0, 1, 2, 3];
+        let (i, j) = (1, 3);
+        let a = &v[i];
+        let b = &v[j];
+        let mid = v.len() / 2;
+        let front_half = &v[..mid];
+        let back_half = &v[mid..];
+        // 但一次获得多个 mut 引用不是这么容易：
+        // let mut v = vec![0, 1, 2, 3];
+        // let a = &mut v[i];
+        // let b = &mut v[j]; // error: 不能同时借用`v`的多个可变引用。
+        // *a = 6; // 引用`a`和`b`在这里使用了，
+        // *b = 7; // 因此它们的生命周期一定会重叠。
+        let daily_high_temperatures = [30, 31, 32, 33];
+        let changes = daily_high_temperatures
+            .windows(2) // 获得相邻天的温度
+            .map(|w| w[1] - w[0]) // 温度改变了多少
+            .collect::<Vec<_>>();
+        dbg!(changes);
+        let mut v = [1, 2, 3, 4]; // array
+        let mut v = &[1, 2, 3, 4][..]; // slice
+        #[derive(Debug)]
+        struct Student {
+            first_name: String,
+            last_name: String,
+        }
+        let mut students = [
+            Student {
+                first_name: "f".to_string(),
+                last_name: "c".to_string(),
+            },
+            Student {
+                first_name: "e".to_string(),
+                last_name: "c".to_string(),
+            },
+        ];
+        dbg!(&students);
+        students.sort_by(|a, b| {
+            let a_key = (&a.last_name, &a.first_name);
+            let b_key = (&b.last_name, &b.first_name);
+            a_key.cmp(&b_key)
+        });
+        dbg!(&students);
+        let mut v = &[1, 2, 3, 4][..];
+        // v.sort(); // `v` is a `&` reference, so the data it refers to cannot be borrowed as mutable
+        v.binary_search_by_key(&4, |x| *x);
+        assert_eq!([1, 2, 3, 4].starts_with(&[1, 2]), true);
+        assert_eq!([1, 2, 3, 4].ends_with(&[3, 4]), true);
+        use rand::seq::SliceRandom;
+        use rand::{thread_rng, Rng};
+        let mut v = [1, 2, 3, 4];
+        v.shuffle(&mut thread_rng());
+        let val = thread_rng().gen::<i32>();
+        dbg!(val);
+        let val = thread_rng().gen_range(0.1, 99.9);
+        dbg!(val);
+    }
+    return;
+    {
         struct I32Range {
             start: i32,
             end: i32,
