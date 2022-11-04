@@ -1,9 +1,6 @@
 use image::png::PNGEncoder;
 use image::ColorType;
 use num::Complex;
-use regex::Regex;
-use std::num::TryFromIntError;
-use std::{collections::LinkedList, fs::File};
 use text_colorizer::Colorize;
 
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
@@ -88,7 +85,7 @@ fn write_image(
     pixels: &[u8],
     bounds: (usize, usize),
 ) -> Result<(), std::io::Error> {
-    let output = File::create(filename)?;
+    let output = std::fs::File::create(filename)?;
     let encoder = PNGEncoder::new(output);
     encoder.encode(
         &pixels,
@@ -100,7 +97,7 @@ fn write_image(
 }
 
 fn do_test_sub(val: i32) -> Result<i32, String> {
-    let val1 = match File::create("test") {
+    let val1 = match std::fs::File::create("test") {
         Ok(v) => v,
         Err(e) => return Err(e.to_string()),
     };
@@ -113,7 +110,7 @@ fn do_test(val: i32) -> Result<i32, String> {
 }
 
 fn do_test_sub_generic(pattern: &str) -> GenericResult<i32> {
-    let regex_handler = Regex::new(pattern)?;
+    let regex_handler = regex::Regex::new(pattern)?;
     Ok(0)
 }
 
@@ -171,7 +168,7 @@ fn parse_args() -> Result<Arguments, i32> {
 }
 
 fn replace_string(content: &str, replace: &str, replace_with: &str) -> Result<String, i32> {
-    let regex_handler = match Regex::new(replace) {
+    let regex_handler = match regex::Regex::new(replace) {
         Ok(handler) => handler,
         Err(error) => {
             eprintln!(
@@ -222,6 +219,353 @@ fn handle_get() -> HttpResponse {
 }
 
 fn main() {
+    {
+        fn test_regex() -> Result<(), Box<dyn std::error::Error>> {
+            let ver_regex = regex::Regex::new(r#"(\d+)\.(\d+)\.(\d+)(-[-.[:alnum:]]*)?"#)?;
+            let ver_str = r#"regex = "0.2.5""#;
+            println!("match result: {}", ver_regex.is_match(ver_str));
+            let captures = ver_regex.captures(ver_str).ok_or("captures error")?;
+            captures.iter().for_each(|x| {
+                x.map_or((), |v| {
+                    println!("{} start {} end {}", v.as_str(), v.start(), v.end())
+                })
+            });
+
+            let ver_str = "In the beginning, there was 1.0.0. \
+ For a while, we used 1.0.1-beta, \
+ but in the end, we settled on 1.2.4.";
+            let matches: Vec<&str> = ver_regex
+                .find_iter(ver_str)
+                .map(|match_| match_.as_str())
+                .collect();
+            println!("{matches:?}");
+
+            let re = regex::Regex::new(r"'(?P<title>[^']+)'\s+\((?P<year>\d{4})\)").unwrap();
+            let text = "'Citizen Kane' (1941), 'The Wizard of Oz' (1939), 'M' (1931)., 'test'";
+            for caps in re.captures_iter(text) {
+                println!("Movie: {:?}, Released: {:?}", &caps["title"], &caps["year"]);
+            }
+
+            Ok(())
+        }
+        test_regex().expect("test_regex error");
+    }
+    return;
+    {
+        println!("[{:2}]", "bookend"); // [bookend]
+        println!("[{:12}]", "bookend"); // [bookend     ]
+        println!("[{:_<12}]", "bookend"); // [bookend_____]
+        println!("[{:*>12}]", "bookend"); // [*****bookend]
+        println!("[{:4.6}]", "bookend"); // [booken]
+        println!("[{:$^6.4}]", "bookend"); // [$book$]
+        println!("[{:_^6.3}]", "测试数据"); // [_测试数__]
+
+        println!("[{:2}]", 1234); // [1234]
+        println!("[{:6}]", 1234); // [  1234]
+        println!("[{:+06}]", 1234); // [+01234]
+        println!("[{:<6}]", 1234); // [1234  ]
+        println!("[{:_^+6}]", 1234); // [+1234_]
+        println!("[{:b}]", 1234); // [10011010010]
+        println!("[{:#o}]", 1234); // [0o2322]
+        println!("[{:#x}]", 1234); // [0x4d2]
+        println!("[{:06X}]", 1234); // [0004D2]
+
+        println!("[{:.2}]", 1234.5678); // [1234.57]
+        println!("[{:.6}]", 1234.5678); // [1234.567800]
+        println!("[{:+12}]", 1234.5678); // [  +1234.5678]
+        println!("[{:012}]", 1234.5678); // [0001234.5678]
+        println!("[{:e}]", 1234.5678); // [1.2345678e3]
+        println!("[{:.2e}]", 1234.5678); // [1.23e3]
+        println!("[{:012.2e}]", 1234.5678); // [0000001.23e3]
+
+        println!("[{:?}]", [(10, 11), (20, 22), (30, 33)]); // [[(10, 11), (20, 22), (30, 33)]]
+        println!("[{:#x?}]", [(10, 11)]); // pretty-print [[\n(\n0xa,\n0xb,\n),\n]]
+        println!("[{:+06X?}]", [(10, 11), (20, 22), (30, 33)]); // [[(+0000A, +0000B), (+00014, +00016), (+0001E, +00021)]]
+
+        let original = std::rc::Rc::new("mazurka".to_string());
+        let cloned = original.clone();
+        let impostor = std::rc::Rc::new("mazurka".to_string());
+        println!("pointers: {:p}, {:p}, {:p}", original, cloned, impostor); // pointers: 0x55a4ff905af0, 0x55a4ff905af0, 0x55a4ff905a20
+
+        struct MyStruct {
+            val: String,
+        }
+        let mut ptr: Box<Vec<String>> = Box::new(std::vec::Vec::new());
+        ptr.push("1".to_string());
+        dbg!(&ptr);
+        ptr.push("2".to_string());
+        dbg!(&ptr);
+        let mut ptr: std::rc::Rc<Vec<String>> = std::rc::Rc::new(std::vec::Vec::new());
+        dbg!(&ptr);
+
+        assert_eq!(
+            format!("{2:#06x},{1:b},{0:=>10}", "first", 10, 100),
+            "0x0064,1010,=====first"
+        );
+        assert_eq!(
+            format!(
+                "{mode} {2} {} {}",
+                "people",
+                "eater",
+                "purple",
+                mode = "flying"
+            ),
+            "flying purple people eater"
+        );
+        println!("[{:<1$}]", "bookend", 8); // [bookend ]
+        println!("[{:^width$.limit$}]", "bookend", width = 8, limit = 3); // [  boo   ]
+        println!("[{:>.*}]", 4, "bookend"); // [book]
+        println!("[{:^8.*}]", 2, 1234.5678); // [1234.57 ]
+        {
+            struct Complex {
+                re: f64,
+                im: f64,
+            }
+            impl std::fmt::Display for Complex {
+                fn fmt(&self, dest: &mut std::fmt::Formatter) -> std::fmt::Result {
+                    let (re, im) = (self.re, self.im);
+                    if dest.alternate() {
+                        let abs = f64::sqrt(re * re + im * im);
+                        let angle = f64::atan2(im, re) / std::f64::consts::PI * 180.0;
+                        write!(dest, "{} ∠ {}°", abs, angle)
+                    } else {
+                        let im_sign = if im < 0.0 { '-' } else { '+' };
+                        write!(dest, "{} {} {}i", re, im_sign, f64::abs(im))
+                    }
+                }
+            }
+            let ninety = Complex { re: 0.0, im: 2.0 };
+            println!("{}", ninety);
+            println!("{:#}", ninety);
+        }
+        {
+            use std::io::Write;
+            fn write_log_entry(entry: std::fmt::Arguments) -> bool {
+                if let Ok(mut log_file) = std::fs::OpenOptions::new()
+                    .append(true)
+                    .create(true)
+                    .open("test.log")
+                {
+                    if log_file.write_fmt(entry).is_ok() {
+                        return true;
+                    }
+                }
+                false
+            }
+            write_log_entry(format_args!("test log {:?}", vec![1, 2, 3, 4]));
+        }
+    }
+    return;
+    {
+        assert_eq!(
+            "うどん: udon".as_bytes(),
+            &[
+                0xe3, 0x81, 0x86, // う
+                0xe3, 0x81, 0xa9, // ど
+                0xe3, 0x82, 0x93, // ん
+                0x3a, 0x20, 0x75, 0x64, 0x6f, 0x6e // : udon
+            ]
+        );
+        assert_eq!("カニ".chars().next(), Some('カ'));
+        let str = "测试";
+        str.bytes().for_each(|x| print!("{:X} ", x));
+        println!("");
+        let str = "\u{E6}\u{B5}\u{8B}\u{E8}\u{AF}\u{95}";
+        dbg!(str.bytes());
+        dbg!(str);
+
+        assert_eq!('F'.to_digit(16), Some(15));
+        assert_eq!(std::char::from_digit(15, 16), Some('f'));
+        assert!(char::is_digit('f', 16));
+
+        let mut upper = 's'.to_uppercase();
+        assert_eq!(upper.next(), Some('S'));
+        assert_eq!(upper.next(), None);
+
+        assert_eq!(char::from(66), 'B');
+        assert_eq!(std::char::from_u32(0x9942), Some('饂'));
+        assert_eq!(std::char::from_u32(0xd800), None); // reserved for UTF-16
+
+        if let Some(val) = 'a'.to_digit(16) {
+            println!("to_digit {val}");
+        }
+        if let Some(val) = std::char::from_digit(10, 16) {
+            println!("from_digit {val}");
+        }
+
+        let space_sentence = "man hat tan";
+        let spaceless_sentence: String = space_sentence
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect();
+        assert_eq!(spaceless_sentence, "manhattan");
+
+        let full = "bookkeeping";
+        assert_eq!(&full[..4], "book");
+        assert_eq!(&full[5..], "eeping");
+        assert_eq!(&full[2..4], "ok");
+        assert_eq!(full[..].len(), 11);
+        assert_eq!(full[5..].contains("boo"), false);
+
+        let str = "测试句子";
+        // println!("{}", &str[1..]); // panic
+        println!("{}", &str[3..]); // 试句子
+        let sub_str: String = str.chars().skip(2).collect();
+        println!("{}", &sub_str); // 句子
+        let str = "测试句子".to_string();
+        println!("{}", &str[3..]); // 试句子
+
+        let mut str = "con".to_string();
+        str.extend("tri but ion".split(" "));
+        dbg!(&str);
+
+        use std::fmt::Write;
+        let mut letter = String::new();
+        writeln!(letter, "Whose {} these are I think I know", "rutabagas")
+            .expect("write to String error");
+        writeln!(letter, "His house is in the village though;").expect("write to String error");
+        assert_eq!(
+            letter,
+            "Whose rutabagas these are I think I know\n\
+             His house is in the village though;\n"
+        );
+        let left = "partners".to_string();
+        let mut right = "crime".to_string();
+        assert_eq!(left + " in " + &right, "partners in crime");
+        right += " doesn't pay";
+        assert_eq!(right, "crime doesn't pay");
+
+        // let parenthetical = "(" + str + ")"; // error
+        let parenthetical = "(".to_string() + &str + ")"; // ok
+
+        let mut str = "测试句子".to_string();
+        // str.truncate(4); // panic, is_char_boundary check failed
+        let str: String = str.chars().take(2).collect();
+        println!("{}", &str); // 测
+        let mut str = "123".to_string();
+        let char = str.remove(1);
+        dbg!(&char);
+        dbg!(&str);
+
+        let mut choco = "chocolate".to_string();
+        choco.drain(3..4);
+        dbg!(&choco);
+        assert_eq!(choco.drain(3..5).collect::<String>(), "ol");
+        assert_eq!(choco, "choate");
+
+        let haystack = "One fine day, in the middle of the night";
+        assert_eq!(haystack.find(','), Some(12));
+        assert_eq!(haystack.find("night"), Some(35));
+        assert_eq!(haystack.find(char::is_whitespace), Some(3));
+        assert_eq!(haystack.find(['y', 'e']), Some(2));
+        let code = "\t function noodle() { ";
+        assert_eq!(code.trim_start_matches([' ', '\t']), "function noodle() { ");
+        assert!("2017".starts_with(char::is_numeric));
+        let quip = "We also know there are known unknowns";
+        assert_eq!(quip.find("know"), Some(8));
+        assert_eq!(quip.rfind("know"), Some(31));
+        assert_eq!(quip.find("ya know"), None);
+        assert_eq!(quip.rfind(char::is_uppercase), Some(0));
+        assert_eq!(
+            "The only thing we have to fear is fear itself".replace("fear", "spin"),
+            "The only thing we have to spin is spin itself"
+        );
+        assert_eq!(
+            "`Borrow` and `BorrowMut`".replace(|ch: char| !ch.is_alphanumeric(), ""),
+            "BorrowandBorrowMut"
+        );
+        assert_eq!(
+            "测试".char_indices().collect::<Vec<_>>(),
+            vec![(0, '测'), (3, '试')]
+        );
+        "_1_2_".split('_').for_each(|x| print!("[{}]", x)); // [][1][2][]
+        println!("");
+        "_1_2_"
+            .split_terminator('_')
+            .for_each(|x| print!("[{}]", x)); // [][1][2]
+        println!("");
+        "_1_2_".splitn(2, '_').for_each(|x| print!("[{}]", x)); // [][1_2_]
+        println!("");
+        "  1  2  "
+            .split_whitespace()
+            .for_each(|x| print!("[{}]", x)); // [1][2]
+        println!("");
+        "_1_2_".matches("_").for_each(|x| print!("[{}]", x)); // [_][_][_]
+        println!("");
+        "_1_2_"
+            .rmatches(|x: char| x.is_digit(10))
+            .for_each(|x| print!("[{}]", x)); // [2][1]
+        println!("");
+        println!("count {}", "_1_2_".matches("_1").count());
+        if let Some((idx, _)) = "_1_2_".match_indices("_1").last() {
+            println!("count {}", idx + 1);
+        }
+
+        let str_vec = "1 2 3 4 5 6".split_whitespace().collect::<Vec<_>>();
+
+        assert_eq!("\t*.rs ".trim(), "*.rs");
+        assert_eq!("\t*.rs ".trim_start(), "*.rs ");
+        assert_eq!("\t*.rs ".trim_end(), "\t*.rs");
+        assert_eq!("0120 34 ".trim_matches(&['0', ' '][..]), "120 34");
+        "01 203 4"
+            .matches(['0', ' '])
+            .for_each(|x| print!("[{}]", x));
+        println!("");
+        let str = "01 203 4".trim_matches(['0', ' '].as_ref());
+        dbg!(&str);
+
+        {
+            use std::str::FromStr;
+            assert_eq!(usize::from_str("3628800"), Ok(3628800));
+            assert_eq!(f64::from_str("128.5625"), Ok(128.5625));
+            assert_eq!(bool::from_str("true"), Ok(true));
+            assert!(f64::from_str("not a float at all").is_err());
+            assert!(bool::from_str("TRUE").is_err());
+            assert_eq!(char::from_str("é"), Ok('é'));
+            assert!(char::from_str("abcdefg").is_err());
+        }
+        {
+            let val = "AA".parse::<i32>().unwrap_or(-1);
+        }
+        let str = format!("({:.3}, {:.3})", 0.5, f64::sqrt(3.0) / 2.0);
+        let vec = vec![1, 2, 3];
+        let str = format!("{:?}", &vec);
+        #[derive(Debug)]
+        struct MyStruct {
+            val: String,
+        }
+        impl std::fmt::Display for MyStruct {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", self.val)
+            }
+        }
+        let str = MyStruct {
+            val: "test".to_string(),
+        }
+        .to_string();
+        dbg!(&str);
+
+        let str = "测试数据".to_string();
+        let mut buf = str.into_bytes();
+        // dbg!(&str); // error, str inner data is moved
+
+        fn get_env(name: &str) -> std::borrow::Cow<'static, str> {
+            std::env::var(name)
+                .map(|x| std::borrow::Cow::Owned(x))
+                .unwrap_or(std::borrow::Cow::Borrowed("get_env failed"))
+        }
+        let mut env_str = get_env("test");
+        println!("result: {}", env_str);
+        env_str.to_mut().push('\n');
+        env_str += "another line";
+        println!("new result: {}", env_str);
+        let val: Vec<_> = ["1", "2"].iter().map(|&x| x.to_owned()).collect();
+        let val_str: std::borrow::Cow<String> =
+            std::borrow::Cow::Owned(format!("value is {}", 1.00f64));
+        let mut val_str_vec: Vec<std::borrow::Cow<String>> = Vec::new();
+        val_str_vec.push(val_str);
+    }
+    return;
     {
         let mut old_heap: std::collections::BinaryHeap<i32> = std::collections::BinaryHeap::new();
         old_heap.extend([2, 3, 8].iter());
@@ -918,7 +1262,7 @@ When will you stop wasting time plotting fractals?\r\n";
     return;
     {
         let text = " ponies \n giraffes\niguanas \nsquid";
-        let l: LinkedList<String> = text
+        let l: std::collections::LinkedList<String> = text
             .lines()
             .map(str::trim)
             .map(String::from)
@@ -1382,16 +1726,18 @@ When will you stop wasting time plotting fractals?\r\n";
         let smaller = huge as i32;
         println!("{}", smaller);
         use std::convert::TryInto;
-        let smaller: i32 = huge.try_into().unwrap_or_else(|e: TryFromIntError| {
-            println!("error: {}", e.to_string());
-            if huge >= 0 {
-                println!("i32::MAX");
-                i32::MAX
-            } else {
-                println!("i32::MIN");
-                i32::MIN
-            }
-        });
+        let smaller: i32 = huge
+            .try_into()
+            .unwrap_or_else(|e: std::num::TryFromIntError| {
+                println!("error: {}", e.to_string());
+                if huge >= 0 {
+                    println!("i32::MAX");
+                    i32::MAX
+                } else {
+                    println!("i32::MIN");
+                    i32::MIN
+                }
+            });
         dbg!(smaller);
         struct Transform {
             val: i32,
@@ -2038,7 +2384,7 @@ When will you stop wasting time plotting fractals?\r\n";
     }
     return;
     {
-        let regex_handler = match Regex::new("[0-9]x[0-9]") {
+        let regex_handler = match regex::Regex::new("[0-9]x[0-9]") {
             Err(_) => {
                 return;
             }
@@ -2177,6 +2523,10 @@ When will you stop wasting time plotting fractals?\r\n";
         match std::fs::write(&args.out_filename, &replaced_content) {
             Ok(_) => (),
             Err(error) => {
+                match error.kind() {
+                    std::io::ErrorKind::Interrupted => std::process::exit(-2),
+                    _ => {}
+                };
                 eprintln!(
                     "{}: {} write: {:?}",
                     "error".red().bold(),
