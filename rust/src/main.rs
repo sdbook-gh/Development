@@ -6,96 +6,6 @@ use text_colorizer::Colorize;
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type GenericResult<T> = Result<T, GenericError>;
 
-// struct Complex<T> {
-//     /// Real portion of the complex number
-//     re: T,
-//     /// Imaginary portion of the complex number
-//     im: T,
-// }
-
-fn escape_time(c: Complex<f64>, limit: usize) -> Option<usize> {
-    let mut z = Complex { re: 0.0, im: 0.0 };
-    for i in 0..limit {
-        if z.norm_sqr() > 4.0 {
-            return Some(i);
-        }
-        z = z * z + c;
-    }
-    None
-}
-
-fn parse_pair<T: std::str::FromStr>(s: &str, separator: char) -> Option<(T, T)> {
-    match s.find(separator) {
-        None => None,
-        Some(index) => match (T::from_str(&s[..index]), T::from_str(&s[index + 1..])) {
-            (Ok(l), Ok(r)) => Some((l, r)),
-            _ => None,
-        },
-    }
-}
-
-fn parse_complex(s: &str) -> Option<Complex<f64>> {
-    match parse_pair::<f64>(s, ',') {
-        Some((re_val, im_val)) => Some(Complex {
-            re: re_val,
-            im: im_val,
-        }),
-        None => None,
-    }
-}
-
-fn pixel_to_point(
-    bounds: (usize, usize),
-    pixel: (usize, usize),
-    upper_left: Complex<f64>,
-    lower_right: Complex<f64>,
-) -> Complex<f64> {
-    let (width, height) = (
-        lower_right.re - upper_left.re,
-        upper_left.im - lower_right.im,
-    );
-    Complex {
-        re: upper_left.re + pixel.0 as f64 * width / bounds.0 as f64,
-        im: upper_left.im - pixel.1 as f64 * height / bounds.1 as f64,
-        // Why subtraction here? pixel.1 increases as we go down,
-        // but the imaginary component increases as we go up.
-    }
-}
-
-fn render(
-    pixels: &mut [u8],
-    bounds: (usize, usize),
-    upper_left: Complex<f64>,
-    lower_right: Complex<f64>,
-) {
-    assert!(pixels.len() == bounds.0 * bounds.1);
-    for row in 0..bounds.1 {
-        for column in 0..bounds.0 {
-            let point = pixel_to_point(bounds, (column, row), upper_left, lower_right);
-            pixels[row * bounds.0 + column] = match escape_time(point, 255) {
-                None => 0,
-                Some(count) => 255 - count as u8,
-            };
-        }
-    }
-}
-
-fn write_image(
-    filename: &str,
-    pixels: &[u8],
-    bounds: (usize, usize),
-) -> Result<(), std::io::Error> {
-    let output = std::fs::File::create(filename)?;
-    let encoder = PNGEncoder::new(output);
-    encoder.encode(
-        &pixels,
-        bounds.0 as u32,
-        bounds.1 as u32,
-        ColorType::Gray(8),
-    )?;
-    Ok(())
-}
-
 fn do_test_sub(val: i32) -> Result<i32, String> {
     let val1 = match std::fs::File::create("test") {
         Ok(v) => v,
@@ -129,60 +39,6 @@ fn do_test_generic2(pattern: &str) -> GenericResult<i32> {
     Ok(0)
 }
 
-#[derive(Debug)]
-struct Arguments {
-    target: String,
-    replacement: String,
-    in_filename: String,
-    out_filename: String,
-}
-
-fn print_usage(cmd_name: &str) {
-    eprintln!(
-        "{} - change occurrences of one string into another",
-        cmd_name.green()
-    );
-    eprintln!(
-        "Usage: {} <target> <replacement> <INPUT> <OUTPUT>",
-        cmd_name.red().bold()
-    );
-}
-
-fn parse_args() -> Result<Arguments, i32> {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() != 5 {
-        print_usage(&args[0]);
-        eprintln!(
-            "{} wrong number of arguments: expected 4, got {}.",
-            "Error:".red().bold(),
-            args.len() - 1
-        );
-        return Err(-1);
-    }
-    Ok(Arguments {
-        target: args[1].clone(),
-        replacement: args[2].clone(),
-        in_filename: args[3].clone(),
-        out_filename: args[4].clone(),
-    })
-}
-
-fn replace_string(content: &str, replace: &str, replace_with: &str) -> Result<String, i32> {
-    let regex_handler = match regex::Regex::new(replace) {
-        Ok(handler) => handler,
-        Err(error) => {
-            eprintln!(
-                "{}: {} bad regex: {:?}",
-                "error".red().bold(),
-                &replace,
-                error
-            );
-            return Err(-1);
-        }
-    };
-    Ok(regex_handler.replace_all(content, replace_with).to_string())
-}
-
 fn print_vec<T: std::fmt::Display>(n: &[T]) {
     for elt in n {
         println!("-- {} --", elt);
@@ -193,32 +49,283 @@ fn test_ownership(strval: String) {
     println!("{}", strval);
 }
 
-use actix_web::{web, App, HttpResponse, HttpServer};
-
-fn http_server_main() {
-    let server = HttpServer::new(|| App::new().route("/", web::get().to(handle_get)));
-    server
-        .bind("0.0.0.0:8088")
-        .expect("server bind error")
-        .run()
-        .expect("server run error");
-}
-
-fn handle_get() -> HttpResponse {
-    HttpResponse::Ok().content_type("text/html").body(
-        r####"
-        <!DOCTYPE html>
-        <html>
-        <body>
-        <h1>server is running</h1>
-        <p>server status is running</p>
-        </body>
-        </html>
-    "####,
-    )
-}
-
 fn main() {
+    {
+        const BUF_SIZE: usize = 4 * 1024;
+        fn copy<T1, T2>(
+            reader: &mut T1,
+            writer: &mut T2,
+        ) -> Result<usize, Box<dyn std::error::Error>>
+        where
+            T1: std::io::Read,
+            T2: std::io::Write,
+        {
+            let mut buf: [u8; BUF_SIZE] = [0; BUF_SIZE];
+            let mut total_size: usize = 0;
+            loop {
+                let read_size = match reader.read(&mut buf) {
+                    Ok(0) => return Ok(total_size),
+                    Ok(size) => size,
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(e) => return Err(Box::new(e)),
+                };
+                writer.write_all(&buf[..read_size])?;
+                total_size += read_size;
+            }
+        }
+        // let mut srcf = std::fs::File::open("test.txt").expect("open test.txt error");
+        // let mut destf = std::fs::File::create("test.out").expect("open test.out error");
+        // copy(&mut srcf, &mut destf).expect("copy error");
+
+        fn grep<R: std::io::BufRead>(pattern: &str, reader: &mut R) -> std::io::Result<()> {
+            use std::io::BufRead;
+            for line in reader.lines() {
+                let line_content = line?;
+                if let Some(_) = line_content.find(pattern) {
+                    println!("{}", line_content);
+                }
+            }
+            Ok(())
+        }
+        // grep("test", &mut std::io::stdin().lock()).unwrap();
+        let file = std::fs::File::open("rust.txt").expect("open rust.txt error");
+        // grep("h", &mut std::io::BufReader::new(file)).expect("grep error");
+        {
+            fn grep<R>(target: &str, reader: R) -> std::io::Result<()>
+            where
+                R: std::io::BufRead,
+            {
+                for line_result in reader.lines() {
+                    let line = line_result?;
+                    if line.contains(target) {
+                        println!("{}", line);
+                    }
+                }
+                Ok(())
+            }
+            fn grep_main() -> Result<(), Box<dyn std::error::Error>> {
+                // 获取命令行参数。第一个参数是要搜索的字符串；剩余的是文件名。
+                let mut args = std::env::args().skip(1);
+                let target = match args.next() {
+                    Some(s) => s,
+                    None => Err("usage: grep PATTERN FILE...")?,
+                };
+                let files: Vec<std::path::PathBuf> = args.map(std::path::PathBuf::from).collect();
+                if files.is_empty() {
+                    let stdin = std::io::stdin().lock();
+                    grep(&target, stdin)?;
+                } else {
+                    for file in files {
+                        let f = std::fs::File::open(file)?;
+                        grep(&target, std::io::BufReader::new(f))?;
+                    }
+                }
+                Ok(())
+            }
+        }
+        fn test_lines_collect(
+            reader: &mut dyn std::io::BufRead,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            use std::io::BufRead;
+            // let lines = reader.lines().collect::<std::io::Result<Vec<String>>>();
+            // let lines = reader.lines().collect::<Vec<Result<String, std::io::Error>>>();
+            let lines: Vec<String> = reader.lines().filter_map(|x| x.ok()).collect();
+            println!("{:#?}", lines);
+            Ok(())
+        }
+        let mut file = std::fs::File::open("rust.txt").unwrap();
+        test_lines_collect(&mut std::io::BufReader::new(file));
+        fn test_fs() -> std::io::Result<()> {
+            // let mut filename = "test.log";
+            // let mut file = std::fs::File::open(filename)?;
+            // let mut file = std::fs::File::create(filename)?;
+            // let mut file = std::fs::OpenOptions::new()
+            //     .append(true)
+            //     .open("server.log")?;
+            let mut file = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open("new_file.txt")?;
+            use std::io::Seek;
+            let new_pos = file.seek(std::io::SeekFrom::Start(100))?;
+            use std::io::Write;
+            file.write_all("test string".as_bytes())?;
+            drop(file);
+            Ok(())
+        }
+        // test_fs().unwrap();
+        fn test_command() -> std::io::Result<()> {
+            let mut child = std::process::Command::new("grep")
+                .arg("-e")
+                .arg("a.*e.*i.*o.*u")
+                .stdin(std::process::Stdio::piped())
+                .spawn()?;
+            let mut to_child = child.stdin.take().unwrap();
+            use std::io::Write;
+            for word in ["my_words"] {
+                to_child.write_fmt(format_args!("{}", word))?;
+            }
+            drop(to_child); // close grep's stdin, so it will exit
+            child.wait()?;
+            Ok(())
+        }
+        {
+            fn test_byteorder_flate2<R: std::io::Read, W: std::io::Write>(
+                mut reader: R,
+                mut writer: W,
+            ) -> Result<(), Box<dyn std::error::Error>> {
+                use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
+                let n = reader.read_u32::<LittleEndian>()?;
+                writer.write_i64::<LittleEndian>(n as i64)?;
+                use flate2::read::GzDecoder;
+                let mut gzip_reader = GzDecoder::new(reader);
+                Ok(())
+            }
+            fn test_serde() {
+                let mut map: std::collections::HashMap<String, String> =
+                    std::collections::HashMap::new();
+                map.insert("1".into(), "1111".into());
+                map.insert("2".into(), "2222".into());
+                serde_json::to_writer_pretty(std::io::stdout().lock(), &map);
+                #[derive(serde::Serialize, serde::Deserialize)]
+                struct Player {
+                    location: String,
+                    items: Vec<String>,
+                    health: u32,
+                }
+            }
+            // test_serde();
+        }
+        {
+            fn process_file<P>(path_arg: P) -> std::io::Result<()>
+            where
+                P: AsRef<std::path::Path>,
+            {
+                let path = path_arg.as_ref();
+                let mut path: std::path::PathBuf = std::path::Path::new("..").into();
+                let abs_path = std::env::current_dir()?.join("..");
+                let file = std::path::Path::new("/home/jimb/calendars/calendar-18x18.pdf");
+                assert_eq!(
+                    file.ancestors().collect::<Vec<_>>(),
+                    vec![
+                        std::path::Path::new("/home/jimb/calendars/calendar-18x18.pdf"),
+                        std::path::Path::new("/home/jimb/calendars"),
+                        std::path::Path::new("/home/jimb"),
+                        std::path::Path::new("/home"),
+                        std::path::Path::new("/")
+                    ]
+                );
+                for entry_result in path.read_dir()? {
+                    let entry = entry_result?;
+                    println!("{}", entry.file_name().to_string_lossy());
+                }
+                Ok(())
+            }
+            fn test_copy_dir() -> std::io::Result<()> {
+                fn copy_dir_to<P: AsRef<std::path::Path>>(src: P, dst: P) -> std::io::Result<()> {
+                    let src = src.as_ref();
+                    let dst = dst.as_ref();
+                    if !dst.is_dir() {
+                        std::fs::create_dir(dst)?;
+                    }
+                    for entry_result in src.read_dir()? {
+                        let entry = entry_result?;
+                        let file_type = entry.file_type()?;
+                        copy_to(&entry.path(), &file_type, &dst.join(entry.file_name()))?;
+                    }
+                    return Ok(());
+                    fn copy_to(
+                        src: &std::path::Path,
+                        src_type: &std::fs::FileType,
+                        dst: &std::path::Path,
+                    ) -> std::io::Result<()> {
+                        if src_type.is_file() {
+                            std::fs::copy(src, dst)?;
+                        } else if src_type.is_dir() {
+                            copy_dir_to(src, dst)?;
+                        } else {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                format!("don't know how to copy: {}", src.display()),
+                            ));
+                        }
+                        Ok(())
+                    }
+                }
+                copy_dir_to("src", "copyto");
+                Ok(())
+            }
+            // test_copy_dir().unwrap();
+        }
+        {
+            fn test_tcp_echo_server(addr: &str) -> std::io::Result<()> {
+                let listener = std::net::TcpListener::bind(addr)?;
+                println!("listening on {}", addr);
+                loop {
+                    let (mut stream, addr) = listener.accept()?;
+                    println!("connection received from {}", addr);
+                    let mut write_stream = stream.try_clone()?;
+                    std::thread::spawn(move || {
+                        std::io::copy(&mut stream, &mut write_stream)
+                            .expect("error in client thread: ");
+                        println!("connection closed");
+                        drop(stream);
+                        drop(write_stream);
+                    });
+                }
+                Ok(())
+            }
+            fn test_tcp_echo_client(addr: &str) -> std::io::Result<()> {
+                let mut stream = std::net::TcpStream::connect(addr)?;
+                println!("connect to {}", addr);
+                use std::io::Write;
+                stream.write_all("Rust TCP Client!".as_bytes())?;
+                let mut buf: [u8; 4096] = [0; 4096];
+                use std::io::Read;
+                let rsize = stream.read(&mut buf)?;
+                if rsize > 0 {
+                    let str = std::str::from_utf8(&buf[..rsize]).expect("convert response error");
+                    print!("receive {}", str);
+                }
+                drop(stream);
+                Ok(())
+            }
+            match std::env::args().skip(1).next() {
+                Some(type_) if type_ == "server" => {
+                    test_tcp_echo_server("0.0.0.0:8088").unwrap();
+                }
+                Some(type_) if type_ == "client" => {
+                    test_tcp_echo_client("0.0.0.0:8088").unwrap();
+                    // let mut response = reqwest::blocking::get("http://127.0.0.1:8088/").expect("http get error");
+                    // if !response.status().is_success() {
+                    //     eprintln!("{}", response.status());
+                    // } else {
+                    //     let stdout = std::io::stdout();
+                    //     std::io::copy(&mut response, &mut stdout.lock()).expect("copy response error");
+                    // }
+                }
+                _ => (),
+            };
+        }
+    }
+    return;
+    {
+        #[derive(Debug)]
+        struct MyError(String);
+        impl std::error::Error for MyError {
+            fn description(&self) -> &str {
+                self.0.as_str()
+            }
+        }
+        impl std::fmt::Display for MyError {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", &self.0)
+            }
+        }
+        let e: Result<(), MyError> = Err(MyError("panic".to_string()));
+        e.unwrap();
+    }
+    return;
     {
         fn test_regex() -> Result<(), Box<dyn std::error::Error>> {
             let ver_regex = regex::Regex::new(r#"(\d+)\.(\d+)\.(\d+)(-[-.[:alnum:]]*)?"#)?;
@@ -2493,65 +2600,207 @@ When will you stop wasting time plotting fractals?\r\n";
         assert_eq!(t.find("taki"), Some(5));
         println!("{} are quite chewy, almost bouncy, but lack flavor", u);
     }
+    return;
     {
-        let args = match parse_args() {
-            Ok(val) => val,
-            Err(_error_code) => {
-                std::process::exit(-1);
-            }
+        let do_test_ret = match do_test(1) {
+            Ok(ret) => ret,
+            _ => -1,
         };
-        println!("{:?}", args);
-        let file_content = match std::fs::read_to_string(&args.in_filename) {
-            Ok(data) => data,
+        println!("do_test return {}", do_test_ret);
+        do_test(0).expect("do_test error");
+    }
+}
+
+fn run_cmd_line_process() {
+    #[derive(Debug)]
+    struct Arguments {
+        target: String,
+        replacement: String,
+        in_filename: String,
+        out_filename: String,
+    }
+
+    fn print_usage(cmd_name: &str) {
+        eprintln!(
+            "{} - change occurrences of one string into another",
+            cmd_name.green()
+        );
+        eprintln!(
+            "Usage: {} <target> <replacement> <INPUT> <OUTPUT>",
+            cmd_name.red().bold()
+        );
+    }
+
+    fn parse_args() -> Result<Arguments, i32> {
+        let args: Vec<String> = std::env::args().collect();
+        if args.len() != 5 {
+            print_usage(&args[0]);
+            eprintln!(
+                "{} wrong number of arguments: expected 4, got {}.",
+                "Error:".red().bold(),
+                args.len() - 1
+            );
+            return Err(-1);
+        }
+        Ok(Arguments {
+            target: args[1].clone(),
+            replacement: args[2].clone(),
+            in_filename: args[3].clone(),
+            out_filename: args[4].clone(),
+        })
+    }
+
+    fn replace_string(content: &str, replace: &str, replace_with: &str) -> Result<String, i32> {
+        let regex_handler = match regex::Regex::new(replace) {
+            Ok(handler) => handler,
             Err(error) => {
                 eprintln!(
-                    "{}: {} read_to_string: {:?}",
+                    "{}: {} bad regex: {:?}",
                     "error".red().bold(),
-                    &args.in_filename,
+                    &replace,
                     error
                 );
-                std::process::exit(-1);
+                return Err(-1);
             }
         };
-        let replaced_content = match replace_string(&file_content, &args.target, &args.replacement)
-        {
-            Ok(val) => val,
-            Err(_error_code) => {
-                std::process::exit(-1);
+        Ok(regex_handler.replace_all(content, replace_with).to_string())
+    }
+
+    let args = match parse_args() {
+        Ok(val) => val,
+        Err(_error_code) => {
+            std::process::exit(-1);
+        }
+    };
+    println!("{:?}", args);
+    let file_content = match std::fs::read_to_string(&args.in_filename) {
+        Ok(data) => data,
+        Err(error) => {
+            eprintln!(
+                "{}: {} read_to_string: {:?}",
+                "error".red().bold(),
+                &args.in_filename,
+                error
+            );
+            std::process::exit(-1);
+        }
+    };
+    let replaced_content = match replace_string(&file_content, &args.target, &args.replacement) {
+        Ok(val) => val,
+        Err(_error_code) => {
+            std::process::exit(-1);
+        }
+    };
+    match std::fs::write(&args.out_filename, &replaced_content) {
+        Ok(_) => (),
+        Err(error) => {
+            match error.kind() {
+                std::io::ErrorKind::Interrupted => std::process::exit(-2),
+                _ => {}
+            };
+            eprintln!(
+                "{}: {} write: {:?}",
+                "error".red().bold(),
+                &args.out_filename,
+                error
+            );
+            std::process::exit(-1);
+        }
+    }
+}
+
+fn run_image_render() {
+    // struct Complex<T> {
+    //     /// Real portion of the complex number
+    //     re: T,
+    //     /// Imaginary portion of the complex number
+    //     im: T,
+    // }
+
+    fn escape_time(c: Complex<f64>, limit: usize) -> Option<usize> {
+        let mut z = Complex { re: 0.0, im: 0.0 };
+        for i in 0..limit {
+            if z.norm_sqr() > 4.0 {
+                return Some(i);
             }
-        };
-        match std::fs::write(&args.out_filename, &replaced_content) {
-            Ok(_) => (),
-            Err(error) => {
-                match error.kind() {
-                    std::io::ErrorKind::Interrupted => std::process::exit(-2),
-                    _ => {}
+            z = z * z + c;
+        }
+        None
+    }
+
+    fn parse_pair<T: std::str::FromStr>(s: &str, separator: char) -> Option<(T, T)> {
+        match s.find(separator) {
+            None => None,
+            Some(index) => match (T::from_str(&s[..index]), T::from_str(&s[index + 1..])) {
+                (Ok(l), Ok(r)) => Some((l, r)),
+                _ => None,
+            },
+        }
+    }
+
+    fn parse_complex(s: &str) -> Option<Complex<f64>> {
+        match parse_pair::<f64>(s, ',') {
+            Some((re_val, im_val)) => Some(Complex {
+                re: re_val,
+                im: im_val,
+            }),
+            None => None,
+        }
+    }
+
+    fn pixel_to_point(
+        bounds: (usize, usize),
+        pixel: (usize, usize),
+        upper_left: Complex<f64>,
+        lower_right: Complex<f64>,
+    ) -> Complex<f64> {
+        let (width, height) = (
+            lower_right.re - upper_left.re,
+            upper_left.im - lower_right.im,
+        );
+        Complex {
+            re: upper_left.re + pixel.0 as f64 * width / bounds.0 as f64,
+            im: upper_left.im - pixel.1 as f64 * height / bounds.1 as f64,
+            // Why subtraction here? pixel.1 increases as we go down,
+            // but the imaginary component increases as we go up.
+        }
+    }
+
+    fn render(
+        pixels: &mut [u8],
+        bounds: (usize, usize),
+        upper_left: Complex<f64>,
+        lower_right: Complex<f64>,
+    ) {
+        assert!(pixels.len() == bounds.0 * bounds.1);
+        for row in 0..bounds.1 {
+            for column in 0..bounds.0 {
+                let point = pixel_to_point(bounds, (column, row), upper_left, lower_right);
+                pixels[row * bounds.0 + column] = match escape_time(point, 255) {
+                    None => 0,
+                    Some(count) => 255 - count as u8,
                 };
-                eprintln!(
-                    "{}: {} write: {:?}",
-                    "error".red().bold(),
-                    &args.out_filename,
-                    error
-                );
-                std::process::exit(-1);
             }
         }
     }
-    return;
 
-    let _test_integer_var = 0;
-    let _test_float_var = 3.14;
-    let _test_vec_var = vec![0, 3];
-
-    // let do_test_ret = match do_test(1) {
-    //     Ok(ret) => ret,
-    //     _ => -1
-    // };
-    // println!("do_test return {}", do_test_ret);
-    // do_test(0).expect("do_test error");
+    fn write_image(
+        filename: &str,
+        pixels: &[u8],
+        bounds: (usize, usize),
+    ) -> Result<(), std::io::Error> {
+        let output = std::fs::File::create(filename)?;
+        let encoder = PNGEncoder::new(output);
+        encoder.encode(
+            &pixels,
+            bounds.0 as u32,
+            bounds.1 as u32,
+            ColorType::Gray(8),
+        )?;
+        Ok(())
+    }
 
     let mut args: Vec<String> = std::env::args().collect();
-    // print_usage(&args[0]);
     if args.len() != 5 {
         eprintln!("Usage: {} FILE PIXELS UPPERLEFT LOWERRIGHT", args[0]);
         eprintln!(
@@ -2599,41 +2848,68 @@ When will you stop wasting time plotting fractals?\r\n";
     write_image(&args[1], &pixels, bounds).expect("error writing PNG file");
 }
 
-#[test]
-fn test_parse_pair() {
-    assert_eq!(parse_pair::<i32>("", ','), None);
-    assert_eq!(parse_pair::<i32>("10,", ','), None);
-    assert_eq!(parse_pair::<i32>(",10", ','), None);
-    assert_eq!(parse_pair::<i32>("10,20", ','), Some((10, 20)));
-    assert_eq!(parse_pair::<i32>("10,20xy", ','), None);
-    assert_eq!(parse_pair::<f64>("0.5x", ','), None);
-    assert_eq!(parse_pair::<f64>("0.5x1.5", 'x'), Some((0.5, 1.5)));
+fn run_http_server() {
+    use actix_web::{web, App, HttpResponse, HttpServer};
+
+    fn http_server_main() {
+        let server = HttpServer::new(|| App::new().route("/", web::get().to(handle_get)));
+        server
+            .bind("0.0.0.0:8088")
+            .expect("server bind error")
+            .run()
+            .expect("server run error");
+    }
+
+    fn handle_get() -> HttpResponse {
+        HttpResponse::Ok().content_type("text/html").body(
+            r####"
+        <!DOCTYPE html>
+        <html>
+        <body>
+        <h1>server is running</h1>
+        <p>server status is running</p>
+        </body>
+        </html>
+    "####,
+        )
+    }
 }
 
-#[test]
-fn test_parse_complex() {
-    assert_eq!(
-        parse_complex("1.25,-0.0625"),
-        Some(Complex {
-            re: 1.25,
-            im: -0.0625
-        })
-    );
-    assert_eq!(parse_complex(",-0.0625"), None);
-}
+// #[test]
+// fn test_parse_pair() {
+//     assert_eq!(parse_pair::<i32>("", ','), None);
+//     assert_eq!(parse_pair::<i32>("10,", ','), None);
+//     assert_eq!(parse_pair::<i32>(",10", ','), None);
+//     assert_eq!(parse_pair::<i32>("10,20", ','), Some((10, 20)));
+//     assert_eq!(parse_pair::<i32>("10,20xy", ','), None);
+//     assert_eq!(parse_pair::<f64>("0.5x", ','), None);
+//     assert_eq!(parse_pair::<f64>("0.5x1.5", 'x'), Some((0.5, 1.5)));
+// }
 
-#[test]
-fn test_pixel_to_point() {
-    assert_eq!(
-        pixel_to_point(
-            (100, 200),
-            (25, 175),
-            Complex { re: -1.0, im: 1.0 },
-            Complex { re: 1.0, im: -1.0 }
-        ),
-        Complex {
-            re: -0.5,
-            im: -0.75
-        }
-    );
-}
+// #[test]
+// fn test_parse_complex() {
+//     assert_eq!(
+//         parse_complex("1.25,-0.0625"),
+//         Some(Complex {
+//             re: 1.25,
+//             im: -0.0625
+//         })
+//     );
+//     assert_eq!(parse_complex(",-0.0625"), None);
+// }
+
+// #[test]
+// fn test_pixel_to_point() {
+//     assert_eq!(
+//         pixel_to_point(
+//             (100, 200),
+//             (25, 175),
+//             Complex { re: -1.0, im: 1.0 },
+//             Complex { re: 1.0, im: -1.0 }
+//         ),
+//         Complex {
+//             re: -0.5,
+//             im: -0.75
+//         }
+//     );
+// }
