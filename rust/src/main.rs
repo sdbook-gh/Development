@@ -1,8 +1,3 @@
-use image::png::PNGEncoder;
-use image::ColorType;
-use num::Complex;
-use text_colorizer::Colorize;
-
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type GenericResult<T> = Result<T, GenericError>;
 
@@ -13,17 +8,14 @@ fn do_test_sub(val: i32) -> Result<i32, String> {
     };
     Ok(0)
 }
-
 fn do_test(val: i32) -> Result<i32, String> {
     do_test_sub(val)?;
     Ok(100)
 }
-
 fn do_test_sub_generic(pattern: &str) -> GenericResult<i32> {
     let regex_handler = regex::Regex::new(pattern)?;
     Ok(0)
 }
-
 fn do_test_generic1(pattern: &str) -> i32 {
     if let Some(err_result) = do_test_sub_generic("").as_ref().err() {
         eprintln!("do_test_sub_generic error {:?}", err_result);
@@ -38,18 +30,197 @@ fn do_test_generic2(pattern: &str) -> GenericResult<i32> {
     }
     Ok(0)
 }
-
 fn print_vec<T: std::fmt::Display>(n: &[T]) {
     for elt in n {
         println!("-- {} --", elt);
     }
 }
-
 fn test_ownership(strval: String) {
     println!("{}", strval);
 }
 
 fn main() {
+    {
+        struct InMemoryIndex;
+        impl InMemoryIndex {
+            fn from_single_document(doc_id: usize, text: String) -> InMemoryIndex {
+                InMemoryIndex {}
+            }
+        }
+        fn start_file_reader_thread(
+            read_file_names: Vec<std::path::PathBuf>,
+        ) -> (
+            std::sync::mpsc::Receiver<String>,
+            std::thread::JoinHandle<std::io::Result<()>>,
+        ) {
+            let (sender, receiver) = std::sync::mpsc::channel::<String>();
+            let handler = std::thread::spawn(move || {
+                for item in read_file_names {
+                    let content = std::fs::read_to_string(item)?;
+                    match sender.send(content) {
+                        Err(e) => {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                e.to_string(),
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(())
+            });
+            (receiver, handler)
+        }
+        fn start_file_indexing_thread(
+            texts: std::sync::mpsc::Receiver<String>,
+        ) -> (
+            std::sync::mpsc::Receiver<InMemoryIndex>,
+            std::thread::JoinHandle<std::io::Result<()>>,
+        ) {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let handle = std::thread::spawn(move || {
+                for (doc_id, text) in texts.into_iter().enumerate() {
+                    let index = InMemoryIndex::from_single_document(doc_id, text);
+                    match sender.send(index) {
+                        Err(e) => {
+                            return Err(std::io::Error::new(
+                                std::io::ErrorKind::Other,
+                                e.to_string(),
+                            ));
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(())
+            });
+            (receiver, handle)
+        }
+        fn start_in_memory_merge_thread(
+            file_indexes: std::sync::mpsc::Receiver<InMemoryIndex>,
+        ) -> (
+            std::sync::mpsc::Receiver<InMemoryIndex>,
+            std::thread::JoinHandle<std::io::Result<()>>,
+        ) {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let handle = std::thread::spawn(move || Ok(()));
+            (receiver, handle)
+        }
+        fn start_index_writer_thread(
+            big_indexes: std::sync::mpsc::Receiver<InMemoryIndex>,
+            output_dir: &std::path::PathBuf,
+        ) -> (
+            std::sync::mpsc::Receiver<std::path::PathBuf>,
+            std::thread::JoinHandle<std::io::Result<()>>,
+        ) {
+            let (sender, receiver) = std::sync::mpsc::channel();
+            let handle = std::thread::spawn(move || Ok(()));
+            (receiver, handle)
+        }
+        fn merge_index_files(
+            files: std::sync::mpsc::Receiver<std::path::PathBuf>,
+            output_dir: &std::path::Path,
+        ) -> std::io::Result<()> {
+            Ok(())
+        }
+        fn run_pipeline(
+            documents: Vec<std::path::PathBuf>,
+            output_dir: std::path::PathBuf,
+        ) -> std::io::Result<()> {
+            let (texts, h1) = start_file_reader_thread(documents);
+            let (indecies, h2) = start_file_indexing_thread(texts);
+            let (merged_indecies, h3) = start_in_memory_merge_thread(indecies);
+            let (files, h4) = start_index_writer_thread(merged_indecies, &output_dir);
+            let result = merge_index_files(files, &output_dir);
+            let r1 = h1.join().unwrap();
+            let r2 = h2.join().unwrap();
+            let r3 = h3.join().unwrap();
+            let r4 = h4.join().unwrap();
+            r1?;
+            r2?;
+            r3?;
+            r4?;
+            Ok(())
+        }
+
+        let work_vec = vec!["".to_string(); 100];
+        let mut thread_handler_vec: Vec<std::thread::JoinHandle<Result<(), &str>>> =
+            std::vec::Vec::new();
+        let error_exist = false;
+        thread_handler_vec.push(std::thread::spawn(move || {
+            for work in work_vec {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                if error_exist {
+                    return Err("error msg");
+                }
+            }
+            Ok(())
+        }));
+        for handler in thread_handler_vec {
+            let thread_result:Result<(), &str> = handler.join().unwrap(); // join will return thread's Result
+        }
+    }
+    return;
+    {
+        let mut vec = vec!["".to_string(); 100];
+        vec.into_iter().for_each(|mut x| {
+            x.push('-');
+        });
+        dbg!(vec);
+        let mut vec = vec!["".to_string(); 100];
+        vec.iter_mut().for_each(|x| {
+            x.push('-');
+        });
+        dbg!(vec);
+    }
+    return;
+    {
+        use std::sync::Arc;
+        type ArcStringVec = std::vec::Vec<Arc<String>>;
+        fn process_files_parallel(names: &ArcStringVec) {
+            const THREADS_NUM: usize = 2;
+            let works = split_works(names, THREADS_NUM);
+            let mut th_hand_vec = std::vec::Vec::new();
+            for (_, names) in works {
+                th_hand_vec.push(std::thread::spawn(move || {
+                    for name in names {
+                        println!("complete {}", name);
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                    }
+                }));
+            }
+            for item in th_hand_vec {
+                item.join().expect("thread error");
+            }
+        }
+        fn split_works(
+            names: &ArcStringVec,
+            threads_num: usize,
+        ) -> std::collections::HashMap<usize, ArcStringVec> {
+            let mut map = std::collections::HashMap::<usize, ArcStringVec>::new();
+            for i in 0..threads_num {
+                map.insert(i, ArcStringVec::new());
+            }
+            let mut idx: usize = 0;
+            for name in names {
+                let vec = map.get_mut(&idx).unwrap();
+                vec.push(name.clone());
+                idx = (idx + 1) % threads_num;
+            }
+            map
+        }
+        let vec: ArcStringVec = vec!["1", "2", "3", "4", "5", "6"]
+            .iter()
+            .map(|&x| Arc::new(String::from(x)))
+            .collect();
+        // process_files_parallel(&vec);
+        let names = ["1", "2", "3", "4", "5", "6"];
+        use rayon::prelude::*;
+        names.par_iter().for_each(|&name| {
+            println!("complete {}", name);
+            std::thread::sleep(std::time::Duration::from_secs(1));
+        });
+    }
+    return;
     {
         const BUF_SIZE: usize = 4 * 1024;
         fn copy<T1, T2>(
@@ -2612,6 +2783,7 @@ When will you stop wasting time plotting fractals?\r\n";
 }
 
 fn run_cmd_line_process() {
+    use text_colorizer::Colorize;
     #[derive(Debug)]
     struct Arguments {
         target: String,
@@ -2710,15 +2882,8 @@ fn run_cmd_line_process() {
 }
 
 fn run_image_render() {
-    // struct Complex<T> {
-    //     /// Real portion of the complex number
-    //     re: T,
-    //     /// Imaginary portion of the complex number
-    //     im: T,
-    // }
-
-    fn escape_time(c: Complex<f64>, limit: usize) -> Option<usize> {
-        let mut z = Complex { re: 0.0, im: 0.0 };
+    fn escape_time(c: num::Complex<f64>, limit: usize) -> Option<usize> {
+        let mut z = num::Complex { re: 0.0, im: 0.0 };
         for i in 0..limit {
             if z.norm_sqr() > 4.0 {
                 return Some(i);
@@ -2727,7 +2892,6 @@ fn run_image_render() {
         }
         None
     }
-
     fn parse_pair<T: std::str::FromStr>(s: &str, separator: char) -> Option<(T, T)> {
         match s.find(separator) {
             None => None,
@@ -2737,40 +2901,37 @@ fn run_image_render() {
             },
         }
     }
-
-    fn parse_complex(s: &str) -> Option<Complex<f64>> {
+    fn parse_complex(s: &str) -> Option<num::Complex<f64>> {
         match parse_pair::<f64>(s, ',') {
-            Some((re_val, im_val)) => Some(Complex {
+            Some((re_val, im_val)) => Some(num::Complex {
                 re: re_val,
                 im: im_val,
             }),
             None => None,
         }
     }
-
     fn pixel_to_point(
         bounds: (usize, usize),
         pixel: (usize, usize),
-        upper_left: Complex<f64>,
-        lower_right: Complex<f64>,
-    ) -> Complex<f64> {
+        upper_left: num::Complex<f64>,
+        lower_right: num::Complex<f64>,
+    ) -> num::Complex<f64> {
         let (width, height) = (
             lower_right.re - upper_left.re,
             upper_left.im - lower_right.im,
         );
-        Complex {
+        num::Complex {
             re: upper_left.re + pixel.0 as f64 * width / bounds.0 as f64,
             im: upper_left.im - pixel.1 as f64 * height / bounds.1 as f64,
             // Why subtraction here? pixel.1 increases as we go down,
             // but the imaginary component increases as we go up.
         }
     }
-
     fn render(
         pixels: &mut [u8],
         bounds: (usize, usize),
-        upper_left: Complex<f64>,
-        lower_right: Complex<f64>,
+        upper_left: num::Complex<f64>,
+        lower_right: num::Complex<f64>,
     ) {
         assert!(pixels.len() == bounds.0 * bounds.1);
         for row in 0..bounds.1 {
@@ -2783,23 +2944,21 @@ fn run_image_render() {
             }
         }
     }
-
     fn write_image(
         filename: &str,
         pixels: &[u8],
         bounds: (usize, usize),
     ) -> Result<(), std::io::Error> {
         let output = std::fs::File::create(filename)?;
-        let encoder = PNGEncoder::new(output);
+        let encoder = image::png::PNGEncoder::new(output);
         encoder.encode(
             &pixels,
             bounds.0 as u32,
             bounds.1 as u32,
-            ColorType::Gray(8),
+            image::ColorType::Gray(8),
         )?;
         Ok(())
     }
-
     let mut args: Vec<String> = std::env::args().collect();
     if args.len() != 5 {
         eprintln!("Usage: {} FILE PIXELS UPPERLEFT LOWERRIGHT", args[0]);
@@ -2809,42 +2968,54 @@ fn run_image_render() {
         );
         std::process::exit(1);
     }
-    // let pos: i32 = match args[2].find('x') {
-    //     Some(pos) => pos as i32,
-    //     _ => -1
-    // };
-    // if pos >= 0 {
-    //     args[2] = args[2].replace("x", "X");
-    // }
-    //args[2] = args[2].replace("([0-9])+x([0-9])+", "\\1X\\2");
-    args[2] = args[2].replace("x", "X");
+    let check_regex = regex::Regex::new(r#"^(?P<filename>.*)[[:space:]]+(?P<size1>\d+)[xX](?P<size2>\d+)[[:space:]]+(?P<pos1>-?\d+(\.\d+)?),(?P<pos2>-?\d+(\.\d+)?)[[:space:]]+(?P<pos3>-?\d+(\.\d+)?),(?P<pos4>-?\d+(\.\d+)?)"#).expect("create regex error");
+    let args_str = args.join(" ");
+    println!("args_str: {}", &args_str);
+    if !check_regex.is_match(args_str.as_str()) {
+        eprintln!("bad command line");
+        return;
+    }
+    args[2] = args[2].replace(['x', 'X'], "X");
     println!("{}", args[2]);
     let bounds = parse_pair::<usize>(&args[2], 'X').expect("error parsing image dimensions");
     let upper_left = parse_complex(&args[3]).expect("error parsing upper left corner point");
     let lower_right = parse_complex(&args[4]).expect("error parsing lower right corner point");
     let mut pixels = vec![0; bounds.0 * bounds.1];
+
     // render(&mut pixels, bounds, upper_left, lower_right);
 
-    let threads = 8;
-    let rows_per_band = bounds.1 / threads + 1;
-    {
-        let bands: Vec<&mut [u8]> = pixels.chunks_mut(rows_per_band * bounds.0).collect();
-        crossbeam::scope(|spawner| {
-            for (i, band) in bands.into_iter().enumerate() {
-                let top = rows_per_band * i;
-                let height = band.len() / bounds.0;
-                let band_bounds = (bounds.0, height);
-                let band_upper_left = pixel_to_point(bounds, (0, top), upper_left, lower_right);
-                let band_lower_right =
-                    pixel_to_point(bounds, (bounds.0, top + height), upper_left, lower_right);
-                spawner.spawn(move |_| {
-                    render(band, band_bounds, band_upper_left, band_lower_right);
-                });
-            }
-        })
-        .unwrap();
-    }
+    // let threads = 8;
+    // let rows_per_band = bounds.1 / threads + 1;
+    // {
+    //     let bands: Vec<&mut [u8]> = pixels.chunks_mut(rows_per_band * bounds.0).collect();
+    //     crossbeam::scope(|spawner| {
+    //         for (i, band) in bands.into_iter().enumerate() {
+    //             let top = rows_per_band * i;
+    //             let height = band.len() / bounds.0;
+    //             let band_bounds = (bounds.0, height);
+    //             let band_upper_left = pixel_to_point(bounds, (0, top), upper_left, lower_right);
+    //             let band_lower_right =
+    //                 pixel_to_point(bounds, (bounds.0, top + height), upper_left, lower_right);
+    //             spawner.spawn(move |_| {
+    //                 render(band, band_bounds, band_upper_left, band_lower_right);
+    //             });
+    //         }
+    //     })
+    //     .unwrap();
+    // }
 
+    {
+        let mut bands: Vec<(usize, &mut [u8])> = pixels.chunks_mut(bounds.0).enumerate().collect();
+        use rayon::prelude::*;
+        bands.par_iter_mut().for_each(|(i, band)| {
+            let top = *i;
+            let band_bounds = (bounds.0, 1);
+            let band_upper_left = pixel_to_point(bounds, (0, top), upper_left, lower_right);
+            let band_lower_right =
+                pixel_to_point(bounds, (bounds.0, top + 1), upper_left, lower_right);
+            render(*band, band_bounds, band_upper_left, band_lower_right);
+        });
+    }
     write_image(&args[1], &pixels, bounds).expect("error writing PNG file");
 }
 
