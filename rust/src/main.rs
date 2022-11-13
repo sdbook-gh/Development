@@ -48,22 +48,143 @@ lazy_static! {
 
 fn main() {
     {
-        struct MyStruct {
-            val: u32,
-        };
+        pub fn spawn<F, T>(f: F) -> T
+        where
+            F: FnOnce() -> T,
+            F: Send + 'static,
+            T: Send + 'static,
+        {
+            f()
+        }
+
+        let val = vec![1].into_iter();
+        let result = spawn(move || for item in val {});
+        dbg!(result);
+
+        struct MyStruct(std::collections::LinkedList<i32>);
+        impl MyStruct {
+            fn new() -> MyStruct {
+                MyStruct(std::collections::LinkedList::<i32>::new())
+            }
+            fn in_first(&mut self, val: i32) {
+                self.0.push_front(val);
+            }
+            fn out_all(&mut self) -> std::vec::Vec<i32> {
+                let mut vec = std::vec::Vec::<i32>::new();
+                for i in 0..self.0.len() {
+                    vec.push(self.0.pop_back().unwrap());
+                }
+                vec
+            }
+        }
+        let mut val = MyStruct::new();
+        val.in_first(1);
+        val.in_first(10);
+        val.in_first(100);
+        val.in_first(1000);
+        let result = std::thread::spawn(move || {
+            for item in val.out_all() {
+                println!("{}", item)
+            }
+        });
+        result.join().unwrap();
+
+        {
+	    // https://course.rs/too-many-lists/intro.html
+            pub struct List<T> {
+                head: Link<T>,
+            }
+            type Link<T> = Option<Box<Node<T>>>;
+            struct Node<T> {
+                elem: T,
+                next: Link<T>,
+            }
+            impl<T> List<T> {
+                pub fn new() -> Self {
+                    List { head: None }
+                }
+                pub fn push(&mut self, elem: T) {
+                    let new_node = Box::new(Node {
+                        elem: elem,
+                        next: self.head.take(),
+                    });
+                    self.head = Some(new_node);
+                }
+                pub fn pop(&mut self) -> Option<T> {
+                    self.head.take().map(|node| {
+                        self.head = node.next;
+                        node.elem
+                    })
+                }
+            }
+            impl<T> Drop for List<T> {
+                fn drop(&mut self) {
+                    let mut cur_link = self.head.take();
+                    while let Some(mut boxed_node) = cur_link {
+                        cur_link = boxed_node.next.take();
+                    }
+                }
+            }
+            pub struct IntoIter<T>(List<T>);
+            impl<T> List<T> {
+                pub fn into_iter(self) -> IntoIter<T> {
+                    IntoIter(self)
+                }
+            }
+            impl<T> Iterator for IntoIter<T> {
+                type Item = T;
+                fn next(&mut self) -> Option<Self::Item> {
+                    self.0.pop()
+                }
+            }
+            let mut list: List<i32> = List::new();
+            list.push(1);
+            list.push(3);
+            list.push(5);
+            list.push(7);
+            let val = list.into_iter();
+            let result = std::thread::spawn(move || {
+                for item in val {
+                    println!("{}", item)
+                }
+            });
+            result.join().unwrap();
+        }
+
+        pub trait ThreadIterator: std::iter::Iterator {
+            fn spawn_thread(self) -> std::sync::mpsc::IntoIter<Self::Item>;
+        }
+        impl<T> ThreadIterator for T
+        where
+            T: std::iter::Iterator + std::marker::Send + 'static,
+            T::Item: std::marker::Send + std::fmt::Display,
+        {
+            fn spawn_thread(self) -> std::sync::mpsc::IntoIter<Self::Item> {
+                let (sender, receiver) = std::sync::mpsc::sync_channel(100);
+                spawn(move || {
+                    for item in self {
+                        sender.send(item).unwrap();
+                    }
+                });
+                receiver.into_iter()
+            }
+        }
+    }
+    return;
+    {
+        struct MyStruct(u32);
         impl MyStruct {
             fn test_static() -> MyStruct {
-                MyStruct { val: 0 }
+                MyStruct(0)
             }
             fn test_method(&self) -> u32 {
-                self.val
+                self.0
             }
         }
         let val = MyStruct::test_static();
-        val.test_method();
+        let val = val.test_method();
     }
-    // ------------------------------------ //
-    // return;
+    return;
     {
         struct InMemoryIndex;
         impl InMemoryIndex {
