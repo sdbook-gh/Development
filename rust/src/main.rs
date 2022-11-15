@@ -48,6 +48,69 @@ lazy_static! {
 
 fn main() {
     {
+        fn vec_zip(v: Vec<u8>, u: Vec<u8>) -> impl Iterator<Item = u8> {
+            Box::new(v.into_iter().chain(u.into_iter()))
+        }
+    }
+    {
+        use std::io::prelude::*;
+        fn simple_request(host: &str, port: u16, path: &str) -> std::io::Result<String> {
+            let mut socket = std::net::TcpStream::connect((host, port))?;
+            let request = format!("GET {} HTTP/1.1\r\nHost: {}\r\n\r\n", path, host);
+            socket.write_all(request.as_bytes())?;
+            socket.shutdown(std::net::Shutdown::Write)?;
+            let mut response = String::new();
+            socket.read_to_string(&mut response)?;
+            Ok(response)
+        }
+        let response = simple_request("www.baidu.com", 80, "/index.html").expect("network error");
+        println!("response {}", response);
+
+        use async_std::io::prelude::*;
+        async fn simple_request_async(
+            host: &str,
+            port: u16,
+            path: &str,
+        ) -> std::io::Result<String> {
+            let mut socket = async_std::net::TcpStream::connect((host, port)).await?;
+            let request = format!("GET {} HTTP/1.1\r\nHost: {}\r\n\r\n", path, host);
+            socket.write_all(request.as_bytes()).await?;
+            socket.shutdown(async_std::net::Shutdown::Write)?;
+            let mut response = String::new();
+            socket.read_to_string(&mut response).await?;
+            Ok(response)
+        }
+
+        fn test_callback<F>(str: &str, f: F) -> u32
+        where
+            F: Fn(&str) -> u32,
+        {
+            f(str) * 100
+        }
+        let val = test_callback("123", |x| u32::from_str_radix(x, 10).unwrap());
+        dbg!(val);
+        type callback_t = Box<dyn Fn(&mut String, String) -> bool>;
+        fn test_callback_new(f1: callback_t, f2: callback_t) -> bool {
+            let mut str1 = String::new();
+            let str2 = "_str1".to_string();
+            let str3 = "_str2".to_string();
+            f1(&mut str1, str2) && f2(&mut str1, str3)
+        }
+        let mut mut_str = String::new();
+        let str = "test".to_string();
+        test_callback_new(
+            Box::new(|str1, str2| -> bool {
+                str1.push_str(&str2);
+                true
+            }),
+            Box::new(|str1, str2| -> bool {
+                str1.push_str(&(str2.to_uppercase()));
+                true
+            }),
+        );
+    }
+    return;
+    {
         pub fn spawn<F, T>(f: F) -> T
         where
             F: FnOnce() -> T,
@@ -90,7 +153,7 @@ fn main() {
         result.join().unwrap();
 
         {
-	    // https://course.rs/too-many-lists/intro.html
+            // https://course.rs/too-many-lists/intro.html
             pub struct List<T> {
                 head: Link<T>,
             }
@@ -1397,7 +1460,7 @@ fn main() {
         v.shuffle(&mut thread_rng());
         let val = thread_rng().gen::<i32>();
         dbg!(val);
-        let val = thread_rng().gen_range(0.1, 99.9);
+        let val = thread_rng().gen_range(0.1..99.9);
         dbg!(val);
     }
     return;
