@@ -47,11 +47,7 @@ lazy_static! {
 }
 
 fn main() {
-    {
-        fn vec_zip(v: Vec<u8>, u: Vec<u8>) -> impl Iterator<Item = u8> {
-            Box::new(v.into_iter().chain(u.into_iter()))
-        }
-    }
+    {}
     {
         use std::io::prelude::*;
         fn simple_request(host: &str, port: u16, path: &str) -> std::io::Result<String> {
@@ -64,7 +60,7 @@ fn main() {
             Ok(response)
         }
         let response = simple_request("www.baidu.com", 80, "/index.html").expect("network error");
-        println!("response {}", response);
+        // println!("sync response\n{}", response);
 
         use async_std::io::prelude::*;
         async fn simple_request_async(
@@ -80,7 +76,86 @@ fn main() {
             socket.read_to_string(&mut response).await?;
             Ok(response)
         }
+        let response =
+            async_std::task::block_on(simple_request_async("www.baidu.com", 80, "/index.html"))
+                .expect("network error");
+        // println!("async response\n{}", response);
 
+        async fn multi_simple_requests(
+            requests: Vec<(String, u16, String)>,
+        ) -> Vec<std::io::Result<String>> {
+            let mut handles = vec![];
+            for (host, port, path) in requests {
+                handles.push(async_std::task::spawn(async move {
+                    simple_request_async(&host, port, &path).await
+                }));
+                // handles.push(async_std::task::spawn_local(simple_request_async_move(
+                //     host, port, path,
+                // )));
+            }
+            let mut results = vec![];
+            for handle in handles {
+                results.push(handle.await);
+            }
+            results
+        }
+        // let results = async_std::task::block_on(multi_simple_requests(vec![
+        //     ("www.baidu.com".to_string(), 80, "/index.html".to_string()),
+        //     ("www.sohu.com".to_string(), 80, "/index.html".to_string()),
+        // ]));
+        // results.into_iter().for_each(|x| {
+        //     if x.is_err() {
+        //         println!("network error");
+        //     }
+        //     let mut result = x.unwrap();
+        //     result.truncate(100);
+        //     println!("{}", result);
+        // });
+
+        let input = async_std::io::stdin();
+        let future = async {
+            let mut line = String::new();
+            input.read_line(&mut line).await?;
+            println!("Read line: {}", line);
+            Ok::<(), std::io::Error>(())
+        };
+        async_std::task::block_on(future).unwrap();
+
+        fn simple_request_none_async<'a>(
+            host: &'a str,
+            port: u16,
+            path: &'a str,
+        ) -> impl std::future::Future<Output = std::io::Result<String>> + 'a {
+            async move {
+                let mut socket = async_std::net::TcpStream::connect((host, port)).await?;
+                let request = format!("GET {} HTTP/1.1\r\nHost: {}\r\n\r\n", path, host);
+                socket.write_all(request.as_bytes()).await?;
+                socket.shutdown(async_std::net::Shutdown::Write)?;
+                let mut response = String::new();
+                socket.read_to_string(&mut response).await?;
+                Ok(response)
+            }
+        }
+        fn simple_request_none_async_move(
+            host: &str,
+            port: u16,
+            path: &str,
+        ) -> impl std::future::Future<Output = std::io::Result<String>> + 'static {
+            let host = host.to_string();
+            let path = path.to_string();
+            async move {
+                let mut socket = async_std::net::TcpStream::connect((host.as_str(), port)).await?;
+                let request = format!("GET {} HTTP/1.1\r\nHost: {}\r\n\r\n", path, host);
+                socket.write_all(request.as_bytes()).await?;
+                socket.shutdown(async_std::net::Shutdown::Write)?;
+                let mut response = String::new();
+                socket.read_to_string(&mut response).await?;
+                Ok(response)
+            }
+        }
+    }
+    return;
+    {
         fn test_callback<F>(str: &str, f: F) -> u32
         where
             F: Fn(&str) -> u32,
@@ -99,11 +174,11 @@ fn main() {
         let mut mut_str = String::new();
         let str = "test".to_string();
         test_callback_new(
-            Box::new(|str1, str2| -> bool {
+            Box::new(|str1, str2| {
                 str1.push_str(&str2);
                 true
             }),
-            Box::new(|str1, str2| -> bool {
+            Box::new(|str1, str2| {
                 str1.push_str(&(str2.to_uppercase()));
                 true
             }),
