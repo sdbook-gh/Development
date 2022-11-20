@@ -1,5 +1,3 @@
-use lazy_static::lazy_static;
-
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type GenericResult<T> = Result<T, GenericError>;
 
@@ -42,12 +40,163 @@ fn test_ownership(strval: String) {
 }
 
 static GLOBAL_VAR: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-lazy_static! {
+lazy_static::lazy_static! {
     static ref HOSTNAME: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 }
 
 fn main() {
-    {}
+    {
+        pub struct MyFuture<T>(std::sync::Arc<std::sync::Mutex<Shared<T>>>);
+        struct Shared<T> {
+            value: Option<T>,
+            waker: Option<std::task::Waker>,
+        }
+        pub fn my_spawn<T, F>(closure: F) -> MyFuture<T>
+        where
+            F: FnOnce() -> T,
+            F: Send + 'static,
+            T: Send + 'static,
+        {
+            let inner = std::sync::Arc::new(std::sync::Mutex::new(Shared::<T> {
+                value: None,
+                waker: None,
+            }));
+            std::thread::spawn({
+                let inner = inner.clone();
+                move || {
+                    let value = closure();
+                    let maybe_waker = {
+                        let mut guard = inner.lock().unwrap();
+                        guard.value = Some(value);
+                        guard.waker.take()
+                    };
+                    if let Some(waker) = maybe_waker {
+                        waker.wake();
+                    }
+                }
+            });
+            MyFuture(inner)
+        }
+        impl<T: Send> std::future::Future for MyFuture<T> {
+            type Output = T;
+            fn poll(
+                self: std::pin::Pin<&mut Self>,
+                cx: &mut std::task::Context<'_>,
+            ) -> std::task::Poll<Self::Output> {
+                let mut guard = self.0.lock().unwrap();
+                if let Some(value) = guard.value.take() {
+                    return std::task::Poll::Ready(value);
+                }
+                guard.waker = Some(cx.waker().clone());
+                std::task::Poll::Pending
+            }
+        }
+        fn my_block_on<F: std::future::Future>(future: F) -> F::Output {
+            let parker = crossbeam::sync::Parker::new();
+            let unparker = parker.unparker().clone();
+            let waker = waker_fn::waker_fn(move || unparker.unpark());
+            let mut context = std::task::Context::from_waker(&waker);
+            futures_lite::pin!(future);
+            loop {
+                match future.as_mut().poll(&mut context) {
+                    std::task::Poll::Ready(value) => return value,
+                    std::task::Poll::Pending => parker.park(),
+                }
+            }
+        }
+
+        {
+            // Pin
+            struct Test {
+                a: String,
+                b: *const String,
+                _pinned: std::marker::PhantomPinned, // mark to !Unpin
+            }
+            impl Test {
+                fn new(txt: &str) -> std::pin::Pin<Box<Self>> {
+                    let mut test = Box::pin(Test {
+                        a: String::from(txt),
+                        b: std::ptr::null(),
+                        _pinned: std::marker::PhantomPinned, // mark to !Unpin
+                    });
+                    unsafe {
+                        test.as_mut().get_unchecked_mut().b = &(test.a);
+                    }
+                    test
+                }
+                fn a<'a>(self: &'a std::pin::Pin<Box<Self>>) -> &'a str {
+                    &(self.as_ref().get_ref().a)
+                }
+                fn b<'a>(self: &'a std::pin::Pin<Box<Self>>) -> &'a String {
+                    unsafe { &*self.as_ref().get_ref().b }
+                }
+            }
+            let mut test1 = Test::new("test1");
+            let mut test2 = Test::new("test2");
+            println!("a: {}, b: {}", test1.a(), test1.b());
+            println!("a: {}, b: {}", test2.a(), test2.b());
+        };
+    }
+    return;
+    {
+        async fn test_rc(t: std::rc::Rc<String>) {
+            println!("{:?}", std::thread::current().id());
+            let k = t;
+            println!("1. test,{:?}", k);
+            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+            println!("2. test,{:?}", k);
+        }
+        async fn test_arc(t: std::sync::Arc<String>) {
+            println!("{:?}", std::thread::current().id());
+            let k = t;
+            println!("1. test,{:?}", k);
+            async_std::task::sleep(std::time::Duration::from_secs(1)).await;
+            println!("2. test,{:?}", k);
+        }
+        let r = std::rc::Rc::new("abc".to_string());
+        let f1 = test_rc(r.clone());
+        let f2 = test_rc(r.clone());
+        let f3 = test_rc(r.clone());
+        let f4 = test_rc(r.clone());
+        use async_std::prelude::*;
+        // async_std::task::block_on(f1.race(f2).race(f3).race(f4)); // same thread, so Rc can work
+        let r = std::sync::Arc::new("abc".to_string());
+        let f1 = test_arc(r.clone());
+        let f2 = test_arc(r.clone());
+        async_std::task::spawn(f1);
+        async_std::task::spawn(f2);
+        async_std::task::block_on(async {
+            println!("sleep");
+            async_std::task::sleep(std::time::Duration::from_secs(5)).await; // make block_on live long enough
+        });
+    }
+    return;
+    if false {
+        // High Rank Trait Bound
+        struct Closure<F> {
+            data1: u8,
+            data2: u16,
+            func: F,
+        }
+        impl<F> Closure<F>
+        where
+            F: for<'b> Fn(&u8, &'b u16) -> &'b u16,
+        {
+            fn call_new(&self) -> &u16 {
+                (self.func)(&self.data1, &self.data2)
+            }
+        }
+        fn do_it<'b>(data1: &u8, data2: &'b u16) -> &'b u16 {
+            &data2
+        }
+        let clo = Closure {
+            data1: 0u8,
+            data2: 1u16,
+            func: do_it,
+        };
+        println!("{}", clo.call_new());
+    }
+    return;
     {
         use std::io::prelude::*;
         fn simple_request(host: &str, port: u16, path: &str) -> std::io::Result<String> {
@@ -68,12 +217,18 @@ fn main() {
             port: u16,
             path: &str,
         ) -> std::io::Result<String> {
+            println!("start request in {:?}", std::thread::current().id());
+            println!("connect");
             let mut socket = async_std::net::TcpStream::connect((host, port)).await?;
             let request = format!("GET {} HTTP/1.1\r\nHost: {}\r\n\r\n", path, host);
+            println!("write_all");
             socket.write_all(request.as_bytes()).await?;
+            println!("shutdown");
             socket.shutdown(async_std::net::Shutdown::Write)?;
             let mut response = String::new();
+            println!("read_to_string");
             socket.read_to_string(&mut response).await?;
+            println!("ok");
             Ok(response)
         }
         let response =
@@ -86,12 +241,12 @@ fn main() {
         ) -> Vec<std::io::Result<String>> {
             let mut handles = vec![];
             for (host, port, path) in requests {
-                handles.push(async_std::task::spawn(async move {
+                // handles.push(async_std::task::spawn(async move {
+                //     simple_request_async(&host, port, &path).await
+                // }));
+                handles.push(async_std::task::spawn_local(async move {
                     simple_request_async(&host, port, &path).await
                 }));
-                // handles.push(async_std::task::spawn_local(simple_request_async_move(
-                //     host, port, path,
-                // )));
             }
             let mut results = vec![];
             for handle in handles {
@@ -99,27 +254,25 @@ fn main() {
             }
             results
         }
-        // let results = async_std::task::block_on(multi_simple_requests(vec![
-        //     ("www.baidu.com".to_string(), 80, "/index.html".to_string()),
-        //     ("www.sohu.com".to_string(), 80, "/index.html".to_string()),
-        // ]));
-        // results.into_iter().for_each(|x| {
-        //     if x.is_err() {
-        //         println!("network error");
-        //     }
-        //     let mut result = x.unwrap();
-        //     result.truncate(100);
-        //     println!("{}", result);
-        // });
+        let results = async_std::task::block_on(multi_simple_requests(vec![
+            ("www.baidu.com".to_string(), 80, "/index.html".to_string()),
+            ("www.sohu.com".to_string(), 80, "/index.html".to_string()),
+            ("www.bing.com".to_string(), 80, "/index.html".to_string()),
+        ]));
+        results.iter().for_each(|x| match x {
+            Err(ref e) => println!("network error {}", e.to_string()),
+            Ok(ref r) => println!("result {:.100}", r),
+        });
 
         let input = async_std::io::stdin();
         let future = async {
+            println!("Please input line");
             let mut line = String::new();
             input.read_line(&mut line).await?;
             println!("Read line: {}", line);
             Ok::<(), std::io::Error>(())
         };
-        async_std::task::block_on(future).unwrap();
+        // async_std::task::block_on(future).unwrap();
 
         fn simple_request_none_async<'a>(
             host: &'a str,
@@ -152,6 +305,172 @@ fn main() {
                 socket.read_to_string(&mut response).await?;
                 Ok(response)
             }
+        }
+
+        if false {
+            async fn async_test_func() {}
+            async fn reluctant() -> String {
+                let string = std::rc::Rc::new("ref-counted String".to_string());
+                async_test_func().await;
+                format!("Your splendid string: {}", string)
+            }
+            // async_std::task::spawn(reluctant()); // Rc cannot satisfy send
+            type GenericError = Box<dyn std::error::Error>;
+            type GenericResult<T> = Result<T, GenericError>;
+            fn some_fallible_thing() -> GenericResult<i32> {
+                Ok(0)
+            }
+            async fn unfortunate() {
+                // ...因为这个调用返回的值...
+                match some_fallible_thing() {
+                    Err(error) => {
+                        // report_error(error);
+                    }
+                    Ok(output) => {
+                        // ...到这个 await处仍然存在...
+                        async_test_func().await;
+                    }
+                }
+            }
+            // async_std::task::spawn(unfortunate()); // Box<dyn std::error::Error> cannot satisfy send
+        }
+
+        if false {
+            async fn async_run_func() {
+                println!(
+                    "async_run_func start {} {:?}",
+                    chrono::Utc::now().to_string(),
+                    std::thread::current().id()
+                );
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                println!(
+                    "async_run_func finish {} {:?}",
+                    chrono::Utc::now().to_string(),
+                    std::thread::current().id()
+                );
+            }
+            let future = async_run_func();
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            println!(
+                "after future created {} {:?}",
+                chrono::Utc::now().to_string(),
+                std::thread::current().id()
+            );
+            let result = async_std::task::block_on(future);
+            println!(
+                "after future await {} {:?}",
+                chrono::Utc::now().to_string(),
+                std::thread::current().id()
+            );
+
+            fn sync_run_func() {
+                println!(
+                    "sync_run_func start {} {:?}",
+                    chrono::Utc::now().to_string(),
+                    std::thread::current().id()
+                );
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                println!(
+                    "sync_run_func finish {} {:?}",
+                    chrono::Utc::now().to_string(),
+                    std::thread::current().id()
+                );
+            }
+            let future = async_std::task::spawn_blocking(move || {
+                println!(
+                    "spawn_blocking start {} {:?}",
+                    chrono::Utc::now().to_string(),
+                    std::thread::current().id()
+                );
+                sync_run_func();
+                println!(
+                    "spawn_blocking finish {} {:?}",
+                    chrono::Utc::now().to_string(),
+                    std::thread::current().id()
+                );
+            });
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            println!(
+                "after future created {} {:?}",
+                chrono::Utc::now().to_string(),
+                std::thread::current().id()
+            );
+            let result = async_std::task::block_on(future);
+            println!(
+                "after future await {} {:?}",
+                chrono::Utc::now().to_string(),
+                std::thread::current().id()
+            );
+        }
+
+        async fn multi_surf_requests(
+            urls: &[&str],
+        ) -> std::vec::Vec<Result<String, surf::Exception>> {
+            let client = surf::Client::new();
+            let mut handles = vec![];
+            for url in urls {
+                let request = client.get(url).recv_string();
+                handles.push(async_std::task::spawn(request));
+            }
+            let mut results = vec![];
+            for handle in handles {
+                results.push(handle.await);
+            }
+            results
+        }
+        let requests = [
+            "http://example.com",
+            "https://www.red-bean.com",
+            "https://en.wikipedia.org/wiki/Main_Page",
+        ];
+        async_std::task::block_on(multi_surf_requests(&requests))
+            .iter()
+            .enumerate()
+            .for_each(|(idx, r)| match r {
+                Err(e) => println!("{} -- {}", idx, e.to_string()),
+                Ok(s) => println!("{} -- {:.100}", idx, s),
+            });
+
+        if std::env::args().nth(1) == Some("chatclient".to_string()) {
+            use async_std::prelude::*;
+            let address = std::env::args()
+                .nth(2)
+                .expect("Usage: chatclient ADDRESS:PORT");
+            async_std::task::block_on(async {
+                let socket = async_std::net::TcpStream::connect(address)
+                    .await
+                    .expect("connect error");
+                socket.set_nodelay(true).expect("set_nodelay error");
+                let to_server = async_chat::send_commands(socket.clone());
+                let from_server = async_chat::handle_replies(socket);
+                from_server
+                    .race(to_server)
+                    .await
+                    .expect("during chat error");
+            });
+        } else if std::env::args().nth(1) == Some("chatserver".to_string()) {
+            use async_std::prelude::*;
+            let address = std::env::args()
+                .nth(2)
+                .expect("Usage: chatserver ADDRESS:PORT");
+            async_std::task::block_on(async {
+                let listener = async_std::net::TcpListener::bind(address)
+                    .await
+                    .expect("bind error");
+                let chat_group_table = std::sync::Arc::new(async_chat::GroupTable::new());
+                while let Some(socket_result) = listener.incoming().next().await {
+                    let socket = socket_result.expect("get incoming socket error");
+                    let group_table = chat_group_table.clone();
+                    async_std::task::spawn(async {
+                        match async_chat::serve(socket, group_table).await {
+                            Err(e) => {
+                                println!("serve error {}", e.to_string())
+                            }
+                            _ => (),
+                        }
+                    });
+                }
+            });
         }
     }
     return;
@@ -1529,14 +1848,20 @@ fn main() {
         v.binary_search_by_key(&4, |x| *x);
         assert_eq!([1, 2, 3, 4].starts_with(&[1, 2]), true);
         assert_eq!([1, 2, 3, 4].ends_with(&[3, 4]), true);
-        use rand::seq::SliceRandom;
-        use rand::{thread_rng, Rng};
-        let mut v = [1, 2, 3, 4];
-        v.shuffle(&mut thread_rng());
-        let val = thread_rng().gen::<i32>();
-        dbg!(val);
-        let val = thread_rng().gen_range(0.1..99.9);
-        dbg!(val);
+        println!("rand {}", rand::random::<u16>());
+        {
+            use rand::Rng;
+            let val = rand::thread_rng().gen::<i32>();
+            dbg!(val);
+            let val = rand::thread_rng().gen_range(0.1..99.9);
+            dbg!(val);
+        }
+        {
+            use rand::seq::SliceRandom;
+            let mut v = [1, 2, 3, 4];
+            v.shuffle(&mut rand::thread_rng());
+            dbg!(v);
+        }
     }
     return;
     {
@@ -3257,3 +3582,4 @@ When will you stop wasting time plotting fractals?\r\n";
 // fn test_run_cmd_line_process() {
 //     other::run_cmd_line_process();
 // }
+mod async_chat;
