@@ -45,6 +45,176 @@ lazy_static::lazy_static! {
 }
 
 fn main() {
+    // {
+    //     fn generic_str_fn<'a>() -> &'a str {
+    //         "str"
+    //     }
+
+    //     fn static_str_fn() -> &'static str {
+    //         "str"
+    //     }
+
+    //     fn a_or_b<T>(a: T, b: T) -> T {
+    //         if rand::random() {
+    //             a
+    //         } else {
+    //             b
+    //         }
+    //     }
+
+    //     let some_string = "string".to_owned();
+    //     let some_str = &some_string[..];
+    //     let str_ref = a_or_b(some_str, generic_str_fn()); // compiles
+    //     let str_ref = a_or_b(some_str, static_str_fn()); // compiles
+    // }
+    // return;
+    {
+        let mut identity: Box<dyn Fn(&i32) -> &i32> = Box::new(|x: &i32| x);
+        identity = Box::new(|x: &i32| &1234);
+        dbg!(identity(&0));
+        let mut identity: &dyn Fn(i32) -> i32 = &|x: i32| x;
+        identity = &|x: i32| x * 100;
+        dbg!(identity(1));
+        struct MyStruct1;
+        struct MyStruct2;
+        type CallBack<'a> = &'a dyn Fn(&mut MyStruct1, MyStruct2) -> bool;
+        let func: CallBack;
+        let mut e1 = MyStruct1;
+        let e2 = MyStruct2;
+        func = & |e1, e2| false;
+        dbg!(func(&mut e1, e2));
+        type CallBackRef<'a> = std::cell::Ref<'a, dyn Fn(&mut MyStruct1, MyStruct2) -> bool>;
+        let func: CallBackRef;
+        func = & |e1, e2| false;
+    }
+    return;
+    {
+        struct Struct {
+            mutex: std::sync::Mutex<String>,
+        }
+        impl Struct {
+            // downgrades mut self to shared str
+            fn get_string(&mut self) -> &str {
+                self.mutex.get_mut().unwrap() // mutex.get_mut() borrows the Mutex mutably, no actual locking needs to take place
+            }
+            fn mutate_string(&self) {
+                // if Rust allowed downgrading mut refs to shared refs
+                // then the following line would invalidate any shared
+                // refs returned from the get_string method
+                let mut val = self.mutex.lock().unwrap();
+                *val = "surprise!".to_owned();
+            }
+        }
+        let mut s = Struct {
+            mutex: std::sync::Mutex::new("string".to_owned()),
+        };
+        let str_ref = s.get_string(); // mut ref downgraded to shared ref
+        s.mutate_string(); // str_ref invalidated, now a dangling pointer
+                           // dbg!(str_ref); // compile error as expected
+
+        #[derive(Debug, Default)]
+        struct Player;
+        let mut server: std::collections::HashMap<String, Player> =
+            std::collections::HashMap::new();
+        let player_a = "1".to_string();
+        let player_b = "2".to_string();
+        // get players from server or create & insert new players if they don't yet exist
+        let player_a: &Player = server.entry(player_a).or_default();
+        let player_b: &Player = server.entry(player_b).or_default();
+        // dbg!(player_a, player_b); // compile error
+    }
+    return;
+    {
+        struct ByteIter<'a> {
+            remainder: &'a [u8],
+        }
+        impl<'a> ByteIter<'a> {
+            fn modify1(&mut self) -> Option<&u8> {
+                Some(&1)
+            }
+            fn modify2(&mut self) -> Option<&u8> {
+                Some(&2)
+            }
+            fn newmodify1(&mut self) -> Option<&'a u8> {
+                Some(&1)
+            }
+            fn newmodify2(&mut self) -> Option<&'a u8> {
+                Some(&2)
+            }
+            fn some_method(&'a mut self) {} // this method will mutably borrow the struct for the entirety of the struct's lifetime
+        }
+        let mut bytes = ByteIter { remainder: b"1234" };
+        // let byte_n1 = bytes.modify1();
+        // let byte_n2 = bytes.modify2(); // cannot borrow `bytes` as mutable more than once at a time
+        // dbg!(byte_n1);
+        // dbg!(byte_n2);
+        let byte_n1 = bytes.newmodify1();
+        let byte_n2 = bytes.newmodify2();
+        dbg!(byte_n1);
+        dbg!(byte_n2);
+        // bytes.some_method();
+        // bytes.some_method(); // cannot borrow `bytes` as mutable more than once at a time
+
+        trait Animal {
+            fn walk(&self) {
+                println!("walk");
+            }
+        }
+        impl dyn Animal {
+            fn talk(&self) {
+                println!("talk");
+            }
+        }
+        struct Person;
+        impl Animal for Person {}
+        fn demo() -> Box<dyn Animal> {
+            Box::new(Person {})
+        }
+        let p = Person;
+        p.walk();
+        let p1 = demo();
+        p1.talk();
+
+        trait Trait {}
+        // elided
+        type T1 = Box<dyn Trait>;
+        // expanded, Box<T> has no lifetime bound on T, so inferred as 'static
+        type T2 = Box<dyn Trait + 'static>;
+        // elided
+        impl dyn Trait {}
+        // expanded
+        impl dyn Trait + 'static {}
+        // elided
+        type T3<'a> = &'a dyn Trait;
+        // expanded, &'a T requires T: 'a, so inferred as 'a
+        type T4<'a> = &'a (dyn Trait + 'a);
+        // elided
+        type T5<'a> = std::cell::Ref<'a, dyn Trait>;
+        // expanded, Ref<'a, T> requires T: 'a, so inferred as 'a
+        type T6<'a> = std::cell::Ref<'a, dyn Trait + 'a>;
+        trait GenericTrait<'a>: 'a {}
+        // elided
+        type T7<'a> = Box<dyn GenericTrait<'a>>;
+        // expanded
+        type T8<'a> = Box<dyn GenericTrait<'a> + 'a>;
+        // elided
+        impl<'a> dyn GenericTrait<'a> {}
+        // expanded
+        impl<'a> dyn GenericTrait<'a> + 'a {}
+
+        let c = std::cell::Cell::new("asdf");
+        let one = c.get();
+        c.set("qwer");
+        let two = c.get();
+        println!("{},{}", one, two);
+        let str = "我很善变, 还拥有多个主人".to_string();
+        let s = std::rc::Rc::new(std::cell::RefCell::new(str));
+        let s1 = s.clone();
+        let s2 = s.clone();
+        s2.borrow_mut().push_str(", on yeah!");
+        println!("{:?}\n{:?}\n{:?}", s, s1, s2);
+    }
+    return;
     {
         pub struct MyFuture<T>(std::sync::Arc<std::sync::Mutex<Shared<T>>>);
         struct Shared<T> {
@@ -1819,8 +1989,19 @@ fn main() {
             .map(|w| w[1] - w[0]) // 温度改变了多少
             .collect::<Vec<_>>();
         dbg!(changes);
-        let mut v = [1, 2, 3, 4]; // array
-        let mut v = &[1, 2, 3, 4][..]; // slice
+
+        // 切片
+        let v/* : [i32; 4] */ = [1, 2, 3, 4]; // v is array [i32;4]
+        let v/* : &[i32; 4] */ = &[1, 2, 3, 4]; // v is ref of array [i32;4]
+        let v/* : &[i32] */ = &[1, 2, 3, 4][..]; // v is slice &[i32]
+        let v/* : &[i32] */ = [1, 2, 3, 4].as_ref(); // v is slice &[i32]
+        let v_slice: &[i32] = &[1, 2, 3, 4];
+        // v_slice.sort(); // `v` is a `&` reference, so the data it refers to cannot be borrowed as mutable
+        let v_slice: &mut [i32] = &mut [1, 2, 3, 4];
+        v_slice.sort();
+        let v/* : &[u8; 4] */ = b"1234"; // v is ref of array [u8; 4]
+        let v_slice: &[u8] = b"1234";
+
         #[derive(Debug)]
         struct Student {
             first_name: String,
