@@ -46,28 +46,231 @@ lazy_static::lazy_static! {
 
 fn main() {
     // {
-    //     fn generic_str_fn<'a>() -> &'a str {
-    //         "str"
+    //     trait TypeInfo {
+    //         fn type_name() -> String;
+    //         fn type_of(&self) -> String;
     //     }
-
-    //     fn static_str_fn() -> &'static str {
-    //         "str"
+    //     macro_rules! impl_type_info {
+    //         ($($name:ident$(<$($T:ident),+>)*),*) => {
+    //             $(impl_type_info_single!($name$(<$($T),*>)*);)*
+    //         };
     //     }
-
-    //     fn a_or_b<T>(a: T, b: T) -> T {
-    //         if rand::random() {
-    //             a
-    //         } else {
-    //             b
+    //     macro_rules! mut_if {
+    //         ($name:ident = $value:expr, $($any:expr)+) => {
+    //             let mut $name = $value;
+    //         };
+    //         ($name:ident = $value:expr,) => {
+    //             let $name = $value;
+    //         };
+    //     }
+    //     macro_rules! impl_type_info_single {
+    //         ($name:ident$(<$($T:ident),+>)*) => {
+    //             impl$(<$($T: TypeInfo),*>)* TypeInfo for $name$(<$($T),*>)* {
+    //                 fn type_name() -> String {
+    //                     mut_if!(res = String::from(stringify!($name)), $($($T)*)*);
+    //                     $(
+    //                         res.push('<');
+    //                         $(
+    //                             res.push_str(&$T::type_name());
+    //                             res.push(',');
+    //                         )*
+    //                         res.pop();
+    //                         res.push('>');
+    //                     )*
+    //                     res
+    //                 }
+    //                 fn type_of(&self) -> String {
+    //                     $name$(::<$($T),*>)*::type_name()
+    //                 }
+    //             }
     //         }
     //     }
+    //     impl<'a, T: TypeInfo + ?Sized> TypeInfo for &'a T {
+    //         fn type_name() -> String {
+    //             let mut res = String::from("&");
+    //             res.push_str(&T::type_name());
+    //             res
+    //         }
+    //         fn type_of(&self) -> String {
+    //             <&T>::type_name()
+    //         }
+    //     }
+    //     impl<'a, T: TypeInfo + ?Sized> TypeInfo for &'a mut T {
+    //         fn type_name() -> String {
+    //             let mut res = String::from("&mut ");
+    //             res.push_str(&T::type_name());
+    //             res
+    //         }
+    //         fn type_of(&self) -> String {
+    //             <&mut T>::type_name()
+    //         }
+    //     }
+    //     macro_rules! type_of {
+    //         ($x:expr) => {
+    //             (&$x).type_of()
+    //         };
+    //     }
 
-    //     let some_string = "string".to_owned();
-    //     let some_str = &some_string[..];
-    //     let str_ref = a_or_b(some_str, generic_str_fn()); // compiles
-    //     let str_ref = a_or_b(some_str, static_str_fn()); // compiles
+    //     impl_type_info!(i32, i64, f32, f64, str, String, Vec<T>, Result<T,S>);
+    //     println!("{}", type_of!(1));
+    //     println!("{}", type_of!(&1));
+    //     println!("{}", type_of!(&&1));
+    //     println!("{}", type_of!(&mut 1));
+    //     println!("{}", type_of!(&&mut 1));
+    //     println!("{}", type_of!(&mut &1));
+    //     println!("{}", type_of!(1.0));
+    //     println!("{}", type_of!("abc"));
+    //     println!("{}", type_of!(&"abc"));
+    //     println!("{}", type_of!(String::from("abc")));
+    //     println!("{}", type_of!(vec![1, 2, 3]));
+    //     println!("{}", <Result<String, i64>>::type_name());
+    //     println!("{}", <&i32>::type_name());
+    //     println!("{}", <&str>::type_name());
     // }
     // return;
+    {
+        macro_rules! my_vec {
+            ( $elem:tt size $n:tt) => { // use tt to use word seperate pattern
+            ::std::vec::from_elem($elem, $n)
+            };
+            ( $( $x:expr ) ; *) => { // only support ',' ' ' ';' '=>'
+                {
+                    let mut v = ::std::vec::Vec::new();
+                    $( v.push($x); )*
+                    v
+                }
+            };
+            ( $( $x:tt ) ; + first $y:tt) => { // use word first as seperate pattern
+                {
+                    let mut v = ::std::vec::Vec::new();
+                    $( v.push($x); )*
+                    v[0] = $y;
+                    v
+                }
+            }
+        }
+        let val = my_vec!(1 size 1);
+        dbg!(val);
+        let val = my_vec!(1 ; 1);
+        dbg!(val);
+        let val = my_vec!(1 ; 1 first 50);
+        dbg!(val);
+
+        macro_rules! rep {
+            () => {-1};
+            ($ ($e:expr) ,+) => {
+                {
+                    let mut v = Vec::new();
+                    $(
+                        v.push($e);
+                    )+
+                    v
+                }
+            };
+            ($ ($e:expr) ,+ ,) => {
+                {
+                    // rep![ $( $e ),+ ]
+                    let mut sum = 0;
+                    $(
+                        sum = sum + $e;
+                    )+
+                    sum
+                }
+            };
+        }
+        println!("{:?}", rep![]);
+        println!("{:?}", rep![1, 2, 3]);
+        println!("{:?}", rep![1, 2, 3,]);
+
+        macro_rules! param_count {
+            ($a:tt + $b:tt) => {
+                "got an a+b expression"
+            };
+            ($i:ident) => {
+                "got an identifier"
+            };
+            ($a:tt kiss $b:tt) => {
+                $a + $b
+            };
+            ($($e:tt)*) => {
+                "got some tokens"
+            };
+        }
+        println!("{}", param_count!(3 + 4));
+        println!("{}", param_count!(a));
+        println!("{}", param_count!(7 kiss 8));
+        println!("{}", param_count!(4 5 6));
+
+        macro_rules! my_cc {
+            (
+                struct $name:ident {$(pub $field_name:ident: $field_type:ty,)*}
+            )
+         => {
+                struct $name {
+                    $($field_name: $field_type,)*
+                }
+                impl $name {
+                    fn log(&self) {
+                        $( println!("{} -> {:?}", stringify!($field_name), self.$field_name); )*
+                    }
+                }
+            }
+        }
+
+        my_cc!(
+            struct Hello {
+                pub name: String,
+                pub size: String,
+            }
+        );
+        let hello = Hello {
+            name: "1".to_string(),
+            size: "2".to_string(),
+        };
+        hello.log();
+
+        pub trait HelloMacro {
+            fn hello_macro();
+        }
+        use hello_macro_derive::HelloMacro;
+        #[derive(HelloMacro)]
+        struct MyStruct;
+        MyStruct::hello_macro();
+
+        {
+            #[derive(Clone, PartialEq, Debug)]
+            enum Json {
+                Null,
+                Boolean(bool),
+                Number(f64),
+                String(String),
+                Array(Vec<Json>),
+                Object(Box<HashMap<String, Json>>),
+            }
+        }
+    }
+    return;
+    {
+        fn generic_str_fn<'a>() -> &'a str {
+            "str"
+        }
+        fn static_str_fn() -> &'static str {
+            "str"
+        }
+        fn a_or_b<T>(a: T, b: T) -> T {
+            if rand::random() {
+                a
+            } else {
+                b
+            }
+        }
+
+        let some_string = "string".to_owned();
+        let some_str = &some_string[..];
+        let str_ref = a_or_b(some_str, generic_str_fn()); // compiles
+        let str_ref = a_or_b(some_str, static_str_fn()); // compiles
+    }
+    return;
     {
         let mut identity: Box<dyn Fn(&i32) -> &i32> = Box::new(|x: &i32| x);
         identity = Box::new(|x: &i32| &1234);
@@ -81,11 +284,65 @@ fn main() {
         let func: CallBack;
         let mut e1 = MyStruct1;
         let e2 = MyStruct2;
-        func = & |e1, e2| false;
+        func = &|e1, e2| false;
         dbg!(func(&mut e1, e2));
         type CallBackRef<'a> = std::cell::Ref<'a, dyn Fn(&mut MyStruct1, MyStruct2) -> bool>;
-        let func: CallBackRef;
-        func = & |e1, e2| false;
+
+        struct Todo {
+            id: i16,
+            deleted: bool,
+            completed: bool,
+        }
+        fn with_todo_id_1(todos: &mut Vec<Todo>, todo_id: i16, f: &dyn Fn(&mut Todo)) {
+            if let Some(todo) = todos.iter_mut().find(|todo| todo.id == todo_id) {
+                f(todo);
+            }
+        }
+        fn with_todo_id_2<P>(todos: &mut Vec<Todo>, todo_id: i16, f: P)
+        where
+            P: Fn(&mut Todo),
+        {
+            if let Some(todo) = todos.iter_mut().find(|todo| todo.id == todo_id) {
+                f(todo);
+            }
+        }
+        fn remove_todo(todos: &mut Vec<Todo>, todo_id: i16) {
+            with_todo_id_1(todos, todo_id, &|todo| todo.deleted = true);
+        }
+        fn mark_done(todos: &mut Vec<Todo>, todo_id: i16) {
+            with_todo_id_2(todos, todo_id, |todo| todo.completed = true);
+        }
+
+        {
+            // iter and closure sample
+            struct MyFromFn<F>(F);
+            fn my_from_fn<T, F>(f: F) -> MyFromFn<F>
+            where
+                F: FnMut() -> Option<T>,
+            {
+                MyFromFn(f)
+            }
+            impl<T, F> Iterator for MyFromFn<F>
+            where
+                F: FnMut() -> Option<T>,
+            {
+                type Item = T;
+                fn next(&mut self) -> Option<Self::Item> {
+                    (self.0)()
+                }
+            }
+            fn fibonacci() -> impl Iterator<Item = usize> {
+                let mut state = (0, 1);
+                // std::iter::from_fn(move || { // create iter with function callback
+                my_from_fn(move || {
+                    // move to mark ref outer var
+                    state = (state.1, state.0 + state.1);
+                    Some(state.0)
+                })
+            }
+            let result = fibonacci().nth(4).unwrap();
+            dbg!(result);
+        }
     }
     return;
     {
@@ -3587,7 +3844,7 @@ When will you stop wasting time plotting fractals?\r\n";
             Array(Vec<Json>),
             Object(Box<HashMap<String, Json>>),
         }
-        let json_val = Json::String(("Test Json".to_string()));
+        let json_val = Json::String("Test Json".to_string());
         println!("json_val {:?}", &json_val);
     }
     return;
@@ -3759,7 +4016,7 @@ When will you stop wasting time plotting fractals?\r\n";
     }
 }
 
-// mod other;
+mod other;
 // fn test_run_cmd_line_process() {
 //     other::run_cmd_line_process();
 // }

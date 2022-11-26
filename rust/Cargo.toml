@@ -26,3 +26,4 @@ serde_json = "1"
 tokio = { version = "1", features = ["sync"] }
 waker-fn = "1"
 futures-lite = "1"
+hello_macro_derive = { path = "src/hello_macro_derive" }
