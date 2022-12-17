@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 num = "0"
-image = "0"
+image = "0.13"
 crossbeam = "0"
 text-colorizer = "1"
 regex = "1"
@@ -16,7 +16,10 @@ rand = "0"
 chrono = "0"
 byteorder = "1"
 flate2 = "1"
-reqwest = { version = "0", features = ["blocking", "rustls-tls"], default-features = false }
+reqwest = { version = "0", features = [
+    "blocking",
+    "rustls-tls",
+], default-features = false }
 rayon = "1"
 lazy_static = "1"
 async-std = { version = "1", features = ["unstable"] }
@@ -28,3 +31,6 @@ waker-fn = "1"
 futures-lite = "1"
 derive_macro = { path = "src/derive_macro" }
 git = { path = "src/git" }
+particle = { path = "src/particle" }
+meminfo = { path = "src/meminfo-win32" }
+bincode = { version = "2.0.0-rc.2", features = ["derive"] }
