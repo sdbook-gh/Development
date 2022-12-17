@@ -837,7 +837,9 @@ fn main() {
         };
         hello.log();
 
-        use trait_definition::MyTrait;
+        trait MyTrait {
+            fn do_test();
+        }
         #[derive(derive_macro::MyTrait)]
         struct MyStruct;
         MyStruct::do_test();
