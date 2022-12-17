@@ -1,3 +1,7 @@
+#![allow(unused_variables)]
+#![allow(dead_code)]
+#![allow(non_camel_case_types)]
+
 type GenericError = Box<dyn std::error::Error + Send + Sync + 'static>;
 type GenericResult<T> = Result<T, GenericError>;
 
@@ -45,89 +49,693 @@ lazy_static::lazy_static! {
 }
 
 fn main() {
-    // {
-    //     trait TypeInfo {
-    //         fn type_name() -> String;
-    //         fn type_of(&self) -> String;
-    //     }
-    //     macro_rules! impl_type_info {
-    //         ($($name:ident$(<$($T:ident),+>)*),*) => {
-    //             $(impl_type_info_single!($name$(<$($T),*>)*);)*
-    //         };
-    //     }
-    //     macro_rules! mut_if {
-    //         ($name:ident = $value:expr, $($any:expr)+) => {
-    //             let mut $name = $value;
-    //         };
-    //         ($name:ident = $value:expr,) => {
-    //             let $name = $value;
-    //         };
-    //     }
-    //     macro_rules! impl_type_info_single {
-    //         ($name:ident$(<$($T:ident),+>)*) => {
-    //             impl$(<$($T: TypeInfo),*>)* TypeInfo for $name$(<$($T),*>)* {
-    //                 fn type_name() -> String {
-    //                     mut_if!(res = String::from(stringify!($name)), $($($T)*)*);
-    //                     $(
-    //                         res.push('<');
-    //                         $(
-    //                             res.push_str(&$T::type_name());
-    //                             res.push(',');
-    //                         )*
-    //                         res.pop();
-    //                         res.push('>');
-    //                     )*
-    //                     res
-    //                 }
-    //                 fn type_of(&self) -> String {
-    //                     $name$(::<$($T),*>)*::type_name()
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     impl<'a, T: TypeInfo + ?Sized> TypeInfo for &'a T {
-    //         fn type_name() -> String {
-    //             let mut res = String::from("&");
-    //             res.push_str(&T::type_name());
-    //             res
-    //         }
-    //         fn type_of(&self) -> String {
-    //             <&T>::type_name()
-    //         }
-    //     }
-    //     impl<'a, T: TypeInfo + ?Sized> TypeInfo for &'a mut T {
-    //         fn type_name() -> String {
-    //             let mut res = String::from("&mut ");
-    //             res.push_str(&T::type_name());
-    //             res
-    //         }
-    //         fn type_of(&self) -> String {
-    //             <&mut T>::type_name()
-    //         }
-    //     }
-    //     macro_rules! type_of {
-    //         ($x:expr) => {
-    //             (&$x).type_of()
-    //         };
-    //     }
+    {
+        // let big_endian: [u8; 4] = [0xAA, 0xBB, 0xCC, 0xDD];
+        // let little_endian: [u8; 4] = [0xDD, 0xCC, 0xBB, 0xAA];
+        // let a: i32 = unsafe { std::mem::transmute(big_endian) };
+        // let b: i32 = unsafe { std::mem::transmute(little_endian) };
+        // println!("{} vs {}", a, b);
 
-    //     impl_type_info!(i32, i64, f32, f64, str, String, Vec<T>, Result<T,S>);
-    //     println!("{}", type_of!(1));
-    //     println!("{}", type_of!(&1));
-    //     println!("{}", type_of!(&&1));
-    //     println!("{}", type_of!(&mut 1));
-    //     println!("{}", type_of!(&&mut 1));
-    //     println!("{}", type_of!(&mut &1));
-    //     println!("{}", type_of!(1.0));
-    //     println!("{}", type_of!("abc"));
-    //     println!("{}", type_of!(&"abc"));
-    //     println!("{}", type_of!(String::from("abc")));
-    //     println!("{}", type_of!(vec![1, 2, 3]));
-    //     println!("{}", <Result<String, i64>>::type_name());
-    //     println!("{}", <&i32>::type_name());
-    //     println!("{}", <&str>::type_name());
-    // }
-    // return;
+        particle::particle_main();
+
+        #[cfg(target_os = "windows")]
+        {
+            meminfo::meminfo_main();
+        }
+        #[derive(bincode::Encode, bincode::Decode)]
+        struct City {
+            name: String,
+            population: usize,
+            latitude: f64,
+            longitude: f64,
+        }
+        let calabar = City {
+            name: String::from("Calabar"),
+            population: 470_000,
+            latitude: 4.95,
+            longitude: 8.33,
+        };
+        let config = bincode::config::standard();
+        let bin_code = bincode::encode_to_vec(calabar, config).unwrap();
+
+        fn basic_hash(key: &str) -> u32 {
+            let first = key.chars().next().unwrap_or('\0');
+            unsafe { std::mem::transmute::<char, u32>(first) }
+        }
+    }
+    return;
+    {
+        mod ascii {
+            /// 一个 ASCII 编码的字符串
+            #[derive(Debug, Eq, PartialEq)]
+            pub struct Ascii(
+                // pub, can be used out of mod
+                // 它必须只存有有效的 ASCII文本：从`0`到`0x7f`的字节序列
+                Vec<u8>, // not pub, cannot be used outside of mod
+            );
+            impl Ascii {
+                /// 从`bytes`中的 Ascii 文本创建一个`Ascii`。
+                /// 如果`bytes`中含有任何非 ASCII 字符就返回一个`NotAsciiError`错误。
+                pub fn from_bytes(bytes: Vec<u8>) -> Result<Ascii, NotAsciiError> {
+                    if bytes.iter().any(|&byte| !byte.is_ascii()) {
+                        return Err(NotAsciiError(bytes));
+                    }
+                    Ok(Ascii(bytes))
+                }
+            }
+            // 当转换失败时，我们会给出不能转换的vector。
+            // 它应该实现`std::error::Error`，这里为了简洁就省略了。
+            #[derive(Debug, Eq, PartialEq)]
+            pub struct NotAsciiError(pub Vec<u8>);
+            // 安全、高效的转换，使用 unsafe代码实现。
+            impl From<Ascii> for String {
+                fn from(ascii: Ascii) -> String {
+                    // 如果这个模块没有 bug的话，这里就是安全的，
+                    // 因为有效的 ASCII文本也是有效的 UTF-8文本。
+                    unsafe { String::from_utf8_unchecked(ascii.0) }
+                }
+            }
+        }
+        {
+            let val = 20;
+            let val_ref = &val;
+            unsafe {
+                let mut_val = val_ref as *const i32 as *mut i32 as *mut u8;
+                *mut_val.add(0) = 0;
+                *mut_val.add(1) = 1;
+                *mut_val.add(2) = 2;
+                *mut_val.add(3) = 4;
+            }
+            println!("val: {:x}", val);
+        }
+        {
+            pub unsafe trait Zeroable {}
+            unsafe impl Zeroable for u8 {}
+            unsafe impl Zeroable for usize {}
+
+            fn zeroed_vector<T>(len: usize) -> Vec<T>
+            where
+                T: Zeroable,
+                usize: TryInto<T>,
+                <usize as TryInto<T>>::Error: std::fmt::Debug,
+            {
+                let mut vec = Vec::<T>::with_capacity(len);
+                unsafe {
+                    // std::ptr::write_bytes(vec.as_mut_ptr(), 0, len);
+                    let ptr = vec.as_mut_ptr();
+                    for i in 0..len {
+                        *ptr.add(i) = i.try_into().unwrap();
+                    }
+                    vec.set_len(len);
+                }
+                vec
+            }
+            let size = 10u8;
+            let mut vec = zeroed_vector::<u8>(10);
+            vec[0] = 100;
+            dbg!(vec);
+
+            fn option_to_raw<T>(opt: Option<&T>) -> *const T {
+                match opt {
+                    None => std::ptr::null(),
+                    Some(r) => r as *const T,
+                }
+            }
+
+            let mut trucks = vec!["grabage truck", "dump truck", "moonstruck"];
+            let first: *const &str = &trucks[0];
+            let last: *mut &str = &trucks[2] as *const &str as *mut &str;
+            unsafe {
+                println!("{}", last.offset_from(first.offset(1000)));
+            }
+        }
+        mod ref_with_flag {
+            pub struct RefWithFlag<'a, T> {
+                ptr_and_bit: usize,
+                behaves_like: std::marker::PhantomData<&'a T>, // 不占用空间
+            }
+            impl<'a, T: 'a> RefWithFlag<'a, T> {
+                pub fn new(ptr: &'a T, flag: bool) -> RefWithFlag<'a, T> {
+                    assert!(std::mem::align_of::<T>() % 2 == 0);
+                    RefWithFlag {
+                        ptr_and_bit: ptr as *const T as usize | flag as usize,
+                        behaves_like: std::marker::PhantomData,
+                    }
+                }
+                pub fn get_ref(&self) -> &'a T {
+                    unsafe {
+                        let ptr = (self.ptr_and_bit & !1) as *const T;
+                        &*ptr
+                    }
+                }
+                pub fn get_flag(&self) -> bool {
+                    self.ptr_and_bit & 1 != 0
+                }
+            }
+        }
+        use ref_with_flag::RefWithFlag;
+        let vec = vec![10, 20, 30];
+        let flagged = RefWithFlag::new(&vec, true);
+        assert_eq!(flagged.get_ref()[1], 20);
+        assert_eq!(flagged.get_flag(), true);
+        {
+            use std::fmt::Display;
+            dbg!(std::mem::size_of::<i64>());
+            println!("{}", std::mem::align_of::<(i32, i32)>());
+            let slice: &[i32] = &[1, 3, 9, 27, 81];
+            dbg!(std::mem::size_of_val(slice));
+            let text: &str = "alligator";
+            dbg!(std::mem::size_of_val(text));
+            let unremarkable: &dyn Display = &193_u8;
+            // let remarkable: &dyn Display = &0.0072973525664;
+            dbg!(std::mem::size_of_val(unremarkable));
+            // dbg!(std::mem::size_of_val(remarkable));
+
+            fn offset<T>(ptr: *const T, count: isize) -> *const T
+            where
+                T: Sized,
+            {
+                let bytes_per_element = std::mem::size_of::<T>() as isize;
+                let byte_offset = count * bytes_per_element;
+                (ptr as isize).checked_add(byte_offset).unwrap() as *const T
+            }
+        }
+        {
+            use std::ops::Range;
+            pub struct GapBuffer<T> {
+                // Storage for elements. This has the capacity we need, but its length
+                // always remains zero. GapBuffer puts its elements and the gap in this
+                // `Vec`'s "unused" capacity.
+                storage: Vec<T>,
+                // Range of uninitialized elements in the middle of `storage`.
+                // Elements before and after this range are always initialized.
+                gap: Range<usize>,
+            }
+            impl<T> GapBuffer<T> {
+                pub fn new() -> GapBuffer<T> {
+                    GapBuffer {
+                        storage: Vec::new(),
+                        gap: 0..0,
+                    }
+                }
+                /// Return the number of elements this GapBuffer could hold without
+                /// reallocation.
+                pub fn capacity(&self) -> usize {
+                    self.storage.capacity()
+                }
+                /// Return the number of elements this GapBuffer currently holds.
+                pub fn len(&self) -> usize {
+                    self.capacity() - self.gap.len()
+                }
+                /// Return the current insertion position.
+                pub fn position(&self) -> usize {
+                    self.gap.start
+                }
+                /// Return a pointer to the `index`th element of the underlying storage,
+                /// regardless of the gap.
+                ///
+                /// Safety: `index` must be a valid index into `self.storage`.
+                unsafe fn space(&self, index: usize) -> *const T {
+                    self.storage.as_ptr().offset(index as isize)
+                }
+                /// Return a mutable pointer to the `index`th element of the underlying
+                /// storage, regardless of the gap.
+                ///
+                /// Safety: `index` must be a valid index into `self.storage`.
+                unsafe fn space_mut(&mut self, index: usize) -> *mut T {
+                    self.storage.as_mut_ptr().offset(index as isize)
+                }
+                /// Return the offset in the buffer of the `index`th element, taking
+                /// the gap into account. This does not check whether index is in range,
+                /// but it never returns an index in the gap.
+                fn index_to_raw(&self, index: usize) -> usize {
+                    if index < self.gap.start {
+                        index
+                    } else {
+                        index + self.gap.len()
+                    }
+                }
+                /// Return a reference to the `index`th element,
+                /// or `None` if `index` is out of bounds.
+                pub fn get(&self, index: usize) -> Option<&T> {
+                    let raw = self.index_to_raw(index);
+                    if raw < self.capacity() {
+                        unsafe {
+                            // We just checked `raw` against self.capacity(),
+                            // and index_to_raw skips the gap, so this is safe.
+                            Some(&*self.space(raw))
+                        }
+                    } else {
+                        None
+                    }
+                }
+                /// Set the current insertion position to `pos`.
+                /// If `pos` is out of bounds, panic.
+                pub fn set_position(&mut self, pos: usize) {
+                    if pos > self.len() {
+                        panic!("index {} out of range for GapBuffer", pos);
+                    }
+                    unsafe {
+                        let gap = self.gap.clone();
+                        if pos > gap.start {
+                            // `pos` falls after the gap. Move the gap right
+                            // by shifting elements after the gap to before it.
+                            let distance = pos - gap.start;
+                            std::ptr::copy(
+                                self.space(gap.end),
+                                self.space_mut(gap.start),
+                                distance,
+                            );
+                        } else if pos < gap.start {
+                            // `pos` falls before the gap. Move the gap left
+                            // by shifting elements before the gap to after it.
+                            let distance = gap.start - pos;
+                            std::ptr::copy(
+                                self.space(pos),
+                                self.space_mut(gap.end - distance),
+                                distance,
+                            );
+                        }
+                        self.gap = pos..pos + gap.len();
+                    }
+                }
+                /// Insert `elt` at the current insertion position,
+                /// and leave the insertion position after it.
+                pub fn insert(&mut self, elt: T) {
+                    if self.gap.len() == 0 {
+                        self.enlarge_gap();
+                    }
+                    unsafe {
+                        let index = self.gap.start;
+                        std::ptr::write(self.space_mut(index), elt);
+                    }
+                    self.gap.start += 1;
+                }
+                /// Insert the elements produced by `iter` at the current insertion
+                /// position, and leave the insertion position after them.
+                pub fn insert_iter<I>(&mut self, iterable: I)
+                where
+                    I: IntoIterator<Item = T>,
+                {
+                    for item in iterable {
+                        self.insert(item)
+                    }
+                }
+                /// Remove the element just after the insertion position
+                /// and return it, or return `None` if the insertion position
+                /// is at the end of the GapBuffer.
+                pub fn remove(&mut self) -> Option<T> {
+                    if self.gap.end == self.capacity() {
+                        return None;
+                    }
+                    let element = unsafe { std::ptr::read(self.space(self.gap.end)) };
+                    self.gap.end += 1;
+                    Some(element)
+                }
+                /// Double the capacity of `self.storage`.
+                fn enlarge_gap(&mut self) {
+                    let mut new_capacity = self.capacity() * 2;
+                    if new_capacity == 0 {
+                        // The existing vector is empty.
+                        // Choose a reasonable starting capacity.
+                        new_capacity = 4;
+                    }
+                    // We have no idea what resizing a Vec does with its "unused"
+                    // capacity. So just create a new vector and move over the elements.
+                    let mut new = Vec::with_capacity(new_capacity);
+                    let after_gap = self.capacity() - self.gap.end;
+                    let new_gap = self.gap.start..new.capacity() - after_gap;
+                    unsafe {
+                        // Move the elements that fall before the gap.
+                        std::ptr::copy_nonoverlapping(
+                            self.space(0),
+                            new.as_mut_ptr(),
+                            self.gap.start,
+                        );
+                        // Move the elements that fall after the gap.
+                        let new_gap_end = new.as_mut_ptr().offset(new_gap.end as isize);
+                        std::ptr::copy_nonoverlapping(
+                            self.space(self.gap.end),
+                            new_gap_end,
+                            after_gap,
+                        );
+                    }
+                    // This frees the old Vec, but drops no elements,
+                    // because the Vec's length is zero.
+                    self.storage = new;
+                    self.gap = new_gap;
+                }
+            }
+            impl<T> Drop for GapBuffer<T> {
+                fn drop(&mut self) {
+                    unsafe {
+                        for i in 0..self.gap.start {
+                            std::ptr::drop_in_place(self.space_mut(i));
+                        }
+                        for i in self.gap.end..self.capacity() {
+                            std::ptr::drop_in_place(self.space_mut(i));
+                        }
+                    }
+                }
+            }
+        }
+        {
+            union FloatOrInt {
+                f: f32,
+                i: i32,
+            }
+            let mut one = FloatOrInt { i: 1 };
+            assert_eq!(unsafe { one.i }, 0x00_00_00_01);
+            one.f = 1.0;
+            assert_eq!(unsafe { one.i }, 0x3F_80_00_00);
+            let float = FloatOrInt { f: 31337.0 };
+            // 打印出 1000110111101001101001000000000
+            println!("{:b}", unsafe { float.i });
+
+            union SmallOrLarge {
+                s: bool,
+                l: u64,
+            }
+            let u = SmallOrLarge { l: 1337 };
+            println!("{}", unsafe { u.l });
+            let u = SmallOrLarge { l: 2 };
+            unsafe {
+                match u {
+                    SmallOrLarge { s: true } => {
+                        println!("boolean true");
+                    }
+                    SmallOrLarge { l: 2 } => {
+                        println!("integer 2");
+                    }
+                    _ => {
+                        println!("something else");
+                    }
+                }
+            }
+            let u = FloatOrInt { i: 128 };
+            unsafe {
+                match u {
+                    FloatOrInt { f } => {
+                        println!("float {}", f)
+                    }
+                    // 警告：不可能到达的模式
+                    FloatOrInt { i } => {
+                        println!("int {}", i)
+                    }
+                }
+            }
+
+            #[repr(C)]
+            union SignExtractor {
+                value: i64,
+                bytes: [u8; 8],
+            }
+            fn sign(int: i64) -> bool {
+                let se = SignExtractor { value: int };
+                println!("{:b} ({:?})", unsafe { se.value }, unsafe { se.bytes });
+                unsafe { se.bytes[7] >= 0b10000000 }
+            }
+            assert_eq!(sign(-1), true);
+            assert_eq!(sign(1), false);
+            assert_eq!(sign(i64::MAX), false);
+            assert_eq!(sign(i64::MIN), true);
+        }
+        {
+            let mut x = std::mem::ManuallyDrop::new(String::from("Hello World!"));
+            x.truncate(5); // You can still safely operate on the value
+            assert_eq!(*x, "Hello");
+            unsafe {
+                std::mem::ManuallyDrop::drop(&mut x);
+            }
+
+            unsafe fn make_vec(out: *mut Vec<i32>) {
+                // `write` does not drop the old contents, which is important.
+                out.write(vec![1, 2, 3]);
+            }
+            let mut v = std::mem::MaybeUninit::uninit();
+            unsafe {
+                make_vec(v.as_mut_ptr());
+            }
+            // Now we know `v` is initialized! This also makes sure the vector gets
+            // properly dropped.
+            let v = unsafe { v.assume_init() };
+            assert_eq!(&v, &[1, 2, 3]);
+        }
+        {
+            // typedef struct {
+            //     char *message;
+            //     int klass;
+            // } git_error;
+            #[repr(C)]
+            pub struct git_error {
+                pub message: *const std::os::raw::c_char,
+                pub klass: std::os::raw::c_int,
+            }
+            // enum git_error_code: int16_t {
+            //     GIT_OK = 0,
+            //     GIT_ERROR = -1,
+            //     GIT_ENOTFOUND = -3,
+            //     GIT_EEXISTS = -4,
+            //     ...
+            // };
+            #[repr(i16)]
+            #[allow(non_camel_case_types)]
+            enum git_error_code {
+                GIT_OK = 0,
+                GIT_ERROR = -1,
+                GIT_ENOTFOUND = -3,
+                GIT_EEXISTS = -4,
+            }
+
+            // enum tag {
+            //     FLOAT = 0,
+            //     INT = 1,
+            // };
+            // union number {
+            //     float f;
+            //     short i;
+            // };
+            // struct tagged_number {
+            //     tag t;
+            //     number n;
+            // };
+            #[repr(C)]
+            enum Tag {
+                Float = 0,
+                Int = 1,
+            }
+            #[repr(C)]
+            union FloatOrInt {
+                f: f32,
+                i: i32,
+            }
+            #[repr(C)]
+            struct Value {
+                tag: Tag,
+                union: FloatOrInt,
+            }
+            fn is_zero(v: Value) -> bool {
+                unsafe {
+                    match v {
+                        Value {
+                            tag: Tag::Int,
+                            union: FloatOrInt { i: 0 },
+                        } => true,
+                        Value {
+                            tag: Tag::Float,
+                            union: FloatOrInt { f: num },
+                        } => (num == 0.0),
+                        _ => false,
+                    }
+                }
+            }
+            extern "C" {
+                fn strlen(s: *const std::os::raw::c_char) -> std::os::raw::c_int;
+            }
+            let str = "Hello Rust FFI!";
+            let c_str = std::ffi::CString::new(str).unwrap();
+            println!("len: {}", unsafe { strlen(c_str.as_ptr()) });
+            extern "C" {
+                // extern char **environ;
+                static environ: *const *const std::os::raw::c_char;
+            }
+            unsafe {
+                let mut indx = 0;
+                loop {
+                    let ptr = environ.offset(indx);
+                    if !ptr.is_null() && !(*ptr).is_null() {
+                        let env_str = std::ffi::CStr::from_ptr(*ptr);
+                        println!("{}", env_str.to_str().unwrap());
+                        indx += 1;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                use std::os::raw::*;
+                #[repr(C)]
+                pub struct git_error {
+                    pub message: *const c_char,
+                    pub klass: c_int,
+                }
+                #[link(name = "git2")]
+                extern "C" {
+                    pub fn git_libgit2_init() -> c_int;
+                    pub fn git_libgit2_shutdown() -> c_int;
+                    pub fn giterr_last() -> *const git_error;
+                }
+                unsafe {
+                    if git_libgit2_init() >= 0 {
+                        println!("git_libgit2_init ok");
+                    } else {
+                        let err = giterr_last();
+                        if err.is_null() {
+                            println!("cannot get error message from giterr_last");
+                        } else {
+                            let err_msg =
+                                std::ffi::CStr::from_ptr((*err).message).to_str().unwrap();
+                            println!("{}", err_msg);
+                        }
+                    }
+                    if git_libgit2_shutdown() == 0 {
+                        println!("git_libgit2_shutdown ok");
+                    } else {
+                        let err = giterr_last();
+                        if err.is_null() {
+                            println!("cannot get error message from giterr_last");
+                        } else {
+                            let err_msg =
+                                std::ffi::CStr::from_ptr((*err).message).to_str().unwrap();
+                            println!("{}", err_msg);
+                        }
+                    }
+                }
+            }
+            #[cfg(target_os = "linux")]
+            {
+                use git::util;
+                let path = "/mnt/d/personal/github/Development";
+                let repo = util::Repository::open(&path).expect("opening repository");
+                let commit_oid = repo
+                    .reference_name_to_id("HEAD")
+                    .expect("looking up 'HEAD' reference");
+                let commit = repo.find_commit(&commit_oid).expect("looking up commit");
+                let author = commit.author();
+                println!(
+                    "{} <{}>\n",
+                    author.name().unwrap_or("none"),
+                    author.email().unwrap_or("none")
+                );
+                println!("{}", commit.message().unwrap_or("none"));
+            }
+        }
+    }
+    return;
+    {
+        use std::convert::TryInto;
+        use std::fmt::Debug;
+        use std::ops::Rem;
+        trait Even {
+            fn is_even(self) -> bool;
+        }
+        impl<T> Even for T
+        where
+            T: Rem<Output = T> + PartialEq<T> + Sized,
+            u8: TryInto<T>,
+            <u8 as TryInto<T>>::Error: Debug,
+        {
+            fn is_even(self) -> bool {
+                self % 2.try_into().unwrap() == 0.try_into().unwrap()
+            }
+        }
+        dbg!(Even::is_even(10u8));
+    }
+    return;
+    {
+        trait TypeInfo {
+            fn type_name() -> String;
+            fn type_of(&self) -> String;
+        }
+        macro_rules! impl_type_info {
+            ($($name:ident$(<$($T:ident),+>)*),*) => {
+                $(impl_type_info_single!($name$(<$($T),*>)*);)*
+            };
+        }
+        macro_rules! mut_if {
+            ($name:ident = $value:expr, $($any:expr)+) => {
+                let mut $name = $value;
+            };
+            ($name:ident = $value:expr,) => {
+                let $name = $value;
+            };
+        }
+        macro_rules! impl_type_info_single {
+            ($name:ident$(<$($T:ident),+>)*) => {
+                impl$(<$($T: TypeInfo),*>)* TypeInfo for $name$(<$($T),*>)* {
+                    fn type_name() -> String {
+                        mut_if!(res = String::from(stringify!($name)), $($($T)*)*);
+                        $(
+                            res.push('<');
+                            $(
+                                res.push_str(&$T::type_name());
+                                res.push(',');
+                            )*
+                            res.pop();
+                            res.push('>');
+                        )*
+                        res
+                    }
+                    fn type_of(&self) -> String {
+                        $name$(::<$($T),*>)*::type_name()
+                    }
+                }
+            }
+        }
+        impl<'a, T: TypeInfo + ?Sized> TypeInfo for &'a T {
+            fn type_name() -> String {
+                let mut res = String::from("&");
+                res.push_str(&T::type_name());
+                res
+            }
+            fn type_of(&self) -> String {
+                <&T>::type_name()
+            }
+        }
+        impl<'a, T: TypeInfo + ?Sized> TypeInfo for &'a mut T {
+            fn type_name() -> String {
+                let mut res = String::from("&mut ");
+                res.push_str(&T::type_name());
+                res
+            }
+            fn type_of(&self) -> String {
+                <&mut T>::type_name()
+            }
+        }
+        macro_rules! type_of {
+            ($x:expr) => {
+                (&$x).type_of()
+            };
+        }
+
+        impl_type_info!(i32, i64, f32, f64, str, String, Vec<T>, Result<T,S>);
+        println!("{}", type_of!(1));
+        println!("{}", type_of!(&1));
+        println!("{}", type_of!(&&1));
+        println!("{}", type_of!(&mut 1));
+        println!("{}", type_of!(&&mut 1));
+        println!("{}", type_of!(&mut &1));
+        println!("{}", type_of!(1.0));
+        println!("{}", type_of!("abc"));
+        println!("{}", type_of!(&"abc"));
+        println!("{}", type_of!(String::from("abc")));
+        println!("{}", type_of!(vec![1, 2, 3]));
+        println!("{}", <Result<String, i64>>::type_name());
+        println!("{}", <&i32>::type_name());
+        println!("{}", <&str>::type_name());
+    }
+    return;
     {
         macro_rules! my_vec {
             ( $elem:tt size $n:tt) => { // use tt to use word seperate pattern
@@ -160,7 +768,7 @@ fn main() {
             () => {-1};
             ($ ($e:expr) ,+) => {
                 {
-                    let mut v = Vec::new();
+                    let mut v = ::std::vec::Vec::new();
                     $(
                         v.push($e);
                     )+
@@ -229,16 +837,12 @@ fn main() {
         };
         hello.log();
 
-        pub trait HelloMacro {
-            fn hello_macro();
-        }
-        use hello_macro_derive::HelloMacro;
-        #[derive(HelloMacro)]
+        use trait_definition::MyTrait;
+        #[derive(derive_macro::MyTrait)]
         struct MyStruct;
-        MyStruct::hello_macro();
+        MyStruct::do_test();
 
         {
-            use std::collections::HashMap;
             #[derive(Clone, PartialEq, Debug)]
             enum Json {
                 Null,
@@ -246,7 +850,7 @@ fn main() {
                 Number(f64),
                 String(String),
                 Array(Vec<Json>),
-                Object(Box<HashMap<String, Json>>),
+                Object(Box<std::collections::HashMap<String, Json>>),
             }
             impl From<bool> for Json {
                 fn from(b: bool) -> Json {
@@ -295,8 +899,8 @@ fn main() {
             assert_eq!(json!(null), Json::Null); // passes!
             let width = 4.0;
             let desc = json!({
-                "width": 1,
-                "height": 2
+                "width": width,
+                "height": (width * 9.0 / 4.0) // (...) is a tt
             });
             dbg!(desc);
         }
@@ -2096,21 +2700,74 @@ fn main() {
         let mut buf = str.into_bytes();
         // dbg!(&str); // error, str inner data is moved
 
-        fn get_env(name: &str) -> std::borrow::Cow<'static, str> {
-            std::env::var(name)
-                .map(|x| std::borrow::Cow::Owned(x))
-                .unwrap_or(std::borrow::Cow::Borrowed("get_env failed"))
+        {
+            // std::borrow::Cow
+            use std::borrow::Cow;
+            fn check_modify_minus(input: &mut Cow<[i32]>) {
+                for i in 0..input.len() {
+                    let v = input[i];
+                    if v < 0 {
+                        input.to_mut()[i] = -v; // Clones into a vector if not already owned.
+                    }
+                }
+            }
+            let slice = [0, 1, 2];
+            let mut input = Cow::from(&slice[..]);
+            check_modify_minus(&mut input); // No clone occurs because `input` doesn't need to be mutated.
+            let slice = [-1, 0, 1];
+            let mut input = Cow::from(&slice[..]);
+            check_modify_minus(&mut input); // Clone occurs because `input` needs to be mutated.
+            let mut input = Cow::from(vec![-1, 0, 1]);
+            check_modify_minus(&mut input); // No clone occurs because `input` is already owned.
+
+            struct Items<'a, X: 'a>
+            where
+                [X]: ToOwned<Owned = Vec<X>>,
+            {
+                values: Cow<'a, [X]>,
+            }
+            impl<'a, X: Clone + 'a> Items<'a, X>
+            where
+                [X]: ToOwned<Owned = Vec<X>>,
+            {
+                fn new(v: Cow<'a, [X]>) -> Self {
+                    Items { values: v }
+                }
+            }
+            let readonly = [1, 2];
+            let borrowed = Items::new(Cow::Borrowed(&readonly[..])); // Creates a container from borrowed values of a slice
+            match borrowed {
+                Items {
+                    values: Cow::Borrowed(val),
+                } => println!("borrowed {:?}", val),
+                _ => panic!("expect borrowed value"),
+            }
+            let mut clone_on_write = borrowed;
+            clone_on_write.values.to_mut().push(3); // Mutates the data from slice into owned vec and pushes a new value on top
+            println!("clone_on_write = {:?}", clone_on_write.values);
+            match clone_on_write {
+                Items {
+                    values: Cow::Owned(val),
+                } => println!("owned {:?}", val),
+                _ => panic!("expect owned data"),
+            }
+
+            fn get_env(name: &str) -> std::borrow::Cow<'static, str> {
+                std::env::var(name)
+                    .map(|x| std::borrow::Cow::Owned(x))
+                    .unwrap_or(std::borrow::Cow::Borrowed("get_env failed"))
+            }
+            let mut env_str = get_env("test");
+            println!("result: {}", env_str);
+            env_str.to_mut().push('\n');
+            env_str += "another line";
+            println!("new result: {}", env_str);
+            let val: Vec<_> = ["1", "2"].iter().map(|&x| x.to_owned()).collect();
+            let val_str: std::borrow::Cow<String> =
+                std::borrow::Cow::Owned(format!("value is {}", 1.00f64));
+            let mut val_str_vec: Vec<std::borrow::Cow<String>> = Vec::new();
+            val_str_vec.push(val_str);
         }
-        let mut env_str = get_env("test");
-        println!("result: {}", env_str);
-        env_str.to_mut().push('\n');
-        env_str += "another line";
-        println!("new result: {}", env_str);
-        let val: Vec<_> = ["1", "2"].iter().map(|&x| x.to_owned()).collect();
-        let val_str: std::borrow::Cow<String> =
-            std::borrow::Cow::Owned(format!("value is {}", 1.00f64));
-        let mut val_str_vec: Vec<std::borrow::Cow<String>> = Vec::new();
-        val_str_vec.push(val_str);
     }
     return;
     {
@@ -4073,3 +4730,4 @@ mod other;
 //     other::run_cmd_line_process();
 // }
 mod async_chat;
+mod trait_definition;
