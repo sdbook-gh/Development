@@ -34,3 +34,4 @@ git = { path = "src/git" }
 particle = { path = "src/particle" }
 meminfo = { path = "src/meminfo-win32" }
 bincode = { version = "2.0.0-rc.2", features = ["derive"] }
+net = { path = "src/net" }

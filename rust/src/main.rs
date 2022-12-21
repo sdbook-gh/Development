@@ -48,7 +48,44 @@ lazy_static::lazy_static! {
     static ref HOSTNAME: std::sync::Mutex<String> = std::sync::Mutex::new(String::new());
 }
 
+#[derive(Debug)]
+enum MultiError {
+    IO(std::io::Error),
+    Net(std::net::AddrParseError),
+}
+impl std::fmt::Display for MultiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+impl std::error::Error for MultiError {}
+impl From<std::io::Error> for MultiError {
+    fn from(value: std::io::Error) -> Self {
+        MultiError::IO(value)
+    }
+}
+impl From<std::net::AddrParseError> for MultiError {
+    fn from(value: std::net::AddrParseError) -> Self {
+        MultiError::Net(value)
+    }
+}
+fn multi_error_function() -> Result<(), MultiError> {
+    let _f = std::fs::File::open("invisible.txt").map_err(MultiError::IO)?;
+    let _localhost = "::1"
+        .parse::<std::net::Ipv6Addr>()
+        .map_err(MultiError::Net)?;
+    Ok(())
+}
+
 fn main() {
+    {
+        // test_net::test_http_reqwest();
+        // test_net::test_http_tcp();
+        // test_net::test_dns();
+        // test_net::test_MAC();
+        test_net::test_mget();
+    }
+    return;
     {
         // let big_endian: [u8; 4] = [0xAA, 0xBB, 0xCC, 0xDD];
         // let little_endian: [u8; 4] = [0xDD, 0xCC, 0xBB, 0xAA];
@@ -56,7 +93,7 @@ fn main() {
         // let b: i32 = unsafe { std::mem::transmute(little_endian) };
         // println!("{} vs {}", a, b);
 
-        particle::particle_main();
+        // particle::particle_main();
 
         #[cfg(target_os = "windows")]
         {
