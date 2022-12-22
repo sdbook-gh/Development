@@ -175,7 +175,7 @@ mod dns {
         }
     }
 
-    impl std::error::Error for DnsError {} // <1>
+    impl std::error::Error for DnsError {}
 
     pub fn resolve(
         dns_server_address: &str,
@@ -183,34 +183,29 @@ mod dns {
     ) -> Result<Option<std::net::IpAddr>, Box<dyn Error>> {
         let domain_name = Name::from_ascii(domain_name).map_err(DnsError::ParseDomainName)?;
 
-        let dns_server_address = format!("{}:53", dns_server_address); // <2>
+        let dns_server_address = format!("{}:53", dns_server_address);
         let dns_server: SocketAddr = dns_server_address
             .parse()
             .map_err(DnsError::ParseDnsServerAddress)?;
 
-        let mut request_buffer: Vec<u8> =     // <3>
-        Vec::with_capacity(64); // <3>
-        let mut response_buffer: Vec<u8> =    // <4>
-        vec![0; 512]; // <4>
+        let mut request_buffer: Vec<u8> = Vec::with_capacity(64);
+        let mut response_buffer: Vec<u8> = vec![0; 512];
 
         let mut request = Message::new();
-        request.add_query(
-            // <5>
-            Query::query(domain_name, RecordType::A), // <5>
-        ); // <5>
+        request.add_query(Query::query(domain_name, RecordType::A));
 
         request
             .set_id(message_id())
             .set_message_type(MessageType::Query)
             .set_op_code(OpCode::Query)
-            .set_recursion_desired(true); // <6>
+            .set_recursion_desired(true);
 
         let localhost = UdpSocket::bind("0.0.0.0:0").map_err(DnsError::Network)?;
 
         let timeout = Duration::from_secs(5);
         localhost
             .set_read_timeout(Some(timeout))
-            .map_err(DnsError::Network)?; // <7>
+            .map_err(DnsError::Network)?;
 
         localhost
             .set_nonblocking(false)
@@ -400,9 +395,10 @@ mod http {
                     }
 
                     HttpState::Response if socket.can_recv() => {
+                        eprintln!("can_recv");
                         socket.recv(|raw_data| {
                             let output = String::from_utf8_lossy(raw_data);
-                            println!("{}", output);
+                            // println!("{}", output);
                             (raw_data.len(), ())
                         })?;
                         HttpState::Response
@@ -418,61 +414,50 @@ mod http {
 
             phy_wait(fd, iface.poll_delay(&sockets, timestamp)).expect("wait error");
         }
-
+        eprintln!("Ok");
         Ok(())
     }
 }
 
 pub fn test_mget() {
-    std::env::args().for_each(|x| {println!("{}", x)});
+    // std::env::args().for_each(|x| {println!("{}", x)});
     use clap::{App, Arg};
     use smoltcp::phy::TapInterface;
     use url::Url;
 
     let app = App::new("mget")
         .about("GET a webpage, manually")
-        .arg(Arg::with_name("url").required(true)) // <1>
-        .arg(Arg::with_name("tap-device").required(true)) // <2>
-        .arg(
-            Arg::with_name("dns-server").default_value("1.1.1.1"), // <3>
-        )
-        .get_matches(); // <4>
+        .arg(Arg::with_name("url").required(true))
+        .arg(Arg::with_name("tap-device").required(true))
+        .arg(Arg::with_name("dns-server").default_value("1.1.1.1"))
+        .get_matches();
 
     let url_text = app.value_of("url").unwrap();
     let dns_server_text = app.value_of("dns-server").unwrap();
     let tap_text = app.value_of("tap-device").unwrap();
 
-    let url = Url::parse(url_text) // <5>
-        .expect("error: unable to parse <url> as a URL");
+    let url = Url::parse(url_text).expect("error: unable to parse <url> as a URL");
 
     if url.scheme() != "http" {
-        // <5>
         eprintln!("error: only HTTP protocol supported");
         return;
     }
 
-    let tap = TapInterface::new(&tap_text) // <5>
-        .expect(
-            "error: unable to use <tap-device> as a \
+    let tap = TapInterface::new(&tap_text).expect(
+        "error: unable to use <tap-device> as a \
            network interface",
-        );
+    );
 
-    let domain_name = url
-        .host_str() // <5>
-        .expect("domain name required");
+    let domain_name = url.host_str().expect("domain name required");
 
-    let _dns_server: std::net::Ipv4Addr = dns_server_text
-        .parse() // <5>
-        .expect(
-            "error: unable to parse <dns-server> as an \
+    let _dns_server: std::net::Ipv4Addr = dns_server_text.parse().expect(
+        "error: unable to parse <dns-server> as an \
              IPv4 address",
-        );
+    );
 
-    let addr = dns::resolve(dns_server_text, domain_name) // <6>
-        .unwrap()
-        .unwrap();
+    let addr = dns::resolve(dns_server_text, domain_name).unwrap().unwrap();
 
-    let mac = ethernet::MacAddress::new().into(); // <7>
+    let mac = ethernet::MacAddress::new().into();
 
-    http::get(tap, mac, addr, url).unwrap(); // <8>
+    http::get(tap, mac, addr, url).unwrap();
 }
