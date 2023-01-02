@@ -79,6 +79,17 @@ fn multi_error_function() -> Result<(), MultiError> {
 
 fn main() {
     {
+        // test_time::test_simple_gettime();
+        // test_time::test_complex_gettime();
+        // test_time::test_set_time();
+        // test_time::test_ntp();
+        // multi_thread::test_spin_loop();
+        // multi_thread::test_channel_duplex();
+        // multi_thread::test_svg_singlethread();
+        multi_thread::test_svg_multithread();
+    }
+    return;
+    {
         // test_net::test_http_reqwest();
         // test_net::test_http_tcp();
         // test_net::test_dns();

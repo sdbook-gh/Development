@@ -1,24 +1,27 @@
 [package]
-name = "net"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+name = 'net'
+version = '0.1.0'
+edition = '2021'
 
 [lib]
-name = "test_net"
-path = "src/lib.rs"
+name = 'test_net'
+path = 'src/lib.rs'
 
 [dependencies]
-reqwest = "0.9"
-rand = "0.8.5"
-# clap = { version = "4.0.26", features = ["cargo"] }
-trust-dns = { version = "0.16", default-features = false }
-clap = "2"
-smoltcp = { version = "0.6", features = [
-  "proto-igmp",
-  "proto-ipv4",
-  "verbose",
-  "log",
-] }
-url = "2"
+reqwest = '0.9'
+rand = '0.8.5'
+clap = '2'
+url = '2'
+
+[dependencies.trust-dns]
+version = '0.16'
+default-features = false
+
+[dependencies.smoltcp]
+version = '0.6'
+features = [
+    'proto-igmp',
+    'proto-ipv4',
+    'verbose',
+    'log',
+]

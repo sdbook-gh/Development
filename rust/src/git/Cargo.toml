@@ -1,11 +1,10 @@
 [package]
-name = "git"
-version = "0.1.0"
-edition = "2021"
+name = 'git'
+version = '0.1.0'
+edition = '2021'
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
-path = "src/git.rs"
+path = 'src/git.rs'
 
 [dependencies]
-libc = "0.2.138"
+libc = '0.2.138'

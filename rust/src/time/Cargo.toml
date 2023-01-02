@@ -1,0 +1,18 @@
+[package]
+name = 'time'
+version = '0.1.0'
+edition = '2021'
+
+[lib]
+name = 'test_time'
+path = 'src/lib.rs'
+
+[dependencies]
+byteorder = '1'
+chrono = '0.4.23'
+clap = '2'
+[target."cfg(windows)".dependencies]
+winapi = '0.2'
+kernel32-sys = '0.2'
+[target."cfg(not(windows))".dependencies]
+libc = '0.2'

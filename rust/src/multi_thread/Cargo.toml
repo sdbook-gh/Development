@@ -1,0 +1,13 @@
+[package]
+name = 'multi_thread'
+version = '0.1.0'
+edition = '2021'
+
+[lib]
+name = 'multi_thread'
+path = 'src/lib.rs'
+
+[dependencies]
+crossbeam = "0.8.2"
+rayon = '1.6.1'
+svg = '0.13.0'

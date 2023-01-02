@@ -1,37 +1,70 @@
 [package]
-name = "test_rust"
-version = "0.1.0"
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+name = 'test_rust'
+version = '0.1.0'
+edition = '2021'
 
 [dependencies]
-num = "0"
-image = "0.13"
-crossbeam = "0"
-text-colorizer = "1"
-regex = "1"
-actix-web = "1"
-rand = "0"
-chrono = "0"
-byteorder = "1"
-flate2 = "1"
-reqwest = { version = "0", features = [
-    "blocking",
-    "rustls-tls",
-], default-features = false }
-rayon = "1"
-lazy_static = "1"
-async-std = { version = "1", features = ["unstable"] }
-surf = "1"
-serde = { version = "1", features = ["derive", "rc"] }
-serde_json = "1"
-tokio = { version = "1", features = ["sync"] }
-waker-fn = "1"
-futures-lite = "1"
-derive_macro = { path = "src/derive_macro" }
-git = { path = "src/git" }
-particle = { path = "src/particle" }
-meminfo = { path = "src/meminfo-win32" }
-bincode = { version = "2.0.0-rc.2", features = ["derive"] }
-net = { path = "src/net" }
+num = '0'
+image = '0.13'
+crossbeam = '0'
+text-colorizer = '1'
+regex = '1'
+actix-web = '1'
+rand = '0'
+chrono = '0'
+byteorder = '1'
+flate2 = '1'
+rayon = '1'
+lazy_static = '1'
+surf = '1'
+serde_json = '1'
+waker-fn = '1'
+futures-lite = '1'
+
+[dependencies.reqwest]
+version = '0'
+features = [
+    'blocking',
+    'rustls-tls',
+]
+default-features = false
+
+[dependencies.async-std]
+version = '1'
+features = ['unstable']
+
+[dependencies.serde]
+version = '1'
+features = [
+    'derive',
+    'rc',
+]
+
+[dependencies.tokio]
+version = '1'
+features = ['sync']
+
+[dependencies.derive_macro]
+path = 'src/derive_macro'
+
+[dependencies.git]
+path = 'src/git'
+
+[dependencies.particle]
+path = 'src/particle'
+
+[dependencies.meminfo]
+path = 'src/meminfo-win32'
+
+[dependencies.bincode]
+version = '2.0.0-rc.2'
+features = ['derive']
+
+[dependencies.net]
+path = 'src/net'
+
+[dependencies.time]
+path = 'src/time'
+
+[dependencies.multi_thread]
+path = 'src/multi_thread'
