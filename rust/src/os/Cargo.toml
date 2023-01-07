@@ -1,0 +1,8 @@
+[package]
+name = 'os'
+version = '0.1.0'
+edition = '2021'
+
+[dependencies]
+bootloader = "0.9.7"
+x86_64 = "0.14.1"
