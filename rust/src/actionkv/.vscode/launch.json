@@ -1,0 +1,101 @@
+{
+    // 使用 IntelliSense 了解相关属性。 
+    // 悬停以查看现有属性的描述。
+    // 欲了解更多信息，请访问: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'libactionkv'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=actionkv"
+                ],
+                "filter": {
+                    "name": "libactionkv",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'akv_mem'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=akv_mem",
+                    "--package=actionkv"
+                ],
+                "filter": {
+                    "name": "akv_mem",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'akv_mem'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=akv_mem",
+                    "--package=actionkv"
+                ],
+                "filter": {
+                    "name": "akv_mem",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'akv_disk'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=akv_disk",
+                    "--package=actionkv"
+                ],
+                "filter": {
+                    "name": "akv_disk",
+                    "kind": "bin"
+                }
+            },
+            "args": ["test_new", "get", "test"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'akv_disk'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=akv_disk",
+                    "--package=actionkv"
+                ],
+                "filter": {
+                    "name": "akv_disk",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
