@@ -1,28 +1,25 @@
-#![no_std] // don't link the Rust standard library
-#![no_main] // disable all Rust-level entry points
+#![no_std] // <1>
+#![no_main] // <1>
+#![feature(core_intrinsics)] // <2>
 
-use core::panic::PanicInfo;
+use core::intrinsics; // <2>
+use core::panic::PanicInfo; // <3>
 
-/// This function is called on panic.
 #[panic_handler]
-fn panic(_info: &PanicInfo) -> ! {
-    loop {}
+#[no_mangle]
+pub fn panic(_info: &PanicInfo) -> ! {
+    intrinsics::abort(); // <4>
 }
 
-#[no_mangle] // don't mangle the name of this function
+#[no_mangle]
 pub extern "C" fn _start() -> ! {
-    // this function is the entry point, since the linker looks for a function
-    // named `_start` by default
+    let framebuffer = 0xb8000 as *mut u8;
 
-    // exit QEMU (see https://os.phil-opp.com/integration-tests/#shutting-down-qemu)
-    unsafe { exit_qemu(); }
+    unsafe {
+        framebuffer
+            .offset(1) // <5>
+            .write_volatile(0x30); // <6>
+    }
 
     loop {}
-}
-
-pub unsafe fn exit_qemu() {
-    use x86_64::instructions::port::Port;
-
-    let mut port = Port::<u32>::new(0xf4);
-    port.write(51); // exit code is (51 << 1) | 1 = 103
 }
