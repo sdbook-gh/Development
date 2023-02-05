@@ -1,0 +1,5 @@
+project(test)
+set(CMAKE_CXX_STANDARD 20)
+include_directories(.)
+add_executable(test test.cpp)
+# target_link_libraries(test lib)
