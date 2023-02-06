@@ -341,8 +341,26 @@ int test_list() {
     return 0;
 }
 
+#include <algorithm>
+size_t get_max_value(size_t in_value) {
+    auto in_value_str = std::to_string(in_value);
+    auto max_it = std::max_element(in_value_str.begin(), in_value_str.end());
+    auto max_value = in_value;
+    if (max_it != in_value_str.begin()) {
+        auto v = *in_value_str.begin();
+        *in_value_str.begin() = *max_it;
+        *max_it = v;
+        max_value = std::atol(in_value_str.c_str());
+    }
+    return max_value;
+}
+int test_get_max_value() {
+    printf("%d\n", get_max_value(4321));
+    return 0;
+}
+
 int main() {
-    test_list();
+    test_get_max_value();
 
     char key = 0;
     printf("press key to continue\n");
