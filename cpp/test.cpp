@@ -10,7 +10,7 @@ private:
     u_int32_t _tail{0};
     u_int32_t _capacity;
 public:
-    explicit MyQueue(u_int32_t capacity): _buffer(capacity), _capacity(capacity) {}
+    explicit MyQueue(u_int32_t capacity): _buffer(capacity + 1), _capacity(capacity + 1) {}
     bool empty() {
         return _head == _tail;
     }
@@ -355,12 +355,91 @@ size_t get_max_value(size_t in_value) {
     return max_value;
 }
 int test_get_max_value() {
-    printf("%d\n", get_max_value(4321));
+    printf("%ld\n", get_max_value(4321));
+    return 0;
+}
+
+#include <vector>
+#include <mutex>
+#include <condition_variable>
+#include <pthread.h>
+template <typename T>
+class BlockingCircularBuffer {
+public:
+    explicit BlockingCircularBuffer(std::size_t capacity) : _buffer(capacity + 1), _capacity(capacity + 1) {}
+
+    void Push(const T &v) {
+        std::unique_lock<std::mutex> lock(_mut);
+        if (Full()) {
+            printf("full %lu\n", pthread_self());
+            _cv1.wait(lock, [this] { return !Full(); });
+        }
+        _buffer[_tail] = v;
+        _tail = (_tail + 1) % _capacity;
+        _cv2.notify_all();
+    }
+    T Take() {
+        T v;
+        std::unique_lock<std::mutex> lock(_mut);
+        if (Empty()) {
+            printf("empty %lu\n", pthread_self());
+            _cv2.wait(lock, [this] { return !Empty(); });
+        }
+        v = _buffer[_head];
+        _head = (_head + 1) % _capacity;
+        _cv1.notify_all();
+        return v;
+    }
+    bool Full() {
+        return (_tail + 1) % _capacity == _head;
+    }
+    bool Empty() {
+        return _head == _tail;
+    }
+private:
+    std::vector<T> _buffer;
+    std::size_t _head{0};
+    std::size_t _tail{0};
+    std::size_t _capacity{0};
+    std::mutex _mut;
+    std::condition_variable _cv1;
+    std::condition_variable _cv2;
+};
+#include <chrono>
+int test_bcb() {
+    BlockingCircularBuffer<uint32_t> bcb(2);
+    std::thread t1([&bcb] {
+        bcb.Push(1);
+        printf("push 1\n");
+        bcb.Push(2);
+        printf("push 2\n");
+        bcb.Push(3);
+        printf("push 3\n");
+        printf("push complete\n");
+    });
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    printf("sleep complete\n");
+    std::thread t2([&bcb] {
+        bcb.Take();
+        printf("take 1\n");
+        bcb.Take();
+        printf("take 2\n");
+        bcb.Take();
+        printf("take 3\n");
+        bcb.Take();
+        printf("take 4\n");
+        printf("take complete\n");
+    });
+    t1.join();
+    printf("t1 joinn");
+    bcb.Push(0);
+    t2.join();
+    printf("t2 join\n");
     return 0;
 }
 
 int main() {
-    test_get_max_value();
+    test_bcb();
 
     char key = 0;
     printf("press key to continue\n");
@@ -372,4 +451,21 @@ int main() {
         return name.size();
     });
     print_vector<std::size_t>(name_sizes);
+}
+
+int func(int *arr, int len) {
+    int area = 0;
+    for (int *p = arr, i = 0; i < len - 1; ++i) {
+        for (int j = i + 1, *q = p + j; j < len; ++j) {
+            int height = std::min(*p, *q);
+            int width = j - i;
+            int val = width * height;
+            if (val > area) {
+                area = val;
+            }
+            ++q;
+        }
+        ++p;
+    }
+    return area;
 }
