@@ -406,6 +406,7 @@ private:
     std::condition_variable _cv2;
 };
 #include <chrono>
+#include <thread>
 int test_bcb() {
     BlockingCircularBuffer<uint32_t> bcb(2);
     std::thread t1([&bcb] {

@@ -1,0 +1,7 @@
+<cyber>
+    <module>
+        <name>common</name>
+        <dag_conf>/home/shenda/CyberRT/test/common_component_example/build/common.dag</dag_conf>
+        <process_name>common</process_name>
+    </module>
+</cyber>

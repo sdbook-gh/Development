@@ -1,0 +1,10 @@
+{
+    // "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, UseTab: Never, IndentWidth: 2, TabWidth: 2, AccessModifierOffset: -2, SortIncludes: true, IndentCaseLabels: true, ColumnLimit: 120, AlignTrailingComments: Never, SpacesBeforeTrailingComments: 1, AlignEscapedNewlinesLeft: true, AlignEscapedNewlines: DontAlign }",
+    "terminal.integrated.rightClickBehavior": "copyPaste",
+    "cmake.options.statusBarVisibility": "visible",
+    "files.associations": {
+        "stdexcept": "cpp"
+    },
+    "cmake.configureOnOpen": true,
+    "C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, UseTab: Never, IndentWidth: 2, TabWidth: 2, AccessModifierOffset: -2, SortIncludes: true, IndentCaseLabels: true, ColumnLimit: 120, AlignTrailingComments: Never, SpacesBeforeTrailingComments: 1, AlignEscapedNewlinesLeft: true, AlignEscapedNewlines: DontAlign }",
+}

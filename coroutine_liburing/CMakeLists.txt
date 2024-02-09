@@ -1,0 +1,11 @@
+# set (CMAKE_CXX_COMPILER "/data/shenda/bin/clang+llvm-17.0.6-aarch64-linux-gnu/bin/clang")
+# set (CMAKE_CXX_COMPILER /usr/bin/g++-10)
+set(CMAKE_CXX_FLAGS "-Wall")
+
+add_executable(test_coroutine_liburing test_coroutine_liburing.cpp)
+target_include_directories(test_coroutine_liburing PRIVATE ${CMAKE_CURRENT_LIST_DIR}/liburing/include ${CMAKE_CURRENT_LIST_DIR}/thread-pool-4.0.1/include)
+# target_compile_options(test_coroutine_liburing PRIVATE -std=c++20 -stdlib=libc++ -g)
+target_compile_options(test_coroutine_liburing PRIVATE -std=c++20 -fcoroutines -g)
+target_link_directories(test_coroutine_liburing PRIVATE ${CMAKE_CURRENT_LIST_DIR}/liburing/lib)
+# target_link_libraries(test_coroutine_liburing PRIVATE liburing.a c++ pthread)
+target_link_libraries(test_coroutine_liburing PRIVATE liburing.a pthread)

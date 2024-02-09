@@ -1,0 +1,16 @@
+# Define all coms in DAG streaming.
+module_config {
+module_library : "/home/shenda/CyberRT/test/build/libtest.so"
+components {
+    class_name : "Test"
+    config {
+        name : "Test"
+        readers {
+            channel: "channel/chatter"
+            qos_profile: { # qos设置，在`cyber/proto/qos_profile.proto`中定义
+            reliability: RELIABILITY_RELIABLE
+            durability: DURABILITY_TRANSIENT_LOCAL
+        }
+    }
+  }
+}
