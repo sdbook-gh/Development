@@ -1,7 +1,7 @@
 set(CMAKE_CXX_STANDARD 17)
 
-set(ASAN_OPTIONS -fsanitize=address -fsanitize=leak -fsanitize=undefined -fsanitize-address-use-after-scope -fno-sanitize=null -static-libasan)
-# set(ASAN_OPTIONS -fsanitize=thread -pthread -static-libasan)
+set(ASAN_OPTIONS -fsanitize=address -fsanitize=leak -fsanitize=undefined -fsanitize-address-use-after-scope -fno-sanitize=null) # -static-libasan
+# set(ASAN_OPTIONS -fsanitize=thread -pthread) # -static-libasan
 
 add_library(test_lib SHARED test_lib.cpp)
 target_compile_options(test_lib PRIVATE -g -Wall ${ASAN_OPTIONS})
