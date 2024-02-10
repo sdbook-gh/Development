@@ -1,4 +1,5 @@
 set(CMAKE_CXX_STANDARD 17)
+add_link_options(-fuse-ld=gold) # speed up link
 
 set(ASAN_OPTIONS -fsanitize=address -fsanitize=leak -fsanitize=undefined -fsanitize-address-use-after-scope -fno-sanitize=null -fno-omit-frame-pointer) # -static-libasan
 # set(ASAN_OPTIONS -fsanitize=thread -fno-omit-frame-pointer) # -static-libasan
