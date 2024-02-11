@@ -1,0 +1,29 @@
+{
+  "workbench.colorTheme": "Default Dark Modern",
+  "editor.fontSize": 18,
+  "editor.tabSize": 2,
+  "editor.detectIndentation": false,
+  "editor.wrappingIndent": "deepIndent", 
+  "editor.autoIndent": "full",
+  "editor.insertSpaces": true,
+  "window.zoomLevel": 1.1,
+  "editor.suggestFontSize": 10,
+  "markdown.preview.fontSize": 0,
+  "terminal.integrated.fontSize": 16,
+  "workbench.sideBar.location": "left",
+  "editor.mouseWheelZoom": true,
+  "workbench.startupEditor": "none",
+  "explorer.confirmDelete": false,
+  "cmake.showOptionsMovedNotification": false,
+  "git.path": "d:/dev/PortableGit/bin/git.exe",
+  "git.enableSmartCommit": true,
+  "git.autofetch": true,
+  "git.confirmSync": false,
+  "terminal.integrated.profiles.windows": {
+    "Git-Bash": {
+      "path": "d:/dev/PortableGit/bin/bash.exe",
+      "args": []
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "Git-Bash",
+}
