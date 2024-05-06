@@ -30,4 +30,5 @@ ExternalProject_Add(helloworld
                     BUILD_IN_SOURCE TRUE
                     INSTALL_COMMAND ""
                     STEP_TARGETS build
+                    DEPENDS bpftool
 )
