@@ -1,0 +1,3 @@
+clang -g -O2 --target=bpf -D__TARGET_ARCH_x86 -I/usr/include/x86_64-linux-gnu -I/data/shenda/ebpf/libbpf-bootstrap/bpftool/src/bootstrap/libbpf/include -I/data/shenda/ebpf/libbpf-bootstrap/vmlinux/x86 -I. -c test_ebpf_load.c
+/data/shenda/ebpf/libbpf-bootstrap/bpftool/src/bootstrap/bpftool gen skeleton test_ebpf_load.o > test_ebpf_load.h
+clang -g -O2 -D__TARGET_ARCH_x86 -I/data/shenda/ebpf/libbpf-bootstrap/bpftool/src/bootstrap/libbpf/include -I/data/shenda/ebpf/libbpf-bootstrap/vmlinux/x86 -I. -L/data/shenda/ebpf/libbpf-bootstrap/bpftool/src/bootstrap/libbpf -L/data/shenda/ebpf/libbpf-bootstrap/elfutils_install/lib -o test_ebpf test_ebpf.c -lbpf -lelf -lz
