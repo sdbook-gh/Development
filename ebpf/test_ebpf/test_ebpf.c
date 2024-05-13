@@ -1,3 +1,71 @@
+// #include <bpf/libbpf.h>
+
+// #include <stdio.h>
+// #include <sys/resource.h>
+// #include <unistd.h>
+// #include <sys/stat.h>
+
+// #include "test_ebpf_load.h"
+
+// static int libbpf_print_fn(enum libbpf_print_level level, const char *format,
+//                            va_list args) {
+//   return vfprintf(stderr, format, args);
+// }
+
+// int main(int argc, char **argv) {
+//   struct test_ebpf_load *skel;
+//   int err;
+
+//   // libbpf_set_strict_mode(LIBBPF_STRICT_ALL);
+//   /* Set up libbpf errors and debug info callback */
+//   libbpf_set_print(libbpf_print_fn);
+
+//   /* Open BPF application */
+//   skel = test_ebpf_load__open();
+//   if (!skel) {
+//     fprintf(stderr, "Failed to open BPF skeleton\n");
+//     return 1;
+//   }
+
+//   struct stat sb;
+//   /* ensure BPF program only handles write() syscalls from our process */
+//   if (stat("/proc/self/ns/pid", &sb) == -1) {
+//     fprintf(stderr, "Failed to acquire namespace information");
+//     return 1;
+//   }
+//   skel->bss->dev = sb.st_dev;
+//   skel->bss->ino = sb.st_ino;
+//   skel->bss->my_pid = getpid();
+
+//   /* Load & verify BPF programs */
+//   err = test_ebpf_load__load(skel);
+//   if (err) {
+//     fprintf(stderr, "Failed to load and verify BPF skeleton\n");
+//     goto cleanup;
+//   }
+
+//   /* Attach tracepoint handler */
+//   err = test_ebpf_load__attach(skel);
+//   if (err) {
+//     fprintf(stderr, "Failed to attach BPF skeleton\n");
+//     goto cleanup;
+//   }
+
+//   printf("Successfully started! Please run `sudo cat "
+//          "/sys/kernel/debug/tracing/trace_pipe` "
+//          "to see output of the BPF programs.\n");
+
+//   for (;;) {
+//     /* trigger our BPF program */
+//     fprintf(stderr, ".");
+//     sleep(1);
+//   }
+
+// cleanup:
+//   test_ebpf_load__destroy(skel);
+//   return -err;
+// }
+
 #include <bpf/libbpf.h> // 1. include bpf base header
 
 #include "test_ebpf.h" // 2. include custom definition header and generated header

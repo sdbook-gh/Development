@@ -1,3 +1,94 @@
+// #include <linux/bpf.h>
+
+// #include <bpf/bpf_helpers.h>
+// #include <bpf/bpf_tracing.h>
+
+// typedef unsigned int u32;
+// typedef int pid_t;
+// const pid_t pid_filter = 0;
+
+// char LICENSE[] SEC("license") = "Dual BSD/GPL";
+
+// SEC("tp/syscalls/sys_enter_write")
+// int handle_tp(void *ctx) {
+//   pid_t pid = bpf_get_current_pid_tgid() >> 32;
+//   if (pid_filter && pid != pid_filter)
+//     return 0;
+//   bpf_printk("BPF triggered sys_enter_write from PID %d.\n", pid);
+//   return 0;
+// }
+
+// #include "vmlinux.h"
+
+// #include <bpf/bpf_core_read.h>
+// #include <bpf/bpf_helpers.h>
+// #include <bpf/bpf_tracing.h>
+
+// SEC("kprobe/do_unlinkat")
+// int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name) {
+//   pid_t pid;
+//   const char *filename;
+
+//   pid = bpf_get_current_pid_tgid() >> 32;
+//   filename = BPF_CORE_READ(name, name);
+//   bpf_printk("KPROBE ENTRY pid = %d, filename = %s\n", pid, filename);
+//   return 0;
+// }
+
+// SEC("kretprobe/do_unlinkat")
+// int BPF_KRETPROBE(do_unlinkat_exit, long ret) {
+//   pid_t pid;
+
+//   pid = bpf_get_current_pid_tgid() >> 32;
+//   bpf_printk("KPROBE EXIT: pid = %d, ret = %ld\n", pid, ret);
+//   return 0;
+// }
+
+// #include "vmlinux.h"
+
+// #include <bpf/bpf_helpers.h>
+// #include <bpf/bpf_tracing.h>
+
+// char LICENSE[] SEC("license") = "Dual BSD/GPL";
+
+// SEC("fentry/do_unlinkat")
+// int BPF_PROG(do_unlinkat, int dfd, struct filename *name) {
+//   pid_t pid;
+//   pid = bpf_get_current_pid_tgid() >> 32;
+//   bpf_printk("fentry: pid = %d, filename = %s\n", pid, name->name);
+//   return 0;
+// }
+
+// SEC("fexit/do_unlinkat")
+// int BPF_PROG(do_unlinkat_exit, int dfd, struct filename *name, long ret) {
+//   pid_t pid;
+//   pid = bpf_get_current_pid_tgid() >> 32;
+//   bpf_printk("fexit: pid = %d, filename = %s, ret = %ld\n", pid, name->name,
+//              ret);
+//   return 0;
+// }
+
+// #include "vmlinux.h"
+
+// #include <bpf/bpf_helpers.h>
+// #include <bpf/bpf_tracing.h>
+
+// char LICENSE[] SEC("license") = "Dual BSD/GPL";
+
+// int my_pid = 0;
+// unsigned long long dev;
+// unsigned long long ino;
+
+// SEC("tp/syscalls/sys_enter_write")
+// int handle_tp(void *ctx) {
+//   struct bpf_pidns_info ns;
+//   bpf_get_ns_current_pid_tgid(dev, ino, &ns, sizeof(ns));
+//   if (ns.pid != my_pid)
+//     return 0;
+//   bpf_printk("BPF triggered from PID %d.\n", ns.pid);
+//   return 0;
+// }
+
 #include "vmlinux.h" // 1. include linux base header
 
 #include <bpf/bpf_core_read.h> // 2. include bpf base headers
@@ -5,6 +96,8 @@
 #include <bpf/bpf_tracing.h>
 
 #include "test_ebpf.h" // 3. include custom definition header
+
+char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 struct {
   __uint(type, BPF_MAP_TYPE_HASH);
