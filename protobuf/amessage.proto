@@ -1,0 +1,17 @@
+message Submessage1 {
+  required int32 value=1;
+}
+
+message Submessage2 {
+  required int32 value=1;
+}
+
+message AMessage {
+  required int32 a=1; 
+  optional int32 b=2;
+  repeated int32 c=3;
+  repeated string d=4;
+  required bytes e=5;
+  optional Submessage1 f=6;
+  repeated Submessage2 g=7;
+}
