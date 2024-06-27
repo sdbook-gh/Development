@@ -1,0 +1,42 @@
+// Generated from amessage.proto
+
+namespace test.flatbuffers.cpp;
+
+table Submessage1 {
+  value:int (id: 0);
+}
+
+table Submessage2 {
+  value:int (id: 0);
+}
+
+table AMessage {
+  a:int (id: 0);
+  b:int (id: 1);
+  c:[int] (id: 2);
+  d:[string] (id: 3);
+  e:[ubyte] (id: 4);
+  f:test.protobuf.cpp.Submessage1 (id: 5);
+  g:[test.protobuf.cpp.Submessage2] (id: 6);
+}
+
+table PointField {
+  time:uint (id: 0);
+  x:double (id: 1);
+  y:double (id: 2);
+  z:double (id: 3);
+  distance:double (id: 4);
+  pitch:double (id: 5);
+  yaw:double (id: 6);
+  intensity:uint (id: 7);
+  ring:uint (id: 8);
+}
+
+table PointCloud {
+  height:uint (id: 0);
+  width:uint (id: 1);
+  point_step:uint (id: 2);
+  row_step:uint (id: 3);
+  points:[test.protobuf.cpp.PointField] (id: 4);
+}
+

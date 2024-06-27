@@ -1,0 +1,41 @@
+syntax = "proto2";
+
+package test.protobuf.cpp;
+
+message Submessage1 {
+  required int32 value=1;
+}
+
+message Submessage2 {
+  required int32 value=1;
+}
+
+message AMessage {
+  required int32 a=1; 
+  optional int32 b=2;
+  repeated int32 c=3;
+  repeated string d=4;
+  required bytes e=5;
+  optional Submessage1 f=6;
+  repeated Submessage2 g=7;
+}
+
+message PointField {
+  optional uint32 time = 1;
+  optional double x = 2;
+  optional double y = 3;
+  optional double z = 4;
+  optional double distance = 5;
+  optional double pitch = 6;
+  optional double yaw = 7;
+  optional uint32 intensity = 8;
+  optional uint32 ring = 9;
+}
+
+message PointCloud {
+  optional uint32 height = 1;  // 点云二维结构高度。
+  optional uint32 width = 2;  // 点云二维结构宽度，点云数量有效范围由具体传感器决定。
+  optional uint32 point_step = 3;  // 一个点云的长度。单位：字节
+  optional uint32 row_step = 4;  // 一行点云的长度。单位：字节
+  repeated PointField points = 5;
+}

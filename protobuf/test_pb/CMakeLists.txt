@@ -1,0 +1,15 @@
+
+set(CMAKE_CXX_STANDARD 17)
+# find_package(Threads REQUIRED)
+#add_executable(test_pc main.cpp amessage.v2.pb-c.c amessage.pb.cc)
+#target_include_directories(test_pc PRIVATE protobuf-c-1.5.0/install/include protobuf-3.20.1/install/include)
+#target_link_directories(test_pc PRIVATE protobuf-c-1.5.0/install/lib protobuf-3.20.1/install/lib)
+#target_link_libraries(test_pc PRIVATE protobuf-c protobuf)
+
+find_package(protobuf REQUIRED CONFIG)
+add_executable(test_pb test_pb.cpp amessage.v2.pb-c.c amessage.pb.cc)
+target_include_directories(test_pb PRIVATE iguana-1.0.5 protobuf-c-master/install/include flatbuffers-24.3.25/install/include)
+target_link_directories(test_pb PRIVATE protobuf-c-master/install/lib flatbuffers-24.3.25/install/lib)
+# target_include_directories(test_pb PRIVATE iguana-1.0.5 protobuf-c-master/install_arm/include flatbuffers-24.3.25/install_arm/include)
+# target_link_directories(test_pb PRIVATE protobuf-c-master/install_arm/lib flatbuffers-24.3.25/install_arm/lib)
+target_link_libraries(test_pb PRIVATE flatbuffers protobuf::libprotobuf protobuf-c pthread)
