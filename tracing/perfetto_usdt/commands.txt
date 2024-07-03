@@ -1,0 +1,235 @@
+rm -f trace_normal* trace_detail* trace_type trace_high*
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:0 trace_normal:0 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     15195826 us
+pb_deserialize                                :     12803628 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:0 trace_normal:0 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     15018444 us
+pb_deserialize                                :     12918170 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:0 trace_normal:0 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     15175592 us
+pb_deserialize                                :     12960074 us
+complete bench
+
+echo perfetto>trace_type && touch trace_normal
+
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_normal.trace.1
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_normal.trace.2
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_normal.trace.3
+
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:0 trace_high_freq:0
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     17580920 us
+pb_deserialize                                :     14603571 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:0 trace_high_freq:0
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     17202127 us
+pb_deserialize                                :     14523815 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:0 trace_high_freq:0
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     17350718 us
+pb_deserialize                                :     15388046 us
+complete bench
+
+echo perfetto>trace_type && touch trace_normal && touch trace_detail
+./tracebox traced &
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_detail.trace.1
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_detail.trace.2
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_detail.trace.3
+
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:1 trace_high_freq:0
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     15499184 us
+pb_deserialize                                :     12785559 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:1 trace_high_freq:0
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     16850665 us
+pb_deserialize                                :     10075606 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:1 trace_high_freq:0
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     16713698 us
+pb_deserialize                                :     10035235 us
+complete bench
+
+echo perfetto>trace_type && touch trace_normal && touch trace_detail && touch trace_high_freq
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_high_freq.trace.1
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_high_freq.trace.2
+./tracebox perfetto -c perfetto_trace_config.txt --txt -o perfetto_high_freq.trace.3
+
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:1 trace_high_freq:1
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     63994600 us
+pb_deserialize                                :     56374642 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:1 trace_high_freq:1
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     64541395 us
+pb_deserialize                                :     55798155 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:1 trace_normal:1 trace_detail:1 trace_high_freq:1
+Waiting for tracing to start...
+Tracing started
+start bench
+pb_serialize                                  :     63780056 us
+pb_deserialize                                :     56257400 us
+complete bench
+
+./perf buildid-cache --purge-all
+./perf buildid-cache --add ./test_pb
+./perf buildid-cache --list
+./perf list|grep sdt
+./perf probe -d "sdt_normal:*"
+./perf probe -f "sdt_normal:*" ./test_pb
+./perf probe --list
+
+rm -f trace_normal* trace_detail* trace_type trace_high*
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:0 trace_normal:0 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     15627014 us
+pb_deserialize                                :     13438083 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:0 trace_normal:0 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     16506223 us
+pb_deserialize                                :     14360129 us
+complete bench
+shenda@shenda:~/perfetto$ ./test_pb
+trace_type:0 trace_normal:0 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     17109894 us
+pb_deserialize                                :     14536919 us
+complete bench
+
+echo usdt>trace_type && touch trace_normal
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_normal.trace.1 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     16356610 us
+pb_deserialize                                :     13939689 us
+complete bench
+[ perf record: Woken up 1 times to write data ]
+[ perf record: Captured and wrote 0.047 MB usdt_normal.trace.1 (400 samples) ]
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_normal.trace.2 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     15492842 us
+pb_deserialize                                :     13039110 us
+complete bench
+[ perf record: Woken up 1 times to write data ]
+[ perf record: Captured and wrote 0.047 MB usdt_normal.trace.2 (400 samples) ]
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_normal.trace.3 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:0 trace_high_freq:0
+start bench
+pb_serialize                                  :     15478553 us
+pb_deserialize                                :     13019866 us
+complete bench
+[ perf record: Woken up 1 times to write data ]
+[ perf record: Captured and wrote 0.047 MB usdt_normal.trace.3 (400 samples) ]
+
+echo usdt>trace_type && touch trace_normal && touch trace_detail
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_detail.trace.1 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:1 trace_high_freq:0
+start bench
+pb_serialize                                  :     16530620 us
+pb_deserialize                                :     14844287 us
+complete bench
+[ perf record: Woken up 46 times to write data ]
+[ perf record: Captured and wrote 11.317 MB usdt_detail.trace.1 (148104 samples) ]
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_detail.trace.2 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:1 trace_high_freq:0
+start bench
+pb_serialize                                  :     16533215 us
+pb_deserialize                                :     13940444 us
+complete bench
+[ perf record: Woken up 46 times to write data ]
+[ perf record: Captured and wrote 11.338 MB usdt_detail.trace.2 (148376 samples) ]
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_detail.trace.3 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:1 trace_high_freq:0
+start bench
+pb_serialize                                  :     16641431 us
+pb_deserialize                                :     14004363 us
+complete bench
+[ perf record: Woken up 46 times to write data ]
+[ perf record: Captured and wrote 11.383 MB usdt_detail.trace.3 (148968 samples) ]
+
+echo usdt>trace_type && touch trace_normal && touch trace_detail && touch trace_high_freq
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_high_freq.trace.1 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:1 trace_high_freq:1
+start bench
+pb_serialize                                  :    175248980 us
+pb_deserialize                                :    173209776 us
+complete bench
+[ perf record: Woken up 75409 times to write data ]
+Warning:
+Processed 342760269 events and lost 12379 chunks!
+
+Check IO/CPU overload!
+
+[ perf record: Captured and wrote 23063.074 MB usdt_high_freq.trace.1 (297787400 samples) ]
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_high_freq.trace.2 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:1 trace_high_freq:1
+start bench
+pb_serialize                                  :    178535008 us
+pb_deserialize                                :    174110315 us
+complete bench
+[ perf record: Woken up 91227 times to write data ]
+Warning:
+Processed 419347656 events and lost 19741 chunks!
+
+Check IO/CPU overload!
+
+[ perf record: Captured and wrote 28689.040 MB usdt_high_freq.trace.2 (371206853 samples) ]
+root@shenda:/home/shenda/perfetto# ./perf record -e "sdt_normal:*" -o usdt_high_freq.trace.3 ./test_pb
+trace_type:2 trace_normal:1 trace_detail:1 trace_high_freq:1
+start bench
+pb_serialize                                  :    179323536 us
+pb_deserialize                                :    174985772 us
+complete bench
+[ perf record: Woken up 95226 times to write data ]
+Warning:
+Processed 434757722 events and lost 20551 chunks!
+
+Check IO/CPU overload!
+
+[ perf record: Captured and wrote 29806.335 MB usdt_high_freq.trace.3 (385765863 samples) ]
+
+./perf script --gen-script python -i usdt_normal.trace.1
+PERF_EXEC_PATH=/home/shenda/perfetto/linux-5.4.271/tools/perf/ ./perf script -s perf-script.py -i usdt_normal.trace.1
