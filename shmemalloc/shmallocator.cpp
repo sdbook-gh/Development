@@ -126,6 +126,7 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, size_t s
     shmptr = shmem_ptr;
     shmsize = shm_max_size;
     if (first_create) {
+      memset(shmptr, 0, sizeof(Header));
       int id{-1};
       shmalloc(1, &id, __FILE__, __LINE__);
       printf("shmalloc first id: %d\n", id);
