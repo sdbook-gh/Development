@@ -84,10 +84,10 @@ public:
 #undef HAS_MEMBER
 };
 template <typename T1, typename T2> bool operator==(const Allocator<T1> &lhs, const Allocator<T2> &rhs) noexcept {
-  return &lhs == &rhs;
+  return true;
 }
 template <typename T1, typename T2> bool operator!=(const Allocator<T1> &lhs, const Allocator<T2> &rhs) noexcept {
-  return &lhs != &rhs;
+  return false;
 }
 
 template <typename T> T *shmgetobjbytag(const char *tag) {
