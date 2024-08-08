@@ -148,8 +148,8 @@ void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber) {
   if (size == 0 && id != nullptr && *id == -1) {
     fprintf(stderr, "%s, line %d: Cannot allocate zero sized shared memory.\n", filename, linenumber);
     return nullptr;
-  } else if (size % 4 != 0) {
-    size += 4 - size % 4;
+  } else if (size % 2 != 0) {
+    ++size;
   }
   printf("shmalloc size %u\n", size);
   if (shmsize < size + sizeof(Header)) {

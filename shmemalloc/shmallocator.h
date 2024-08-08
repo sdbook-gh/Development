@@ -64,11 +64,11 @@ public:
     if (!ptr) {
       throw std::bad_alloc();
     }
-    for (int i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       new (ptr + i) T{};
     }
     if constexpr (Has_id<T>::value) {
-      for (int i = 0; i < size; ++i) {
+      for (size_t i = 0; i < size; ++i) {
         ptr[i].id = id;
       }
     }
@@ -76,7 +76,7 @@ public:
   }
   void deallocate(T *ptr, size_t size = 1) {
     // printf("deallocate %s size %lu\n", typeid(T).name(), size);
-    for (int i = 0; i < size; ++i) {
+    for (size_t i = 0; i < size; ++i) {
       (ptr + i)->~T();
     }
     shmfree(ptr, __FILE__, __LINE__);
@@ -214,7 +214,7 @@ public:
   shmvector(_InputIterator __first, _InputIterator __last) : __parent(__first, __last, AllocatorType_t()) {}
 };
 
-class shmmutex {
+class alignas(8) shmmutex {
 public:
   int32_t id;
   shmmutex() {
@@ -262,7 +262,7 @@ private:
   friend class shmcond;
 };
 
-class shmcond {
+class alignas(8) shmcond {
 public:
   int32_t id;
   shmcond() {
