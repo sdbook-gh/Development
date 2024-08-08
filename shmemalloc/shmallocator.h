@@ -30,7 +30,7 @@ struct Header {
 constexpr uint32_t BITSEQ{12344321};
 extern void *shmptr;
 extern size_t shmsize;
-bool initshm(const std::string &shm_file_path, size_t shm_base_address, size_t shm_max_size);
+bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t shm_max_size);
 void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber);
 void *shmget(int id, const char *filename, int linenumber);
 void shmfree(void *ptr, const char *filename, int linenumber);

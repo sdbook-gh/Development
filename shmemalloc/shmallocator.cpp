@@ -79,7 +79,7 @@ static void destroy_header(Header *h, void *shm_ptr) {
   h->id = -1;
 }
 
-bool initshm(const std::string &shm_file_path, size_t shm_base_address, size_t shm_max_size) {
+bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t shm_max_size) {
   static bool res = [&] {
     int fd{0};
     bool first_create{false};
@@ -106,7 +106,7 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, size_t s
         close(fd);
         return false;
       }
-      if (st.st_size < shm_max_size) {
+      if ((uint32_t)st.st_size < shm_max_size) {
         if (ftruncate(fd, shm_max_size) == -1) {
           std::string str = strerror(errno);
           printf("truncate shmem file %s error: %s", shm_file_path.c_str(), str.c_str());
@@ -194,7 +194,7 @@ void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber) {
   // Also record best spot to put this new item if it does not exist
   curr = (Header *)offset2ptr(curr->next, shmptr);
   while (curr != nullptr) {
-    if (id != nullptr && *id != -1 && curr->id == *id && !curr->is_free) {
+    if (id != nullptr && *id != -1 && curr->id == (uint32_t)*id && !curr->is_free) {
       // Already have item with this id
       curr->refcount++;
       size = curr->size;
