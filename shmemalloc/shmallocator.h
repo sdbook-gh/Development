@@ -65,7 +65,7 @@ public:
       throw std::bad_alloc();
     }
     for (size_t i = 0; i < size; ++i) {
-      new (ptr + i) T{};
+      new (ptr + i) T;
     }
     if constexpr (Has_id<T>::value) {
       for (size_t i = 0; i < size; ++i) {
@@ -214,7 +214,7 @@ public:
   shmvector(_InputIterator __first, _InputIterator __last) : __parent(__first, __last, AllocatorType_t()) {}
 };
 
-class alignas(8) shmmutex {
+class shmmutex {
 public:
   int32_t id;
   shmmutex() {
@@ -257,12 +257,12 @@ public:
   }
 
 private:
-  pthread_mutexattr_t m_mutex_attr;
-  pthread_mutex_t m_mutex;
+  alignas(8) pthread_mutexattr_t m_mutex_attr;
+  alignas(8) pthread_mutex_t m_mutex;
   friend class shmcond;
 };
 
-class alignas(8) shmcond {
+class shmcond {
 public:
   int32_t id;
   shmcond() {
@@ -271,12 +271,13 @@ public:
     pthread_cond_init(&m_cond, &m_cond_attr);
   }
   ~shmcond() {
+    pthread_condattr_destroy(&m_cond_attr);
     pthread_cond_destroy(&m_cond);
   }
   int wait(shmmutex &m) {
     return pthread_cond_wait(&m_cond, &m.m_mutex);
   }
-  int timedwait(const struct timespec &ts, shmmutex &m) {
+  int timedwait(const timespec &ts, shmmutex &m) {
     return pthread_cond_timedwait(&m_cond, &m.m_mutex, &ts);
   }
   int signal() {
@@ -287,8 +288,8 @@ public:
   }
 
 private:
-  pthread_condattr_t m_cond_attr;
-  pthread_cond_t m_cond;
+  alignas(8) pthread_condattr_t m_cond_attr;
+  alignas(8) pthread_cond_t m_cond;
 };
 
 } // namespace shmallocator
