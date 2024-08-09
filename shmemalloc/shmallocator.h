@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <mutex>
 #include <pthread.h>
 #include <stdexcept>
@@ -88,6 +89,19 @@ template <typename T1, typename T2> bool operator==(const Allocator<T1> &lhs, co
 }
 template <typename T1, typename T2> bool operator!=(const Allocator<T1> &lhs, const Allocator<T2> &rhs) noexcept {
   return false;
+}
+template <typename T> T *aligned_alloc(void *buffer, uint32_t buffer_size, std::size_t alignment = alignof(T)) {
+  void *ptr = buffer;
+  size_t size = buffer_size;
+  std::cout << "before align " << alignment << " sizeof(T) " << sizeof(T) << " buffer " << ptr << " length " << size
+            << "\n";
+  if (std::align(alignment, sizeof(T), ptr, size) != nullptr) {
+    std::cout << "after align " << alignment << " sizeof(T) " << sizeof(T) << " buffer " << ptr << " length " << size
+              << "\n";
+    T *result = (T *)(ptr);
+    return result;
+  }
+  return nullptr;
 }
 
 template <typename T> T *shmgetobjbytag(const char *tag) {
@@ -218,47 +232,52 @@ class shmmutex {
 public:
   int32_t id;
   shmmutex() {
-    pthread_mutexattr_init(&m_mutex_attr);
-    pthread_mutexattr_settype(&m_mutex_attr, PTHREAD_MUTEX_NORMAL);
-    pthread_mutexattr_setpshared(&m_mutex_attr, PTHREAD_PROCESS_SHARED);
-    pthread_mutexattr_setrobust(&m_mutex_attr, PTHREAD_MUTEX_ROBUST);
-    pthread_mutex_init(&m_mutex, &m_mutex_attr);
+    if ((m_pmutex = aligned_alloc<pthread_mutex_t>(buffer, sizeof(buffer))) != nullptr) {
+      pthread_mutexattr_init(&m_mutex_attr);
+      pthread_mutexattr_settype(&m_mutex_attr, PTHREAD_MUTEX_NORMAL);
+      pthread_mutexattr_setpshared(&m_mutex_attr, PTHREAD_PROCESS_SHARED);
+      pthread_mutexattr_setrobust(&m_mutex_attr, PTHREAD_MUTEX_ROBUST);
+      pthread_mutex_init(m_pmutex, &m_mutex_attr);
+    } else {
+      throw std::runtime_error{"aligned_alloc error"};
+    }
   }
   ~shmmutex() {
     pthread_mutexattr_destroy(&m_mutex_attr);
-    pthread_mutex_destroy(&m_mutex);
+    pthread_mutex_destroy(m_pmutex);
   }
   int lock() {
-    int ret = pthread_mutex_lock(&m_mutex);
+    int ret = pthread_mutex_lock(m_pmutex);
     if (ret == EOWNERDEAD) {
       printf("EOWNERDEAD\n");
-      ret = pthread_mutex_consistent(&m_mutex);
+      ret = pthread_mutex_consistent(m_pmutex);
       ret = unlock();
-      ret = pthread_mutex_lock(&m_mutex);
+      ret = pthread_mutex_lock(m_pmutex);
     }
     return ret;
   }
   int try_lock() {
-    int ret = pthread_mutex_trylock(&m_mutex);
+    int ret = pthread_mutex_trylock(m_pmutex);
     if (ret == EOWNERDEAD) {
       printf("EOWNERDEAD\n");
-      ret = pthread_mutex_consistent(&m_mutex);
+      ret = pthread_mutex_consistent(m_pmutex);
       ret = unlock();
-      ret = pthread_mutex_trylock(&m_mutex);
+      ret = pthread_mutex_trylock(m_pmutex);
     }
     return ret;
   }
   int unlock() {
-    return pthread_mutex_unlock(&m_mutex);
+    return pthread_mutex_unlock(m_pmutex);
   }
   void reset() {
-    pthread_mutex_destroy(&m_mutex);
-    pthread_mutex_init(&m_mutex, &m_mutex_attr);
+    pthread_mutex_destroy(m_pmutex);
+    pthread_mutex_init(m_pmutex, &m_mutex_attr);
   }
 
 private:
-  alignas(8) pthread_mutexattr_t m_mutex_attr;
-  alignas(8) pthread_mutex_t m_mutex;
+  pthread_mutexattr_t m_mutex_attr;
+  pthread_mutex_t *m_pmutex{nullptr};
+  pthread_cond_t buffer[2];
   friend class shmcond;
 };
 
@@ -266,30 +285,35 @@ class shmcond {
 public:
   int32_t id;
   shmcond() {
-    pthread_condattr_init(&m_cond_attr);
-    pthread_condattr_setpshared(&m_cond_attr, PTHREAD_PROCESS_SHARED);
-    pthread_cond_init(&m_cond, &m_cond_attr);
+    if ((m_pcond = aligned_alloc<pthread_cond_t>(buffer, sizeof(buffer))) != nullptr) {
+      pthread_condattr_init(&m_cond_attr);
+      pthread_condattr_setpshared(&m_cond_attr, PTHREAD_PROCESS_SHARED);
+      pthread_cond_init(m_pcond, &m_cond_attr);
+    } else {
+      throw std::runtime_error{"aligned_alloc error"};
+    }
   }
   ~shmcond() {
     pthread_condattr_destroy(&m_cond_attr);
-    pthread_cond_destroy(&m_cond);
+    pthread_cond_destroy(m_pcond);
   }
   int wait(shmmutex &m) {
-    return pthread_cond_wait(&m_cond, &m.m_mutex);
+    return pthread_cond_wait(m_pcond, m.m_pmutex);
   }
   int timedwait(const timespec &ts, shmmutex &m) {
-    return pthread_cond_timedwait(&m_cond, &m.m_mutex, &ts);
+    return pthread_cond_timedwait(m_pcond, m.m_pmutex, &ts);
   }
   int signal() {
-    return pthread_cond_signal(&m_cond);
+    return pthread_cond_signal(m_pcond);
   }
   int broadcast() {
-    return pthread_cond_broadcast(&m_cond);
+    return pthread_cond_broadcast(m_pcond);
   }
 
 private:
-  alignas(8) pthread_condattr_t m_cond_attr;
-  alignas(8) pthread_cond_t m_cond;
+  pthread_condattr_t m_cond_attr;
+  pthread_cond_t *m_pcond{nullptr};
+  pthread_cond_t buffer[2];
 };
 
 } // namespace shmallocator
