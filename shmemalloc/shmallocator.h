@@ -14,6 +14,11 @@
 #include <thread>
 #include <vector>
 
+#define BOOST_INTERPROCESS_FORCE_GENERIC_EMULATION
+#include <boost/interprocess/sync/interprocess_condition.hpp>
+#include <boost/interprocess/sync/interprocess_mutex.hpp>
+#include <boost/interprocess/sync/scoped_lock.hpp>
+
 namespace shmallocator {
 
 struct Header {
@@ -78,23 +83,23 @@ public:
     }
     return ptr;
   }
-  // T *allocate(const T &init_value, size_t size = 1) {
-  //   // printf("allocate %s size %lu\n", typeid(T).name(), size);
-  //   int id{-1};
-  //   T *ptr = (T *)shmalloc(sizeof(T) * size, &id, __FILE__, __LINE__);
-  //   if (!ptr) {
-  //     throw std::bad_alloc();
-  //   }
-  //   for (size_t i = 0; i < size; ++i) {
-  //     new (ptr + i) T(init_value);
-  //   }
-  //   if constexpr (Has_id<T>::value) {
-  //     for (size_t i = 0; i < size; ++i) {
-  //       ptr[i].id = id;
-  //     }
-  //   }
-  //   return ptr;
-  // }
+  T *allocate(const T &init_value, size_t size = 1) {
+    // printf("allocate %s size %lu\n", typeid(T).name(), size);
+    int id{-1};
+    T *ptr = (T *)shmalloc(sizeof(T) * size, &id, __FILE__, __LINE__);
+    if (!ptr) {
+      throw std::bad_alloc();
+    }
+    for (size_t i = 0; i < size; ++i) {
+      new (ptr + i) T(init_value);
+    }
+    if constexpr (Has_id<T>::value) {
+      for (size_t i = 0; i < size; ++i) {
+        ptr[i].id = id;
+      }
+    }
+    return ptr;
+  }
   void deallocate(T *ptr, size_t size = 1) {
     // printf("deallocate %s size %lu\n", typeid(T).name(), size);
     for (size_t i = 0; i < size; ++i) {
@@ -310,49 +315,23 @@ private:
   pthread_mutexattr_t m_mutex_attr;
   pthread_mutex_t *m_pmutex{nullptr};
   pthread_cond_t buffer[2];
-  // friend class shmcond;
 };
-
-// class shmcond {
-// public:
-//   int32_t id;
-//   shmcond() {
-//     if ((m_pcond = aligned_alloc<pthread_cond_t>(buffer, sizeof(buffer))) != nullptr) {
-//       pthread_condattr_init(&m_cond_attr);
-//       pthread_condattr_setpshared(&m_cond_attr, PTHREAD_PROCESS_SHARED);
-//       pthread_cond_init(m_pcond, &m_cond_attr);
-//     } else {
-//       throw std::runtime_error{"aligned_alloc error"};
-//     }
-//   }
-//   ~shmcond() {
-//     pthread_condattr_destroy(&m_cond_attr);
-//     pthread_cond_destroy(m_pcond);
-//   }
-//   int wait(shmmutex &m) {
-//     return pthread_cond_wait(m_pcond, m.m_pmutex);
-//   }
-//   int timedwait(const timespec &ts, shmmutex &m) {
-//     return pthread_cond_timedwait(m_pcond, m.m_pmutex, &ts);
-//   }
-//   int signal() {
-//     return pthread_cond_signal(m_pcond);
-//   }
-//   int broadcast() {
-//     return pthread_cond_broadcast(m_pcond);
-//   }
-// private:
-//   pthread_condattr_t m_cond_attr;
-//   pthread_cond_t *m_pcond{nullptr};
-//   pthread_cond_t buffer[2];
-// };
 
 class shmsemaphore {
 public:
   int32_t id;
   shmsemaphore(uint32_t size = 1) {
     if ((m_psem = aligned_alloc<sem_t>(buffer, sizeof(buffer))) != nullptr) {
-      sem_init(m_psem, 1, size);
+      m_size = size;
+      sem_init(m_psem, 1, m_size);
+    } else {
+      throw std::runtime_error{"aligned_alloc error"};
+    }
+  }
+  shmsemaphore(const shmsemaphore &other) {
+    if ((m_psem = aligned_alloc<sem_t>(buffer, sizeof(buffer))) != nullptr) {
+      m_size = other.m_size;
+      sem_init(m_psem, 1, m_size);
     } else {
       throw std::runtime_error{"aligned_alloc error"};
     }
@@ -385,6 +364,96 @@ public:
 private:
   sem_t *m_psem{nullptr};
   sem_t buffer[2];
+  int m_size{1};
+};
+
+using shm_spin_mutex = boost::interprocess::interprocess_mutex;
+using shm_spin_mutex_lock = boost::interprocess::scoped_lock<shm_spin_mutex>;
+using shm_spin_cond = boost::interprocess::interprocess_condition;
+
+class shmcond {
+public:
+  int32_t id;
+  shmcond() {
+    m_free_semaphore_list.resize(64);
+    for (size_t i = 0; i < m_free_semaphore_list.size(); ++i) {
+      m_free_semaphore_list[i] = Allocator<shmsemaphore>{}.allocate(0, 1);
+    }
+    m_wait_semaphore_list.clear();
+  }
+  ~shmcond() {
+    for (auto &element : m_free_semaphore_list) {
+      Allocator<shmsemaphore>{}.deallocate(element);
+    }
+    for (auto &element : m_wait_semaphore_list) {
+      Allocator<shmsemaphore>{}.deallocate(element);
+    }
+  }
+  int wait(shmmutex &m) {
+    shmsemaphore *psemaphore{nullptr};
+    {
+      std::lock_guard<shmmutex> lock{m_mutex};
+      if (m_free_semaphore_list.empty()) {
+        printf("too many waiters\n");
+        return 1;
+      }
+      psemaphore = *m_free_semaphore_list.rbegin();
+      m_free_semaphore_list.pop_back();
+      m_wait_semaphore_list.emplace_back(psemaphore);
+    }
+    m.unlock();
+    psemaphore->wait();
+    m.lock();
+    return 0;
+  }
+  int timedwait(const timespec &ts, shmmutex &m) {
+    shmsemaphore *psemaphore{nullptr};
+    {
+      std::lock_guard<shmmutex> lock{m_mutex};
+      if (m_free_semaphore_list.empty()) {
+        printf("too many waiters\n");
+        return 1;
+      }
+      psemaphore = *m_free_semaphore_list.rbegin();
+      m_free_semaphore_list.pop_back();
+      m_wait_semaphore_list.emplace_back(psemaphore);
+    }
+    m.unlock();
+    psemaphore->timedwait(ts);
+    m.lock();
+    return 0;
+  }
+  int signal() {
+    shmsemaphore *psemaphore{nullptr};
+    {
+      std::lock_guard<shmmutex> lock{m_mutex};
+      if (!m_wait_semaphore_list.empty()) {
+        psemaphore = m_wait_semaphore_list[0];
+        m_wait_semaphore_list[0]->signal();
+        m_wait_semaphore_list.erase(m_wait_semaphore_list.begin());
+        m_free_semaphore_list.emplace_back(psemaphore);
+      }
+      return 0;
+    }
+  }
+  int broadcast() {
+    shmsemaphore *psemaphore{nullptr};
+    {
+      std::lock_guard<shmmutex> lock{m_mutex};
+      while (!m_wait_semaphore_list.empty()) {
+        psemaphore = m_wait_semaphore_list[0];
+        m_wait_semaphore_list[0]->signal();
+        m_wait_semaphore_list.erase(m_wait_semaphore_list.begin());
+        m_free_semaphore_list.emplace_back(psemaphore);
+      }
+      return 0;
+    }
+  }
+
+private:
+  shmmutex m_mutex;
+  shmvector<shmsemaphore *> m_wait_semaphore_list;
+  shmvector<shmsemaphore *> m_free_semaphore_list;
 };
 
 template <typename T> class shmqueue {
