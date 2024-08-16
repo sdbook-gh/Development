@@ -1,8 +1,4 @@
 #include "shmallocator.h"
-#include <cstdint>
-#include <cstdio>
-#include <cstring>
-#include <errno.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -33,6 +29,7 @@ static void initialize_header(Header *h, size_t size, int id, bool is_first) {
     return;
   }
 
+  h->version = SUPPORT_VERSION;
   h->prev = -1;
   h->next = -1;
   h->size = size;
@@ -68,15 +65,14 @@ static void destroy_header(Header *h, void *shm_ptr) {
     ((Header *)offset2ptr(h->next, shm_ptr))->prev = h->prev;
   }
 
-  // Now the list is good, corrupt bitseq to be safe
-  h->bitseq += 1;
-  h->next = -1;
+  h->version = 0;
   h->prev = -1;
-
-  // Screw up ptrs
   h->next = -1;
-  h->prev = -1;
-  h->id = -1;
+  h->size = 0;
+  h->refcount = 0;
+  h->id = 0;
+  h->is_free = false;
+  h->bitseq = 0;
 }
 
 bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t shm_max_size) {
@@ -125,11 +121,17 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
     }
     shmptr = shmem_ptr;
     shmsize = shm_max_size;
+    Header *pheader = (Header *)shmptr;
     if (first_create) {
       memset(shmptr, 0, sizeof(Header));
       int id{-1};
       shmalloc(1, &id, __FILE__, __LINE__);
       printf("shmalloc first id: %d\n", id);
+    } else if (pheader->version != SUPPORT_VERSION) {
+      memset(shmptr, 0, sizeof(Header));
+      int id{-1};
+      shmalloc(1, &id, __FILE__, __LINE__);
+      printf("shmalloc reset first id: %d\n", id);
     }
     return true;
   }();
@@ -297,6 +299,7 @@ void shmfree(void *ptr, const char *filename, int linenumber) {
 
   // If we are the last reference
   if (--(h->refcount) <= 0) {
+    printf("shmfree size %u\n", h->size);
     // Adjust our size
     if (h->next != -1) {
       h->size = (uint8_t *)offset2ptr(h->next, shmptr) - (uint8_t *)h - sizeof(Header);
