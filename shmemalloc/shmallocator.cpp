@@ -258,8 +258,6 @@ void *shmget(int id, const char *filename, int linenumber) {
 void shmfree(void *ptr, const char *filename, int linenumber) {
   Header *h, *first;
   if (ptr == nullptr) {
-    // Like free(3), shmfree() of a nullptr pointer has no effect
-    fprintf(stderr, "%s, line %d: free() on a nullptr pointer does nothing.\n", filename, linenumber);
     return;
   }
 

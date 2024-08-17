@@ -1,8 +1,10 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <errno.h>
 #include <memory>
@@ -125,7 +127,8 @@ template <typename T> T *aligned_alloc(void *buffer, uint32_t buffer_size, std::
   return nullptr;
 }
 
-template <typename T> T *shmgetobjbytag(const char *tag) {
+using ObjectTag = char[64];
+template <typename T> T *shmgetobjbytag(const char *tag, bool create = true) {
   int max_id = shmgetmaxid();
   T *pobj{nullptr};
   for (int i = 2; i <= max_id; ++i) {
@@ -135,7 +138,7 @@ template <typename T> T *shmgetobjbytag(const char *tag) {
       break;
     }
   }
-  if (pobj == nullptr) {
+  if (pobj == nullptr && create) {
     pobj = Allocator<T>{}.allocate();
     strncpy(pobj->tag, tag, sizeof(T::tag) - 1);
   }
@@ -501,9 +504,6 @@ public:
   bool push(T const &data) {
     Record *record;
     uint32_t pos = m_enqueue_pos.load(std::memory_order_relaxed);
-    // if (pos > m_buffer_mask) {
-    //   return false;
-    // }
     for (;;) {
       record = &m_buffer[pos & m_buffer_mask];
       uint32_t seq = record->m_sequence.load(std::memory_order_acquire);
@@ -565,6 +565,60 @@ private:
   shmsemaphore m_semaphore;
 };
 
+class AliveCheck {
+public:
+  AliveCheck() {
+    if ((m_pmutex = aligned_alloc<pthread_mutex_t>(buffer, sizeof(buffer))) != nullptr) {
+      pthread_mutexattr_init(&m_mutex_attr);
+      pthread_mutexattr_settype(&m_mutex_attr, PTHREAD_MUTEX_RECURSIVE);
+      pthread_mutexattr_setpshared(&m_mutex_attr, PTHREAD_PROCESS_SHARED);
+      pthread_mutexattr_setrobust(&m_mutex_attr, PTHREAD_MUTEX_ROBUST);
+      pthread_mutex_init(m_pmutex, &m_mutex_attr);
+      pthread_mutex_lock(m_pmutex);
+    } else {
+      throw std::runtime_error{"aligned_alloc error"};
+    }
+  }
+  ~AliveCheck() {
+    pthread_mutex_unlock(m_pmutex);
+    pthread_mutexattr_destroy(&m_mutex_attr);
+    pthread_mutex_destroy(m_pmutex);
+  }
+  int is_alive() {
+    if (status.load() == -1) {
+      return -1;
+    }
+    int ret = pthread_mutex_trylock(m_pmutex);
+    // printf("is_alive pthread_mutex_trylock %d\n", ret);
+    if (ret == 0) {
+      // printf("owner\n");
+      status.store(1);
+      return 0;
+    } else if (ret == EOWNERDEAD) {
+      // printf("owner dead\n");
+      status.store(-1);
+      return -1;
+    }
+    // printf("owner alive\n");
+    return 1;
+  }
+  int reset() {
+    int8_t dead_status{-1};
+    if (status.compare_exchange_strong(dead_status, 1)) {
+      pthread_mutex_destroy(m_pmutex);
+      pthread_mutex_init(m_pmutex, &m_mutex_attr);
+      return pthread_mutex_lock(m_pmutex);
+    }
+    return -1;
+  }
+
+private:
+  pthread_mutexattr_t m_mutex_attr;
+  pthread_mutex_t *m_pmutex{nullptr};
+  pthread_cond_t buffer[2];
+  std::atomic_int8_t status{0};
+};
+
 class AliveMonitor {
 public:
   enum Type { PRODUCER, CONSUMER };
@@ -592,67 +646,86 @@ private:
   TrackRecordVec_t m_producer_vec;
   shmmutex m_consumer_vec_mutex;
   TrackRecordVec_t m_consumer_vec;
-  bool m_any_producer_dead{false};
-  bool m_any_consumer_dead{false};
+  bool m_any_producer_dead{true};
+  bool m_any_consumer_dead{true};
   static constexpr int CHECK_INTERVAL_MS{100};
   static constexpr int CHECK_MAX_COUNT{2};
+  typedef struct {
+    shmallocator::ObjectTag tag{0};
+    AliveCheck m_alivecheck;
+  } MonitorStatus_t;
+  MonitorStatus_t *m_pmonitorstatus{nullptr};
 
 public:
   AliveMonitor() {}
   bool start_monitor() {
-    auto check_alive = [](TrackRecord *pRecord) {
-      if (pRecord->last_operation == TrackRecord::UNKNOWN) {
-        pRecord->last_operation = TrackRecord::MONITORING;
-        pRecord->count = 0;
-        return 0;
-      } else if (pRecord->last_operation == TrackRecord::MONITORING) {
-        if (pRecord->count >= CHECK_MAX_COUNT) {
-          return -1;
-        }
-        pRecord->count++;
-      } else {
-        pRecord->last_operation = TrackRecord::MONITORING;
-        pRecord->count = 0;
-      }
-      return 1;
-    };
-    auto check = [check_alive](shmmutex &mutex, TrackRecordVec_t &vec, bool &dead_flag, Type type) {
-      if (mutex.try_lock() == 0) {
-        int index{0};
-        int res;
-        for (int i = 0; i < (int)vec.size(); ++i) {
-          if ((res = check_alive(vec[i])) != 1) {
-            index = -(i + 1);
-            break;
-          }
-          index++;
-        }
-        if (index <= 0) {
-          dead_flag = true;
-          int n = vec.empty() ? -1 : -index - 1;
-          if (n >= 0) {
-            if (res == 0) {
-              printf("%s %d joined\n", vec[n]->name, (int)type);
-            } else {
-              printf("%s %d dead\n", vec[n]->name, (int)type);
-              Allocator<TrackRecord>{}.deallocate(*(vec.begin() + n));
-              vec.erase(vec.begin() + n);
-            }
-          }
-        } else {
-          dead_flag = false;
-        }
-        mutex.unlock();
-      }
-    };
-    while (true) {
-      check(m_producer_vec_mutex, m_producer_vec, m_any_producer_dead, PRODUCER);
-      check(m_consumer_vec_mutex, m_consumer_vec, m_any_consumer_dead, CONSUMER);
-      std::this_thread::sleep_for(std::chrono::milliseconds(CHECK_INTERVAL_MS));
+    m_pmonitorstatus = shmgetobjbytag<MonitorStatus_t>("monitor_status", true);
+    printf("monitor_status %p\n", m_pmonitorstatus);
+    if (m_pmonitorstatus->m_alivecheck.is_alive() < 0) {
+      m_pmonitorstatus->m_alivecheck.reset();
     }
-    return true;
+    if (m_pmonitorstatus->m_alivecheck.is_alive() == 0) {
+      printf("monitor running\n");
+      auto check_alive = [](TrackRecord *pRecord) {
+        if (pRecord->last_operation == TrackRecord::UNKNOWN) {
+          pRecord->last_operation = TrackRecord::MONITORING;
+          pRecord->count = 0;
+          return 0;
+        } else if (pRecord->last_operation == TrackRecord::MONITORING) {
+          if (pRecord->count >= CHECK_MAX_COUNT) {
+            return -1;
+          }
+          pRecord->count++;
+        } else {
+          pRecord->last_operation = TrackRecord::MONITORING;
+          pRecord->count = 0;
+        }
+        return 1;
+      };
+      auto check = [check_alive](shmmutex &mutex, TrackRecordVec_t &vec, bool &dead_flag, Type type) {
+        if (mutex.try_lock() == 0) {
+          int index{0};
+          int res;
+          for (int i = 0; i < (int)vec.size(); ++i) {
+            if ((res = check_alive(vec[i])) != 1) {
+              index = -(i + 1);
+              break;
+            }
+            index++;
+          }
+          if (index <= 0) {
+            dead_flag = true;
+            int n = vec.empty() ? -1 : -index - 1;
+            if (n >= 0) {
+              if (res == 0) {
+                printf("%s %d joined\n", vec[n]->name, (int)type);
+              } else {
+                printf("%s %d dead\n", vec[n]->name, (int)type);
+                Allocator<TrackRecord>{}.deallocate(*(vec.begin() + n));
+                vec.erase(vec.begin() + n);
+              }
+            }
+          } else {
+            dead_flag = false;
+          }
+          mutex.unlock();
+        }
+      };
+      while (true) {
+        check(m_producer_vec_mutex, m_producer_vec, m_any_producer_dead, PRODUCER);
+        check(m_consumer_vec_mutex, m_consumer_vec, m_any_consumer_dead, CONSUMER);
+        std::this_thread::sleep_for(std::chrono::milliseconds(CHECK_INTERVAL_MS));
+      }
+      return true;
+    }
+    return false;
   }
   bool start_heartbeat(Type type, const std::string &name) {
+    m_pmonitorstatus = shmgetobjbytag<MonitorStatus_t>("monitor_status", false);
+    printf("monitor_status %p\n", m_pmonitorstatus);
+    while (m_pmonitorstatus == nullptr || m_pmonitorstatus->m_alivecheck.is_alive() < 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds{CHECK_INTERVAL_MS});
+    }
     static bool res = [this, type, name] {
       TrackRecord *pRecord{nullptr};
       AliveMonitor::TrackRecordVec_t *pvec{nullptr};
@@ -681,8 +754,12 @@ public:
         strncpy((*pvec->rbegin())->name, name.c_str(), sizeof(TrackRecord::name));
         pRecord = *pvec->rbegin();
       }
-      std::thread heatbeat_thread([pRecord] {
+      std::thread heatbeat_thread([pRecord, this] {
         while (true) {
+          if (m_pmonitorstatus->m_alivecheck.is_alive() < 0) {
+            printf("monitor is dead, exit\n");
+            exit(EXIT_FAILURE);
+          }
           int status = TrackRecord::UNKNOWN;
           if (pRecord->last_operation.compare_exchange_strong(status, TrackRecord::UNKNOWN)) {
           } else {
@@ -696,28 +773,24 @@ public:
     }();
     return res;
   }
-  bool any_producer_dead() {
-    return m_any_producer_dead;
-  }
-  bool any_consumer_dead() {
-    return m_any_consumer_dead;
-  }
-  void wait_for_any_producer_alive() {
-    while (true) {
-      if (!any_producer_dead()) {
-        return;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds{CHECK_INTERVAL_MS});
-    }
-  }
-  void wait_for_any_consumer_dead() {
-    while (true) {
-      if (any_consumer_dead()) {
-        return;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds{CHECK_INTERVAL_MS});
-    }
-  }
+  // bool any_producer_dead() { return m_any_producer_dead; }
+  // bool any_consumer_dead() { return m_any_consumer_dead; }
+  // void wait_for_any_producer_alive() {
+  //   while (true) {
+  //     if (!any_producer_dead()) {
+  //       return;
+  //     }
+  //     std::this_thread::sleep_for(std::chrono::milliseconds{CHECK_INTERVAL_MS});
+  //   }
+  // }
+  // void wait_for_any_consumer_dead() {
+  //   while (true) {
+  //     if (any_consumer_dead()) {
+  //       return;
+  //     }
+  //     std::this_thread::sleep_for(std::chrono::milliseconds{CHECK_INTERVAL_MS});
+  //   }
+  // }
 };
 
 } // namespace shmallocator

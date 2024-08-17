@@ -21,31 +21,31 @@ int main(int argc, const char *const argv[]) {
     shmallocator::shmvector<shmallocator::shmstring> str_vec{};
   };
   typedef struct {
-    char tag[64]{0};
+    shmallocator::ObjectTag tag{0};
     shmallocator::shmvector<Node> vec;
   } Vector_t;
   typedef struct {
-    char tag[64]{0};
+    shmallocator::ObjectTag tag{0};
     shmallocator::shmmutex mutex;
   } Mutex_t;
   typedef struct {
-    char tag[64]{0};
+    shmallocator::ObjectTag tag{0};
     shmallocator::shmsemaphore semaphore;
   } Semaphore_t;
   typedef struct {
-    char tag[64]{0};
+    shmallocator::ObjectTag tag{0};
     shmallocator::shmcond cond;
   } Cond_t;
   typedef struct {
-    char tag[64]{0};
+    shmallocator::ObjectTag tag{0};
     shmallocator::AliveMonitor monitor;
   } Heartbeat_t;
   typedef struct {
-    char tag[64]{0};
+    shmallocator::ObjectTag tag{0};
     shmallocator::shmqueue<Node> queue{10};
   } Queue_t;
   // typedef struct {
-  //   char tag[64]{0};
+  //   shmallocator::ObjectTag tag{0};
   //   shmallocator::shm_spin_mutex spin_mutex;
   //   shmallocator::shm_spin_cond spin_cond;
   // } SpinSync_t;
@@ -81,10 +81,10 @@ int main(int argc, const char *const argv[]) {
     Cond_t *condptr = shmallocator::shmgetobjbytag<Cond_t>("cond");
     auto *pcond = &condptr->cond;
     printf("pcond: %p\n", pcond);
-    pmonitor->start_heartbeat(shmallocator::AliveMonitor::PRODUCER, "producer_" + std::to_string(time(nullptr)));
     Queue_t *queueptr = shmallocator::shmgetobjbytag<Queue_t>("queue");
     auto *pqueue = &queueptr->queue;
     printf("pqueue: %p\n", pqueue);
+    pmonitor->start_heartbeat(shmallocator::AliveMonitor::PRODUCER, "producer_" + std::to_string(time(nullptr)));
     // auto *spinsyncptr = shmallocator::shmgetobjbytag<SpinSync_t>("spinsync");
     // printf("spinsyncptr: %p\n", spinsyncptr);
     // auto *pspinmutex = &spinsyncptr->spin_mutex;
@@ -159,8 +159,7 @@ int main(int argc, const char *const argv[]) {
     // auto *pspincond = &spinsyncptr->spin_cond;
 
     pmonitor->start_heartbeat(shmallocator::AliveMonitor::CONSUMER, "consumer_" + std::to_string(time(nullptr)));
-    pmonitor->wait_for_any_producer_alive();
-    printf("producer alive\n");
+    // pmonitor->wait_for_any_producer_alive();
     // ready go
     std::vector<std::thread> thread_vec;
     for (int i = 0; i < 10; ++i) {
