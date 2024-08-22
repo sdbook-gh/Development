@@ -7,72 +7,120 @@
 namespace shmallocator {
 
 void *shmptr{nullptr};
-size_t shmsize{0};
+uint32_t shmsize{0};
 
 static int32_t ptr2offset(void *ptr, void *shm_ptr) {
-  if (ptr == nullptr) {
+  if (ptr == nullptr || shm_ptr == nullptr) {
     return -1;
   }
   return (uint8_t *)ptr - (uint8_t *)shm_ptr;
 }
 
 static void *offset2ptr(int32_t offset, void *shm_ptr) {
-  if (offset == -1) {
+  if (offset == -1 || shm_ptr == nullptr) {
     return nullptr;
   }
   return (uint8_t *)shm_ptr + offset;
 }
 
-static void initialize_header(Header *h, size_t size, int id, bool is_first) {
-  // Sanity check
-  if (h == nullptr) {
+void print_shmallocator() {
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return;
   }
+  Header *curr = (Header *)shmptr;
+  while (curr != nullptr) {
+    printf("bitseq %u id %u prev %d next %d size %d free %d\n",
+           curr->bitseq,
+           curr->id,
+           curr->prev,
+           curr->next,
+           curr->size,
+           curr->is_free);
+    curr = curr->next != -1 ? (Header *)offset2ptr(curr->next, shmptr) : nullptr;
+  }
+}
 
+static void initialize_header(Header *h, size_t size, int id, bool is_first) {
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    return;
+  }
+  // Sanity check
+  if (h == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    return;
+  }
+  // ensure hreader is not valid
+  h->bitseq = 0;
   h->version = SUPPORT_VERSION;
   h->prev = -1;
   h->next = -1;
   h->size = size;
-  h->refcount = 0;
   h->id = id;
   h->is_free = true;
-  h->bitseq = BITSEQ;
 
   if (is_first) {
     h->has_mutex = true;
-    pthread_mutexattr_init(&(h->attr));
-    pthread_mutexattr_settype(&(h->attr), PTHREAD_MUTEX_NORMAL);
-    pthread_mutexattr_setpshared(&(h->attr), PTHREAD_PROCESS_SHARED);
-    pthread_mutexattr_setrobust(&(h->attr), PTHREAD_MUTEX_ROBUST);
-    pthread_mutex_init(&(h->mutex), &(h->attr));
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL);
+    pthread_mutexattr_setpshared(&attr, PTHREAD_PROCESS_SHARED);
+    pthread_mutexattr_setrobust(&attr, PTHREAD_MUTEX_ROBUST);
+    pthread_mutex_init(&(h->mutex), &attr);
+    pthread_mutexattr_destroy(&attr);
   } else {
     h->has_mutex = false;
   }
 }
 
 static void destroy_header(Header *h, void *shm_ptr) {
-  // Sanity check
-  if (h == nullptr) {
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return;
   }
-
+  // Sanity check
+  if (h == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    return;
+  }
+  if (h->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d bad header bitseq\n", __FILE__, __LINE__);
+    return;
+  }
+  Header *prev = h->prev != -1 ? (Header *)offset2ptr(h->prev, shm_ptr) : nullptr;
+  if (prev != nullptr && prev->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
+    return;
+  }
+  Header *next = h->next != -1 ? (Header *)offset2ptr(h->next, shm_ptr) : nullptr;
+  if (next != nullptr && next->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
+    return;
+  }
   // Adjust previous and next accordingly
-  if (h->prev != -1) {
-    ((Header *)offset2ptr(h->prev, shm_ptr))->next = h->next;
-    // printf("prev next is %p\n", ((Header *)offset2ptr(h->prev, shm_ptr)));
+  // ensure hreader is not valid
+  h->bitseq = 0;
+  if (prev != nullptr) {
+    // ensure hreader is not valid
+    prev->bitseq = 0;
+    prev->next = h->next;
   }
-  if (h->next != -1) {
-    ((Header *)offset2ptr(h->next, shm_ptr))->prev = h->prev;
+  if (next != nullptr) {
+    // ensure hreader is not valid
+    next->bitseq = 0;
+    next->prev = h->prev;
   }
-
+  // ensure hreader is valid
+  prev->bitseq = next->bitseq = BITSEQ;
   h->version = 0;
   h->prev = -1;
   h->next = -1;
   h->size = 0;
-  h->refcount = 0;
   h->id = 0;
   h->is_free = false;
-  h->bitseq = 0;
 }
 
 bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t shm_max_size) {
@@ -83,14 +131,15 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
       if (errno == ENOENT) {
         if ((fd = open(shm_file_path.c_str(), O_CREAT | O_EXCL | O_RDWR, S_IRUSR | S_IWUSR)) < 0) {
           std::string str = strerror(errno);
-          printf("create shmem file %s error: %s", shm_file_path.c_str(), str.c_str());
+          fprintf(
+            stderr, "%s %d create shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
           return false;
         } else {
           first_create = true;
         }
       } else {
         std::string str = strerror(errno);
-        printf("open shmem file %s error: %s", shm_file_path.c_str(), str.c_str());
+        fprintf(stderr, "%s %d open shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
         return false;
       }
     }
@@ -98,14 +147,16 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
       struct stat st;
       if (fstat(fd, &st) < 0) {
         std::string str = strerror(errno);
-        printf("fstat shmem file %s error: %s", shm_file_path.c_str(), str.c_str());
+        fprintf(
+          stderr, "%s %d fstat shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
         close(fd);
         return false;
       }
       if ((uint32_t)st.st_size < shm_max_size) {
         if (ftruncate(fd, shm_max_size) == -1) {
           std::string str = strerror(errno);
-          printf("truncate shmem file %s error: %s", shm_file_path.c_str(), str.c_str());
+          fprintf(
+            stderr, "%s %d truncate shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
           close(fd);
           return false;
         }
@@ -115,7 +166,7 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
       mmap((void *)shm_base_address, shm_max_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
     if (shmem_ptr == MAP_FAILED) {
       std::string str = strerror(errno);
-      printf("mmap shmem file %s error: %s", shm_file_path.c_str(), str.c_str());
+      fprintf(stderr, "%s %d mmap shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
       close(fd);
       return false;
     }
@@ -124,38 +175,35 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
     Header *pheader = (Header *)shmptr;
     if (first_create) {
       memset(shmptr, 0, sizeof(Header));
-      int id{-1};
-      shmalloc(1, &id, __FILE__, __LINE__);
-      printf("shmalloc first id: %d\n", id);
+      int id;
+      shmalloc(1, &id);
+      printf("shmalloc create first id: %d\n", id);
     } else if (pheader->version != SUPPORT_VERSION) {
       memset(shmptr, 0, sizeof(Header));
-      int id{-1};
-      shmalloc(1, &id, __FILE__, __LINE__);
+      int id;
+      shmalloc(1, &id);
       printf("shmalloc reset first id: %d\n", id);
     }
+    // print_shmallocator();
     return true;
   }();
   return res;
 }
 
-void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber) {
+void *shmalloc(uint32_t size, int *id) {
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    return nullptr;
+  }
   Header *first{nullptr}, *curr{nullptr}, *best_fit{nullptr};
   uint32_t free_size{0}, best_block_size{0};
-
-  // Verify pointers
-  if (shmptr == nullptr) {
-    fprintf(stderr, "%s, line %d: Shared memory is uninitialized.\n", filename, linenumber);
-    return nullptr;
-  }
   if (size == 0 && id != nullptr && *id == -1) {
-    fprintf(stderr, "%s, line %d: Cannot allocate zero sized shared memory.\n", filename, linenumber);
+    fprintf(stderr, "%s %d bad parameter\n", __FILE__, __LINE__);
     return nullptr;
-  } else if (size % 2 != 0) {
-    ++size;
   }
-  printf("shmalloc size %u\n", size);
+  // printf("shmalloc size %u\n", size);
   if (shmsize < size + sizeof(Header)) {
-    fprintf(stderr, "%s, line %d: Too big shared memory size %u to allocate.\n", filename, linenumber, size);
+    fprintf(stderr, "%s %d size %u too big\n", __FILE__, __LINE__, size);
     return nullptr;
   }
 
@@ -165,43 +213,53 @@ void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber) {
 
   // First time calling shmalloc
   if (first->bitseq != BITSEQ) {
+    // no lock, since mmap file is created exclusively
     initialize_header(first, size, 1, 1);
-    if (id != nullptr) {
-      *id = 1;
-    }
     first->is_free = false;
-    first->refcount++;
-
     // Create the next header if we have enough room
     if ((free_size = (size_t)((uint8_t *)(2 * sizeof(Header)) + size)) < shmsize) {
       curr = (Header *)((uint8_t *)shmptr + sizeof(Header) + size);
       initialize_header(curr, shmsize - free_size, -1, 0);
       first->next = ptr2offset(curr, shmptr);
       curr->prev = ptr2offset(first, shmptr);
+      // ensure hreader is valid
+      curr->bitseq = BITSEQ;
     }
-
+    // ensure hreader is valid
+    first->bitseq = BITSEQ;
+    if (id != nullptr) {
+      *id = 1;
+    }
+    // print_shmallocator();
     return (first + 1);
   }
   // Lock shared memory
-  int ret = pthread_mutex_lock(&(first->mutex));
-  if (ret == EOWNERDEAD) {
-    ret = pthread_mutex_consistent(&(first->mutex));
-    ret = pthread_mutex_unlock(&(first->mutex));
-    ret = pthread_mutex_lock(&(first->mutex));
+  int ret[3]{0};
+  ret[0] = pthread_mutex_lock(&(first->mutex));
+  if (ret[0] == EOWNERDEAD) {
+    ret[1] = pthread_mutex_consistent(&(first->mutex));
+    ret[2] = pthread_mutex_unlock(&(first->mutex));
+    ret[0] = pthread_mutex_lock(&(first->mutex));
   }
-  if (ret != 0) {
-    fprintf(stderr, "%s, line %d: Cannot lock mutex in shared memory.\n", filename, linenumber);
+  if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
+    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    pthread_mutex_unlock(&(first->mutex));
+    return nullptr;
   }
   // Loop through all headers to see if id already exists
   // Also record best spot to put this new item if it does not exist
   curr = (Header *)offset2ptr(curr->next, shmptr);
   while (curr != nullptr) {
+    if (curr->bitseq != BITSEQ) {
+      fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+      print_shmallocator();
+      pthread_mutex_unlock(&(first->mutex));
+      return nullptr;
+    }
     if (id != nullptr && *id != -1 && curr->id == (uint32_t)*id && !curr->is_free) {
       // Already have item with this id
-      curr->refcount++;
-      size = curr->size;
-      // Can unlock mutex and return here
       pthread_mutex_unlock(&(first->mutex));
+      // print_shmallocator();
       return (curr + 1);
     }
     // Get size of this block
@@ -209,30 +267,31 @@ void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber) {
       best_block_size = curr->size;
       best_fit = curr;
     }
-    curr = (Header *)offset2ptr(curr->next, shmptr);
+    curr = curr->next != -1 ? (Header *)offset2ptr(curr->next, shmptr) : nullptr;
   }
   // Did not find existing entry
   if (best_fit == nullptr) {
     if (size != 0) {
       // Did not find a viable chunk, failure
-      fprintf(stderr,
-              "%s, line %d: Shared memory ran out of available space"
-              " to satisfy the request.\n",
-              filename,
-              linenumber);
+      fprintf(stderr, "%s %d no enough free space to allocate\n", __FILE__, __LINE__);
     }
     pthread_mutex_unlock(&(first->mutex));
     return nullptr;
   }
   // Found a viable chunk - use it
+  // ensure hreader is not valid
+  best_fit->bitseq = 0;
   free_size = best_fit->size; // Total size of chunk before next header
   best_fit->size = size;
-  best_fit->refcount = 1;
   best_fit->id = ++((Header *)shmptr)->id;
-  if (id != nullptr) {
-    *id = best_fit->id;
-  }
   best_fit->is_free = false;
+  Header *next = best_fit->next != -1 ? (Header *)offset2ptr(best_fit->next, shmptr) : nullptr;
+  if (next != nullptr && next->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
+    pthread_mutex_unlock(&(first->mutex));
+    return nullptr;
+  }
   // Check if there is enough room to make another header
   if ((free_size - best_fit->size) > sizeof(Header)) {
     curr = (Header *)((uint8_t *)best_fit + best_fit->size + sizeof(Header));
@@ -240,117 +299,164 @@ void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber) {
     // Adjust pointers
     curr->prev = ptr2offset(best_fit, shmptr);
     curr->next = best_fit->next;
-    if (best_fit->next != -1) {
-      ((Header *)offset2ptr(best_fit->next, shmptr))->prev = ptr2offset(curr, shmptr);
+    // ensure hreader is valid
+    curr->bitseq = BITSEQ;
+    if (next != nullptr) {
+      // ensure hreader is not valid
+      next->bitseq = 0;
+      next->prev = ptr2offset(curr, shmptr);
+      // ensure hreader is valid
+      next->bitseq = BITSEQ;
     }
     best_fit->next = ptr2offset(curr, shmptr);
   } else {
     best_fit->size = free_size;
+    best_fit->next = -1;
+  }
+  // ensure hreader is valid
+  best_fit->bitseq = BITSEQ;
+  if (id != nullptr) {
+    *id = best_fit->id;
   }
   pthread_mutex_unlock(&(first->mutex));
+  // print_shmallocator();
   return (best_fit + 1);
 }
 
-void *shmget(int id, const char *filename, int linenumber) {
-  return shmalloc(0, &id, filename, linenumber);
+void *shmget(int id) {
+  return shmalloc(0, &id);
 }
 
-void shmfree(void *ptr, const char *filename, int linenumber) {
-  Header *h, *first;
-  if (ptr == nullptr) {
+void shmfree(void *ptr) {
+  return;
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return;
   }
-
-  // Get the associated header
+  Header *h{nullptr};
+  Header *first{nullptr};
+  if (ptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    return;
+  }
   h = ((Header *)ptr) - 1;
-
-  // More verification checks
   if (h->bitseq != BITSEQ) {
-    fprintf(stderr,
-            "%s, line %d: Attempted to free a pointer not allocated"
-            " by shmalloc() or corruption of internal memory has "
-            "occurred. Check your memory accesses.\n",
-            filename,
-            linenumber);
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
+    return;
+  }
+  Header *prev = h->prev != -1 ? (Header *)offset2ptr(h->prev, shmptr) : nullptr;
+  if (prev != nullptr && prev->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
+    return;
+  }
+  Header *next = h->next != -1 ? (Header *)offset2ptr(h->next, shmptr) : nullptr;
+  if (next != nullptr && next->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
     return;
   }
   if (h->is_free) {
-    fprintf(stderr,
-            "%s, line %d: Attempt to shmfree() a pointer that has "
-            "already been freed.\n",
-            filename,
-            linenumber);
+    fprintf(stderr, "%s %d double free error\n", __FILE__, __LINE__);
     return;
   }
 
-  // LOCK EVERYTHING
   first = (Header *)shmptr;
-  int ret = pthread_mutex_lock(&(first->mutex));
-  if (ret == EOWNERDEAD) {
-    ret = pthread_mutex_consistent(&(first->mutex));
-    ret = pthread_mutex_unlock(&(first->mutex));
-    ret = pthread_mutex_lock(&(first->mutex));
+  int ret[3]{0};
+  ret[0] = pthread_mutex_lock(&(first->mutex));
+  if (ret[0] == EOWNERDEAD) {
+    ret[1] = pthread_mutex_consistent(&(first->mutex));
+    ret[2] = pthread_mutex_unlock(&(first->mutex));
+    ret[0] = pthread_mutex_lock(&(first->mutex));
   }
-  if (ret != 0) {
-    fprintf(stderr, "%s, line %d: Cannot lock mutex in shared memory.\n", filename, linenumber);
+  if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
+    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    pthread_mutex_unlock(&(first->mutex));
+    return;
   }
-
-  // If we are the last reference
-  if (--(h->refcount) <= 0) {
-    printf("shmfree size %u\n", h->size);
-    // Adjust our size
-    if (h->next != -1) {
-      h->size = (uint8_t *)offset2ptr(h->next, shmptr) - (uint8_t *)h - sizeof(Header);
-    } else {
-      h->size = (uint8_t *)shmsize - (uint8_t *)h - sizeof(Header);
-    }
-
-    /*Check if we can delete our next to free up space*/
-    if (h->next != -1 && ((Header *)offset2ptr(h->next, shmptr))->is_free) {
-      h->size += (size_t)(((Header *)offset2ptr(h->next, shmptr))->size + sizeof(Header));
-      destroy_header((Header *)offset2ptr(h->next, shmptr), shmptr);
-    }
-
-    // Don't delete the first entry
-    if (h != first) {
-      if (h->prev != -1 && ((Header *)offset2ptr(h->prev, shmptr))->is_free) {
-        ((Header *)offset2ptr(h->prev, shmptr))->size += (size_t)(h->size + sizeof(Header));
-        destroy_header(h, shmptr);
-        h = nullptr;
-      }
-    }
-
-    // Need to set h to freed
-    if (h != nullptr || h == first) {
-      h->is_free = true;
-    }
+  // printf("shmfree size %u\n", h->size);
+  // ensure hreader is not valid
+  h->bitseq = 0;
+  // Adjust our size
+  if (next != nullptr) {
+    h->size = (uint8_t *)next - (uint8_t *)h - sizeof(Header);
+  } else {
+    h->size = (uint8_t *)shmptr + shmsize - (uint8_t *)h - sizeof(Header);
+  }
+  /*Check if we can delete our next to free up space*/
+  if (next != nullptr && next->is_free) {
+    h->size += next->size + sizeof(Header);
+    destroy_header(next, shmptr);
+    h->bitseq = BITSEQ;
+  } else if (prev != nullptr && prev->is_free) {
+    // ensure hreader is not valid
+    prev->bitseq = 0;
+    prev->size += h->size + sizeof(Header);
+    destroy_header(h, shmptr);
+    // ensure hreader is valid
+    prev->bitseq = BITSEQ;
+  } else {
+    h->bitseq = BITSEQ;
   }
   pthread_mutex_unlock(&(first->mutex));
+  print_shmallocator();
 }
 
 int shmgetmaxid() {
-  Header *header = (Header *)shmptr;
-  if (header == nullptr) {
-    return -1;
-  } else if (header->bitseq != BITSEQ) {
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return -1;
   }
-  int ret = pthread_mutex_lock(&(header->mutex));
-  if (ret == EOWNERDEAD) {
-    ret = pthread_mutex_consistent(&(header->mutex));
-    ret = pthread_mutex_unlock(&(header->mutex));
-    ret = pthread_mutex_lock(&(header->mutex));
-  }
-  if (ret != 0) {
+  Header *first = (Header *)shmptr;
+  if (first->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
     return -1;
   }
-  int max_id = header->id;
-  pthread_mutex_unlock(&(header->mutex));
+  int ret[3]{0};
+  ret[0] = pthread_mutex_lock(&(first->mutex));
+  if (ret[0] == EOWNERDEAD) {
+    ret[1] = pthread_mutex_consistent(&(first->mutex));
+    ret[2] = pthread_mutex_unlock(&(first->mutex));
+    ret[0] = pthread_mutex_lock(&(first->mutex));
+  }
+  if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
+    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    pthread_mutex_unlock(&(first->mutex));
+    return -1;
+  }
+  int max_id = first->id;
+  pthread_mutex_unlock(&(first->mutex));
   return max_id;
 }
 
 bool uninitshm() {
-  munmap(shmptr, shmsize);
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    return false;
+  }
+  Header *first = (Header *)shmptr;
+  if (first->bitseq != BITSEQ) {
+    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    print_shmallocator();
+    return false;
+  }
+  int ret[3]{0};
+  ret[0] = pthread_mutex_lock(&(first->mutex));
+  if (ret[0] == EOWNERDEAD) {
+    ret[1] = pthread_mutex_consistent(&(first->mutex));
+    ret[2] = pthread_mutex_unlock(&(first->mutex));
+    ret[0] = pthread_mutex_lock(&(first->mutex));
+  }
+  if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
+    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    pthread_mutex_unlock(&(first->mutex));
+    return false;
+  }
+  // munmap(shmptr, shmsize);
+  shmptr = nullptr;
+  pthread_mutex_unlock(&(first->mutex));
   return true;
 }
 

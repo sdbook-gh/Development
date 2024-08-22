@@ -4,7 +4,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 #include <errno.h>
 #include <memory>
@@ -23,28 +22,27 @@
 
 namespace shmallocator {
 
+constexpr uint16_t SUPPORT_VERSION{10};
+constexpr uint32_t BITSEQ{12344321};
+
 struct Header {
+  uint32_t bitseq; // valid flag
   uint16_t version;
-  uint32_t bitseq;
   uint32_t id;
-  uint16_t refcount;
   uint32_t size;
   int32_t prev;
   int32_t next;
   bool has_mutex;
   bool is_free;
   pthread_mutex_t mutex;
-  pthread_mutexattr_t attr;
 };
 
-constexpr uint16_t SUPPORT_VERSION{10};
-constexpr uint32_t BITSEQ{12344321};
 extern void *shmptr;
-extern size_t shmsize;
+extern uint32_t shmsize;
 bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t shm_max_size);
-void *shmalloc(uint32_t size, int *id, const char *filename, int linenumber);
-void *shmget(int id, const char *filename, int linenumber);
-void shmfree(void *ptr, const char *filename, int linenumber);
+void *shmalloc(uint32_t size, int *id);
+void *shmget(int id);
+void shmfree(void *ptr);
 int shmgetmaxid();
 bool uninitshm();
 
@@ -68,14 +66,42 @@ private:
 
 public:
   using value_type = T;
-  T *allocate(size_t size = 1) {
+  T *allocate_def(bool call_def_contor) {
     // printf("allocate %s size %lu\n", typeid(T).name(), size);
     int id{-1};
-    T *ptr = (T *)shmalloc(sizeof(T) * size, &id, __FILE__, __LINE__);
+    T *ptr = (T *)shmalloc(sizeof(T), &id);
+    if (ptr == nullptr) {
+      throw std::bad_alloc{};
+    }
+    if (call_def_contor) {
+      new (ptr) T;
+    }
+    if constexpr (Has_id<T>::value) {
+      ptr->id = id;
+    }
+    return ptr;
+  }
+  T *allocate_init(const T &init_val) {
+    // printf("allocate %s size %lu\n", typeid(T).name(), size);
+    int id{-1};
+    T *ptr = (T *)shmalloc(sizeof(T), &id);
+    if (ptr == nullptr) {
+      throw std::bad_alloc{};
+    }
+    new (ptr) T{init_val};
+    if constexpr (Has_id<T>::value) {
+      ptr->id = id;
+    }
+    return ptr;
+  }
+  T *allocate_array_def(uint32_t size, bool call_def_contor) {
+    // printf("allocate %s size %lu\n", typeid(T).name(), size);
+    int id{-1};
+    T *ptr = (T *)shmalloc(sizeof(T) * size, &id);
     if (!ptr) {
       throw std::bad_alloc();
     }
-    for (size_t i = 0; i < size; ++i) {
+    for (uint32_t i = 0; call_def_contor && i < size; ++i) {
       new (ptr + i) T;
     }
     if constexpr (Has_id<T>::value) {
@@ -85,29 +111,42 @@ public:
     }
     return ptr;
   }
-  T *allocate(const T &init_value, size_t size = 1) {
+  T *allocate_array_init(uint32_t size, const T &init_val) {
     // printf("allocate %s size %lu\n", typeid(T).name(), size);
     int id{-1};
-    T *ptr = (T *)shmalloc(sizeof(T) * size, &id, __FILE__, __LINE__);
+    T *ptr = (T *)shmalloc(sizeof(T) * size, &id);
     if (!ptr) {
       throw std::bad_alloc();
     }
-    for (size_t i = 0; i < size; ++i) {
-      new (ptr + i) T(init_value);
+    for (uint32_t i = 0; i < size; ++i) {
+      new (ptr + i) T{init_val};
     }
     if constexpr (Has_id<T>::value) {
-      for (size_t i = 0; i < size; ++i) {
+      for (uint32_t i = 0; i < size; ++i) {
         ptr[i].id = id;
       }
     }
     return ptr;
   }
-  void deallocate(T *ptr, size_t size = 1) {
+  void deallocate_def(T *ptr, bool call_detor) {
     // printf("deallocate %s size %lu\n", typeid(T).name(), size);
-    for (size_t i = 0; i < size; ++i) {
+    if (call_detor) {
+      ptr->~T();
+    }
+    shmfree(ptr);
+  }
+  void deallocate_array(T *ptr, uint32_t size) {
+    // printf("deallocate %s size %lu\n", typeid(T).name(), size);
+    for (uint32_t i = 0; i < size; ++i) {
       (ptr + i)->~T();
     }
-    shmfree(ptr, __FILE__, __LINE__);
+    shmfree(ptr);
+  }
+  T *allocate(std::size_t n) {
+    return allocate_array_def(n, true);
+  }
+  void deallocate(T *p, std::size_t n) {
+    deallocate_array(p, n);
   }
 #undef HAS_MEMBER
 };
@@ -117,6 +156,236 @@ template <typename T1, typename T2> bool operator==(const Allocator<T1> &lhs, co
 template <typename T1, typename T2> bool operator!=(const Allocator<T1> &lhs, const Allocator<T2> &rhs) noexcept {
   return false;
 }
+
+// namespace slab {
+// constexpr uint32_t MAX_CHUNKS{8};
+// constexpr uint32_t FREE_THRESHOLD{16};
+// struct chunk_t {
+//   bool flag{false};
+//   void *value{nullptr};
+// };
+// struct slab_t {
+//   chunk_t chunks[MAX_CHUNKS];
+//   uint32_t free{MAX_CHUNKS};
+//   slab_t *next{nullptr};
+// };
+// struct slabs_t {
+//   slab_t *slab_head{nullptr};
+//   slab_t *slab_tail{nullptr};
+//   slabs_t *next{nullptr};
+//   uint32_t slabs{0};
+// };
+// struct cache_t {
+//   // uint32_t id{0};
+//   uint32_t size{0};
+//   uint32_t chunks{0};
+//   uint32_t slabs{0};
+//   slabs_t *slabs_full_head{nullptr};
+//   slabs_t *slabs_partial_head{nullptr};
+//   slabs_t *slabs_empty_head{nullptr};
+//   cache_t *next{nullptr};
+// };
+// class SlabManager {
+// private:
+//   cache_t *m_cache_chain{nullptr};
+//   cache_t *add_cache(uint32_t size) {
+//     cache_t *cc{nullptr};
+//     cache_t *cp{nullptr};
+//     if (m_cache_chain == nullptr) {
+//       m_cache_chain = Allocator<cache_t>{}.allocate();
+//       cc = m_cache_chain;
+//       cc->size = size;
+//       cc->chunks = MAX_CHUNKS;
+//       cc->slabs_full_head = Allocator<slabs_t>{}.allocate();
+//       cc->slabs_partial_head = Allocator<slabs_t>{}.allocate();
+//       cc->slabs_empty_head = Allocator<slabs_t>{}.allocate();
+//       return cc;
+//     } else {
+//       for (cc = m_cache_chain; cc != nullptr; cc = cc->next) {
+//         if (cc->size > size) {
+//           if (cp == nullptr) {
+//             m_cache_chain = Allocator<cache_t>{}.allocate();
+//             cp = m_cache_chain;
+//             cp->next = cc;
+//           } else {
+//             cp->next = Allocator<cache_t>{}.allocate();
+//             cp->next->next = cc;
+//             cp = cp->next;
+//           }
+//           cp->size = size;
+//           cp->chunks = MAX_CHUNKS;
+//           cp->slabs_full_head = Allocator<slabs_t>{}.allocate();
+//           cp->slabs_partial_head = Allocator<slabs_t>{}.allocate();
+//           cp->slabs_empty_head = Allocator<slabs_t>{}.allocate();
+//           return cp;
+//         }
+//         cp = cc;
+//       }
+//       cp->next = Allocator<cache_t>{}.allocate();
+//       cp = cp->next;
+//       cp->size = size;
+//       cp->chunks = MAX_CHUNKS;
+//       cp->slabs_full_head = Allocator<slabs_t>{}.allocate();
+//       cp->slabs_partial_head = Allocator<slabs_t>{}.allocate();
+//       cp->slabs_empty_head = Allocator<slabs_t>{}.allocate();
+//     }
+//     return cp;
+//   }
+//   template <typename T> cache_t *cache_match() {
+//     uint32_t size{sizeof(T)};
+//     cache_t *cc = m_cache_chain;
+//     while (cc != nullptr && cc->size != size) {
+//       cc = cc->next;
+//     }
+//     if (cc == nullptr) {
+//       return add_cache(size);
+//     }
+//     return cc;
+//   }
+//   slab_t *new_slab(uint32_t size) {
+//     slab_t *sl = Allocator<slab_t>{}.allocate();
+//     for (auto count = 0u; count < MAX_CHUNKS; count++) {
+//       sl->chunks[count].value = Allocator<uint8_t>{}.allocate(size, false);
+//     }
+//     return sl;
+//   }
+//   int delete_slab(slab_t *sl) {
+//     for (auto count = 0u; count < MAX_CHUNKS; count++) {
+//       Allocator<uint8_t>{}.deallocate((uint8_t *)sl->chunks[count].value);
+//     }
+//     Allocator<slab_t>{}.deallocate(sl);
+//     return 0;
+//   }
+//   int slab_queue_remove(slabs_t *sls, slab_t *sl) {
+//     slab_t *tmp_sl;
+//     slab_t *tmp_sl2;
+//     sls->slabs--;
+//     /* only one slab */
+//     if (sls->slab_head == sls->slab_tail) {
+//       sls->slab_head = nullptr;
+//       sls->slab_tail = nullptr;
+//       sl->next = nullptr;
+//       return 0;
+//     }
+//     /* sl is head */
+//     if (sls->slab_head == sl) {
+//       sls->slab_head = sls->slab_head->next;
+//       sl->next = nullptr;
+//       return 0;
+//     }
+//     tmp_sl = sls->slab_head;
+//     tmp_sl2 = tmp_sl;
+//     while (tmp_sl != sl) {
+//       tmp_sl2 = tmp_sl;
+//       tmp_sl = tmp_sl->next;
+//     }
+//     /* sl is tail */
+//     if (sl == sls->slab_tail) {
+//       tmp_sl2->next = nullptr;
+//       sl->next = nullptr;
+//       return 0;
+//     }
+//     /* other */
+//     tmp_sl2->next = sl->next;
+//     sl->next = nullptr;
+//     return 0;
+//   }
+//   int slab_queue_add(slabs_t *sls, slab_t *sl) {
+//     sls->slabs++;
+//     /* the queue is empty */
+//     if (sls->slab_head == nullptr) {
+//       sls->slab_head = sl;
+//       sls->slab_tail = sl;
+//       sl->next = nullptr;
+//       return 0;
+//     }
+//     /* Or, add this slab to tail */
+//     sls->slab_tail->next = sl;
+//     sls->slab_tail = sl;
+//     sl->next = nullptr;
+//     return 0;
+//   }
+
+// public:
+//   template <typename T> T *cache_alloc(cache_t *&cp) {
+//     if ((cp = cache_match<T>()) == nullptr) {
+//       throw std::bad_alloc{};
+//     }
+//     if (cp->slabs_empty_head->slab_head != nullptr) {
+//       auto *tmp_sl = cp->slabs_partial_head->slab_head;
+//       tmp_sl->chunks[0].flag = true;
+//       tmp_sl->free--;
+//       slab_queue_remove(cp->slabs_empty_head, tmp_sl);
+//       slab_queue_add(cp->slabs_partial_head, tmp_sl);
+//       return (T *)tmp_sl->chunks[0].value;
+//     }
+//     if (cp->slabs_partial_head->slab_head == nullptr) {
+//       auto *sl = new_slab(cp->size);
+//       cp->slabs++;
+//       cp->slabs_partial_head->slab_head = sl;
+//       cp->slabs_partial_head->slab_tail = sl;
+//     }
+//     auto *tmp_sl = cp->slabs_partial_head->slab_head;
+//     while (tmp_sl != nullptr) {
+//       for (auto count = 0u; count < MAX_CHUNKS; count++) {
+//         if (tmp_sl->chunks[count].flag == false) {
+//           tmp_sl->chunks[count].flag = true;
+//           tmp_sl->free--;
+//           if (tmp_sl->free == 0) {
+//             slab_queue_remove(cp->slabs_partial_head, tmp_sl);
+//             slab_queue_add(cp->slabs_full_head, tmp_sl);
+//           }
+//           return (T *)tmp_sl->chunks[count].value;
+//         }
+//       }
+//       tmp_sl = tmp_sl->next;
+//     }
+//     throw std::bad_alloc{};
+//   }
+//   void cache_free(cache_t *cp, void *buf) {
+//     slab_t *sl;
+//     if (cp->slabs_full_head != nullptr) {
+//       sl = cp->slabs_full_head->slab_head;
+//       while (sl) {
+//         for (auto count = 0u; count < MAX_CHUNKS; count++) {
+//           if (buf == sl->chunks[count].value) {
+//             sl->chunks[count].flag = false;
+//             sl->free++;
+//             slab_queue_remove(cp->slabs_full_head, sl);
+//             slab_queue_add(cp->slabs_partial_head, sl);
+//             return;
+//           }
+//         }
+//         sl = sl->next;
+//       }
+//     }
+//     if (cp->slabs_partial_head != nullptr) {
+//       sl = cp->slabs_partial_head->slab_head;
+//       while (sl) {
+//         for (auto count = 0u; count < MAX_CHUNKS; count++) {
+//           if (buf == sl->chunks[count].value) {
+//             sl->chunks[count].flag = false;
+//             sl->free++;
+//             if (sl->free == MAX_CHUNKS) {
+//               if (cp->slabs_empty_head->slabs >= FREE_THRESHOLD) {
+//                 delete_slab(sl);
+//                 cp->slabs--;
+//                 return;
+//               }
+//               slab_queue_remove(cp->slabs_partial_head, sl);
+//               slab_queue_add(cp->slabs_empty_head, sl);
+//             }
+//             return;
+//           }
+//         }
+//         sl = sl->next;
+//       }
+//     }
+//     printf("bad pointer\n");
+//   }
+// };
+// } // namespace slab
+
 template <typename T> T *aligned_alloc(void *buffer, uint32_t buffer_size, std::size_t alignment = alignof(T)) {
   void *ptr = buffer;
   size_t size = buffer_size;
@@ -132,14 +401,14 @@ template <typename T> T *shmgetobjbytag(const char *tag, bool create = true) {
   int max_id = shmgetmaxid();
   T *pobj{nullptr};
   for (int i = 2; i <= max_id; ++i) {
-    T *ptr = (T *)shmget(i, __FILE__, __LINE__);
+    T *ptr = (T *)shmget(i);
     if (ptr != nullptr && strncmp(ptr->tag, tag, sizeof(T::tag)) == 0) {
       pobj = ptr;
       break;
     }
   }
   if (pobj == nullptr && create) {
-    pobj = Allocator<T>{}.allocate();
+    pobj = Allocator<T>{}.allocate_def(true);
     strncpy(pobj->tag, tag, sizeof(T::tag) - 1);
   }
   return pobj;
@@ -148,14 +417,14 @@ template <typename T> T *shmgetobjbytag(const char *tag, const T &init_value) {
   int max_id = shmgetmaxid();
   T *pobj{nullptr};
   for (int i = 0; i < max_id; ++i) {
-    T *ptr = (T *)shmget(i, __FILE__, __LINE__);
+    T *ptr = (T *)shmget(i);
     if (ptr != nullptr && strncmp(ptr->tag, tag, sizeof(T::tag)) == 0) {
       pobj = ptr;
       break;
     }
   }
   if (pobj == nullptr) {
-    pobj = Allocator<T>{}.allocate(init_value);
+    pobj = Allocator<T>{}.allocate_init(init_value);
     strncpy(pobj->tag, tag, sizeof(T::tag) - 1);
   }
   return pobj;
@@ -380,16 +649,16 @@ public:
   shmcond() {
     m_free_semaphore_list.resize(64);
     for (size_t i = 0; i < m_free_semaphore_list.size(); ++i) {
-      m_free_semaphore_list[i] = Allocator<shmsemaphore>{}.allocate(0, 1);
+      m_free_semaphore_list[i] = Allocator<shmsemaphore>{}.allocate_init(0);
     }
     m_wait_semaphore_list.clear();
   }
   ~shmcond() {
     for (auto &element : m_free_semaphore_list) {
-      Allocator<shmsemaphore>{}.deallocate(element);
+      Allocator<shmsemaphore>{}.deallocate_def(element, true);
     }
     for (auto &element : m_wait_semaphore_list) {
-      Allocator<shmsemaphore>{}.deallocate(element);
+      Allocator<shmsemaphore>{}.deallocate_def(element, true);
     }
   }
   int wait(shmmutex &m) {
@@ -701,7 +970,7 @@ public:
                 printf("%s %d joined\n", vec[n]->name, (int)type);
               } else {
                 printf("%s %d dead\n", vec[n]->name, (int)type);
-                Allocator<TrackRecord>{}.deallocate(*(vec.begin() + n));
+                Allocator<TrackRecord>{}.deallocate_def(*(vec.begin() + n), true);
                 vec.erase(vec.begin() + n);
               }
             }
@@ -749,7 +1018,7 @@ public:
       }
       if (pRecord == nullptr) {
         std::lock_guard<shmmutex> lock{*pmutex};
-        pvec->emplace_back(shmallocator::Allocator<TrackRecord>{}.allocate());
+        pvec->emplace_back(shmallocator::Allocator<TrackRecord>{}.allocate_def(true));
         (*pvec->rbegin())->last_operation = TrackRecord::UNKNOWN;
         strncpy((*pvec->rbegin())->name, name.c_str(), sizeof(TrackRecord::name));
         pRecord = *pvec->rbegin();

@@ -159,7 +159,6 @@ int main(int argc, const char *const argv[]) {
     // auto *pspincond = &spinsyncptr->spin_cond;
 
     pmonitor->start_heartbeat(shmallocator::AliveMonitor::CONSUMER, "consumer_" + std::to_string(time(nullptr)));
-    // pmonitor->wait_for_any_producer_alive();
     // ready go
     std::vector<std::thread> thread_vec;
     for (int i = 0; i < 10; ++i) {
