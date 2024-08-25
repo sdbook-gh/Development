@@ -9,6 +9,8 @@ namespace shmallocator {
 void *shmptr{nullptr};
 uint32_t shmsize{0};
 
+#define ALLOC_INFO_CORRUPTED fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__)
+
 static int32_t ptr2offset(void *ptr, void *shm_ptr) {
   if (ptr == nullptr || shm_ptr == nullptr) {
     return -1;
@@ -23,20 +25,49 @@ static void *offset2ptr(int32_t offset, void *shm_ptr) {
   return (uint8_t *)shm_ptr + offset;
 }
 
-void print_shmallocator() {
+void print_shmallocator(bool simple = true, bool last = false) {
   if (shmptr == nullptr) {
     fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return;
   }
   Header *curr = (Header *)shmptr;
   while (curr != nullptr) {
-    printf("bitseq %u id %u prev %d next %d size %d free %d\n",
-           curr->bitseq,
-           curr->id,
-           curr->prev,
-           curr->next,
-           curr->size,
-           curr->is_free);
+    if (last) {
+#ifdef DEBUG
+      if (curr->next == -1) {
+        printf("%u bitseq %u id %u prev %d next %d size %d free %d\n",
+               ((Header *)shmptr)->id,
+               curr->bitseq,
+               curr->id,
+               curr->prev,
+               curr->next,
+               curr->size,
+               curr->is_free);
+      }
+#endif
+    } else if (simple) {
+      if (curr->bitseq != BITSEQ) {
+        printf("%u bitseq %u id %u prev %d next %d size %d free %d\n",
+               ((Header *)shmptr)->id,
+               curr->bitseq,
+               curr->id,
+               curr->prev,
+               curr->next,
+               curr->size,
+               curr->is_free);
+      }
+    } else {
+#ifdef DEBUG
+      printf("%u bitseq %u id %u prev %d next %d size %d free %d\n",
+             ((Header *)shmptr)->id,
+             curr->bitseq,
+             curr->id,
+             curr->prev,
+             curr->next,
+             curr->size,
+             curr->is_free);
+#endif
+    }
     curr = curr->next != -1 ? (Header *)offset2ptr(curr->next, shmptr) : nullptr;
   }
 }
@@ -52,7 +83,6 @@ static void initialize_header(Header *h, size_t size, int id, bool is_first) {
     return;
   }
   // ensure hreader is not valid
-  h->bitseq = 0;
   h->version = SUPPORT_VERSION;
   h->prev = -1;
   h->next = -1;
@@ -107,20 +137,22 @@ static void destroy_header(Header *h, void *shm_ptr) {
     // ensure hreader is not valid
     prev->bitseq = 0;
     prev->next = h->next;
+    prev->bitseq = BITSEQ;
   }
   if (next != nullptr) {
     // ensure hreader is not valid
     next->bitseq = 0;
     next->prev = h->prev;
+    next->bitseq = BITSEQ;
   }
   // ensure hreader is valid
-  prev->bitseq = next->bitseq = BITSEQ;
   h->version = 0;
   h->prev = -1;
   h->next = -1;
   h->size = 0;
   h->id = 0;
-  h->is_free = false;
+  h->is_free = true;
+  h->bitseq = BITSEQ;
 }
 
 bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t shm_max_size) {
@@ -175,12 +207,12 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
     Header *pheader = (Header *)shmptr;
     if (first_create) {
       memset(shmptr, 0, sizeof(Header));
-      int id;
+      uint32_t id;
       shmalloc(1, &id);
       printf("shmalloc create first id: %d\n", id);
     } else if (pheader->version != SUPPORT_VERSION) {
       memset(shmptr, 0, sizeof(Header));
-      int id;
+      uint32_t id;
       shmalloc(1, &id);
       printf("shmalloc reset first id: %d\n", id);
     }
@@ -190,14 +222,14 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
   return res;
 }
 
-void *shmalloc(uint32_t size, int *id) {
+void *shmalloc(uint32_t size, uint32_t *id) {
   if (shmptr == nullptr) {
     fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return nullptr;
   }
   Header *first{nullptr}, *curr{nullptr}, *best_fit{nullptr};
   uint32_t free_size{0}, best_block_size{0};
-  if (size == 0 && id != nullptr && *id == -1) {
+  if (size == 0 || id == nullptr) {
     fprintf(stderr, "%s %d bad parameter\n", __FILE__, __LINE__);
     return nullptr;
   }
@@ -209,16 +241,16 @@ void *shmalloc(uint32_t size, int *id) {
 
   // Find the first header
   first = curr = (Header *)shmptr;
-  best_fit = nullptr;
 
   // First time calling shmalloc
   if (first->bitseq != BITSEQ) {
     // no lock, since mmap file is created exclusively
+    first->bitseq = 0;
     initialize_header(first, size, 1, 1);
-    first->is_free = false;
     // Create the next header if we have enough room
     if ((free_size = (size_t)((uint8_t *)(2 * sizeof(Header)) + size)) < shmsize) {
       curr = (Header *)((uint8_t *)shmptr + sizeof(Header) + size);
+      curr->bitseq = 0;
       initialize_header(curr, shmsize - free_size, -1, 0);
       first->next = ptr2offset(curr, shmptr);
       curr->prev = ptr2offset(first, shmptr);
@@ -227,10 +259,8 @@ void *shmalloc(uint32_t size, int *id) {
     }
     // ensure hreader is valid
     first->bitseq = BITSEQ;
-    if (id != nullptr) {
-      *id = 1;
-    }
-    // print_shmallocator();
+    *id = 1;
+    print_shmallocator(false, true);
     return (first + 1);
   }
   // Lock shared memory
@@ -251,19 +281,13 @@ void *shmalloc(uint32_t size, int *id) {
   curr = (Header *)offset2ptr(curr->next, shmptr);
   while (curr != nullptr) {
     if (curr->bitseq != BITSEQ) {
-      fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+      ALLOC_INFO_CORRUPTED;
       print_shmallocator();
       pthread_mutex_unlock(&(first->mutex));
       return nullptr;
     }
-    if (id != nullptr && *id != -1 && curr->id == (uint32_t)*id && !curr->is_free) {
-      // Already have item with this id
-      pthread_mutex_unlock(&(first->mutex));
-      // print_shmallocator();
-      return (curr + 1);
-    }
     // Get size of this block
-    if (size != 0 && (curr->size < best_block_size || best_block_size == 0) && curr->size >= size && curr->is_free) {
+    if ((curr->size < best_block_size || best_block_size == 0) && curr->size >= size && curr->is_free) {
       best_block_size = curr->size;
       best_fit = curr;
     }
@@ -271,10 +295,8 @@ void *shmalloc(uint32_t size, int *id) {
   }
   // Did not find existing entry
   if (best_fit == nullptr) {
-    if (size != 0) {
-      // Did not find a viable chunk, failure
-      fprintf(stderr, "%s %d no enough free space to allocate\n", __FILE__, __LINE__);
-    }
+    fprintf(stderr, "%s %d no enough free space to allocate\n", __FILE__, __LINE__);
+    print_shmallocator(false, true);
     pthread_mutex_unlock(&(first->mutex));
     return nullptr;
   }
@@ -287,7 +309,7 @@ void *shmalloc(uint32_t size, int *id) {
   best_fit->is_free = false;
   Header *next = best_fit->next != -1 ? (Header *)offset2ptr(best_fit->next, shmptr) : nullptr;
   if (next != nullptr && next->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    ALLOC_INFO_CORRUPTED;
     print_shmallocator();
     pthread_mutex_unlock(&(first->mutex));
     return nullptr;
@@ -295,6 +317,7 @@ void *shmalloc(uint32_t size, int *id) {
   // Check if there is enough room to make another header
   if ((free_size - best_fit->size) > sizeof(Header)) {
     curr = (Header *)((uint8_t *)best_fit + best_fit->size + sizeof(Header));
+    curr->bitseq = 0;
     initialize_header(curr, (size_t)(free_size - best_fit->size - sizeof(Header)), -1, 0);
     // Adjust pointers
     curr->prev = ptr2offset(best_fit, shmptr);
@@ -311,24 +334,58 @@ void *shmalloc(uint32_t size, int *id) {
     best_fit->next = ptr2offset(curr, shmptr);
   } else {
     best_fit->size = free_size;
-    best_fit->next = -1;
   }
   // ensure hreader is valid
   best_fit->bitseq = BITSEQ;
-  if (id != nullptr) {
-    *id = best_fit->id;
-  }
+  *id = best_fit->id;
   pthread_mutex_unlock(&(first->mutex));
-  // print_shmallocator();
+  print_shmallocator(false, true);
   return (best_fit + 1);
 }
 
-void *shmget(int id) {
-  return shmalloc(0, &id);
+void *shmget(uint32_t id) {
+  if (shmptr == nullptr) {
+    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    return nullptr;
+  }
+  Header *first{nullptr}, *curr{nullptr};
+  first = curr = (Header *)shmptr;
+  if (first->bitseq != BITSEQ) {
+    return nullptr;
+  }
+  int ret[3]{0};
+  ret[0] = pthread_mutex_lock(&(first->mutex));
+  if (ret[0] == EOWNERDEAD) {
+    ret[1] = pthread_mutex_consistent(&(first->mutex));
+    ret[2] = pthread_mutex_unlock(&(first->mutex));
+    ret[0] = pthread_mutex_lock(&(first->mutex));
+  }
+  if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
+    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    pthread_mutex_unlock(&(first->mutex));
+    return nullptr;
+  }
+  curr = (Header *)offset2ptr(curr->next, shmptr);
+  while (curr != nullptr) {
+    if (curr->bitseq != BITSEQ) {
+      ALLOC_INFO_CORRUPTED;
+      print_shmallocator();
+      pthread_mutex_unlock(&(first->mutex));
+      return nullptr;
+    }
+    if (curr->id == id && !curr->is_free) {
+      // Already have item with this id
+      pthread_mutex_unlock(&(first->mutex));
+      // print_shmallocator();
+      return (curr + 1);
+    }
+    curr = curr->next != -1 ? (Header *)offset2ptr(curr->next, shmptr) : nullptr;
+  }
+  pthread_mutex_unlock(&(first->mutex));
+  return nullptr;
 }
 
 void shmfree(void *ptr) {
-  return;
   if (shmptr == nullptr) {
     fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return;
@@ -341,19 +398,19 @@ void shmfree(void *ptr) {
   }
   h = ((Header *)ptr) - 1;
   if (h->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    ALLOC_INFO_CORRUPTED;
     print_shmallocator();
     return;
   }
   Header *prev = h->prev != -1 ? (Header *)offset2ptr(h->prev, shmptr) : nullptr;
   if (prev != nullptr && prev->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    ALLOC_INFO_CORRUPTED;
     print_shmallocator();
     return;
   }
   Header *next = h->next != -1 ? (Header *)offset2ptr(h->next, shmptr) : nullptr;
   if (next != nullptr && next->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    ALLOC_INFO_CORRUPTED;
     print_shmallocator();
     return;
   }
@@ -384,23 +441,31 @@ void shmfree(void *ptr) {
   } else {
     h->size = (uint8_t *)shmptr + shmsize - (uint8_t *)h - sizeof(Header);
   }
+  bool adjusted{false};
   /*Check if we can delete our next to free up space*/
   if (next != nullptr && next->is_free) {
     h->size += next->size + sizeof(Header);
-    destroy_header(next, shmptr);
+    h->id = 0;
+    h->is_free = true;
     h->bitseq = BITSEQ;
-  } else if (prev != nullptr && prev->is_free) {
+    destroy_header(next, shmptr);
+    adjusted = true;
+  }
+  if (prev != nullptr && prev->is_free) {
     // ensure hreader is not valid
     prev->bitseq = 0;
     prev->size += h->size + sizeof(Header);
+    h->bitseq = prev->bitseq = BITSEQ;
     destroy_header(h, shmptr);
-    // ensure hreader is valid
-    prev->bitseq = BITSEQ;
-  } else {
+    adjusted = true;
+  }
+  if (!adjusted) {
+    h->id = 0;
+    h->is_free = true;
     h->bitseq = BITSEQ;
   }
+  print_shmallocator(false);
   pthread_mutex_unlock(&(first->mutex));
-  print_shmallocator();
 }
 
 int shmgetmaxid() {
@@ -410,7 +475,7 @@ int shmgetmaxid() {
   }
   Header *first = (Header *)shmptr;
   if (first->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    ALLOC_INFO_CORRUPTED;
     print_shmallocator();
     return -1;
   }
@@ -438,7 +503,7 @@ bool uninitshm() {
   }
   Header *first = (Header *)shmptr;
   if (first->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    ALLOC_INFO_CORRUPTED;
     print_shmallocator();
     return false;
   }

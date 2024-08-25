@@ -40,8 +40,8 @@ struct Header {
 extern void *shmptr;
 extern uint32_t shmsize;
 bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t shm_max_size);
-void *shmalloc(uint32_t size, int *id);
-void *shmget(int id);
+void *shmalloc(uint32_t size, uint32_t *id);
+void *shmget(uint32_t id);
 void shmfree(void *ptr);
 int shmgetmaxid();
 bool uninitshm();
@@ -68,7 +68,7 @@ public:
   using value_type = T;
   T *allocate_def(bool call_def_contor) {
     // printf("allocate %s size %lu\n", typeid(T).name(), size);
-    int id{-1};
+    uint32_t id;
     T *ptr = (T *)shmalloc(sizeof(T), &id);
     if (ptr == nullptr) {
       throw std::bad_alloc{};
@@ -83,7 +83,7 @@ public:
   }
   T *allocate_init(const T &init_val) {
     // printf("allocate %s size %lu\n", typeid(T).name(), size);
-    int id{-1};
+    uint32_t id;
     T *ptr = (T *)shmalloc(sizeof(T), &id);
     if (ptr == nullptr) {
       throw std::bad_alloc{};
@@ -96,7 +96,7 @@ public:
   }
   T *allocate_array_def(uint32_t size, bool call_def_contor) {
     // printf("allocate %s size %lu\n", typeid(T).name(), size);
-    int id{-1};
+    uint32_t id;
     T *ptr = (T *)shmalloc(sizeof(T) * size, &id);
     if (!ptr) {
       throw std::bad_alloc();
@@ -113,7 +113,7 @@ public:
   }
   T *allocate_array_init(uint32_t size, const T &init_val) {
     // printf("allocate %s size %lu\n", typeid(T).name(), size);
-    int id{-1};
+    uint32_t id;
     T *ptr = (T *)shmalloc(sizeof(T) * size, &id);
     if (!ptr) {
       throw std::bad_alloc();
@@ -606,63 +606,73 @@ private:
 };
 
 namespace slab {
-constexpr uint32_t MAX_CHUNKS{8};
-constexpr uint32_t FREE_THRESHOLD{16};
-struct chunk_t {
-  uint32_t bitseq{BITSEQ};
-  bool flag{false};
-  void *value{nullptr};
-};
-struct slab_t {
-  uint32_t bitseq{BITSEQ};
-  chunk_t chunks[MAX_CHUNKS];
-  uint32_t free{MAX_CHUNKS};
-  slab_t *next{nullptr};
-};
-struct slabs_t {
-  uint32_t bitseq{BITSEQ};
-  slab_t *slab_head{nullptr};
-  slab_t *slab_tail{nullptr};
-  slabs_t *next{nullptr};
-  uint32_t slabs{0};
-};
-struct cache_t {
-  uint32_t bitseq{BITSEQ};
-  uint32_t size{0};
-  uint32_t chunks{0};
-  uint32_t slabs{0};
-  slabs_t *slabs_full_head{nullptr};
-  slabs_t *slabs_partial_head{nullptr};
-  slabs_t *slabs_empty_head{nullptr};
-  cache_t *next{nullptr};
-};
 #define SLAB_CORRUPTED fprintf(stderr, "%s %d slab is corrupted\n", __FILE__, __LINE__)
 class SlabManager {
 private:
-  uint32_t bitseq{BITSEQ};
-  shmmutex m_mutex;
+  static constexpr uint32_t MAX_CHUNKS{8};
+  static constexpr uint32_t FREE_THRESHOLD{16};
+  struct chunk_t {
+    uint32_t bitseq{BITSEQ};
+    bool flag{false};
+    void *value{nullptr};
+  };
+  struct slab_t {
+    uint32_t bitseq{BITSEQ};
+    chunk_t chunks[MAX_CHUNKS];
+    uint32_t free{MAX_CHUNKS};
+    slab_t *next{nullptr};
+  };
+  struct slabs_t {
+    uint32_t bitseq{BITSEQ};
+    slab_t *slab_head{nullptr};
+    slab_t *slab_tail{nullptr};
+    slabs_t *next{nullptr};
+    uint32_t slabs{0};
+  };
+
+public:
+  struct cache_t {
+    uint32_t bitseq{BITSEQ};
+    uint32_t type_size{0};
+    uint32_t slabs{0};
+    slabs_t *slabs_full_head{nullptr};
+    slabs_t *slabs_partial_head{nullptr};
+    slabs_t *slabs_empty_head{nullptr};
+    cache_t *next{nullptr};
+  };
+
+private:
+  uint32_t m_bitseq{BITSEQ};
+  shmmutex *m_mutex;
   cache_t *m_cache_chain{nullptr};
-  cache_t *add_cache(uint32_t size) {
+
+  cache_t *add_cache(uint32_t type_size) {
     cache_t *cache{nullptr};
     cache_t *another{nullptr};
-    bitseq = 0;
+    if (m_bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return nullptr;
+    }
     if (m_cache_chain == nullptr) {
+      m_bitseq = 0;
       m_cache_chain = Allocator<cache_t>{}.allocate_def(true);
       cache = m_cache_chain;
       cache->bitseq = 0;
-      cache->size = size;
-      cache->chunks = MAX_CHUNKS;
+      cache->type_size = type_size;
       cache->slabs_full_head = Allocator<slabs_t>{}.allocate_def(true);
       cache->slabs_partial_head = Allocator<slabs_t>{}.allocate_def(true);
       cache->slabs_empty_head = Allocator<slabs_t>{}.allocate_def(true);
       cache->bitseq = BITSEQ;
+      m_bitseq = BITSEQ;
       return cache;
     }
     for (cache = m_cache_chain; cache != nullptr; cache = cache->next) {
       if (cache->bitseq != BITSEQ) {
         SLAB_CORRUPTED;
+        return nullptr;
       }
-      if (cache->size > size) {
+      if (cache->type_size > type_size) {
+        m_bitseq = 0;
         if (another == nullptr) {
           m_cache_chain = Allocator<cache_t>{}.allocate_def(true);
           another = m_cache_chain;
@@ -676,189 +686,345 @@ private:
           another->bitseq = 0;
           another->next = cache;
         }
-        another->size = size;
-        another->chunks = MAX_CHUNKS;
+        another->type_size = type_size;
         another->slabs_full_head = Allocator<slabs_t>{}.allocate_def(true);
         another->slabs_partial_head = Allocator<slabs_t>{}.allocate_def(true);
         another->slabs_empty_head = Allocator<slabs_t>{}.allocate_def(true);
         another->bitseq = BITSEQ;
+        m_bitseq = BITSEQ;
         return another;
       }
       another = cache;
     }
+    m_bitseq = 0;
     another->bitseq = 0;
     another->next = Allocator<cache_t>{}.allocate_def(true);
     another = another->next;
-    another->size = size;
-    another->chunks = MAX_CHUNKS;
+    another->type_size = type_size;
     another->slabs_full_head = Allocator<slabs_t>{}.allocate_def(true);
     another->slabs_partial_head = Allocator<slabs_t>{}.allocate_def(true);
     another->slabs_empty_head = Allocator<slabs_t>{}.allocate_def(true);
     another->bitseq = BITSEQ;
+    m_bitseq = BITSEQ;
     return another;
   }
   template <typename T> cache_t *cache_match() {
-    uint32_t size{sizeof(T)};
     cache_t *cache = m_cache_chain;
     while (cache != nullptr) {
       if (cache->bitseq != BITSEQ) {
         SLAB_CORRUPTED;
+        return nullptr;
       }
-      if (cache->size == size) {
+      if (cache->type_size == sizeof(T)) {
         break;
       }
       cache = cache->next;
     }
     if (cache == nullptr) {
-      return add_cache(size);
+      return add_cache(sizeof(T));
     }
     return cache;
   }
-  //   slab_t *new_slab(uint32_t size) {
-  //     slab_t *sl = Allocator<slab_t>{}.allocate();
-  //     for (auto count = 0u; count < MAX_CHUNKS; count++) {
-  //       sl->chunks[count].value = Allocator<uint8_t>{}.allocate(size, false);
-  //     }
-  //     return sl;
-  //   }
-  //   int delete_slab(slab_t *sl) {
-  //     for (auto count = 0u; count < MAX_CHUNKS; count++) {
-  //       Allocator<uint8_t>{}.deallocate((uint8_t *)sl->chunks[count].value);
-  //     }
-  //     Allocator<slab_t>{}.deallocate(sl);
-  //     return 0;
-  //   }
-  //   int slab_queue_remove(slabs_t *sls, slab_t *sl) {
-  //     slab_t *tmp_sl;
-  //     slab_t *tmp_sl2;
-  //     sls->slabs--;
-  //     /* only one slab */
-  //     if (sls->slab_head == sls->slab_tail) {
-  //       sls->slab_head = nullptr;
-  //       sls->slab_tail = nullptr;
-  //       sl->next = nullptr;
-  //       return 0;
-  //     }
-  //     /* sl is head */
-  //     if (sls->slab_head == sl) {
-  //       sls->slab_head = sls->slab_head->next;
-  //       sl->next = nullptr;
-  //       return 0;
-  //     }
-  //     tmp_sl = sls->slab_head;
-  //     tmp_sl2 = tmp_sl;
-  //     while (tmp_sl != sl) {
-  //       tmp_sl2 = tmp_sl;
-  //       tmp_sl = tmp_sl->next;
-  //     }
-  //     /* sl is tail */
-  //     if (sl == sls->slab_tail) {
-  //       tmp_sl2->next = nullptr;
-  //       sl->next = nullptr;
-  //       return 0;
-  //     }
-  //     /* other */
-  //     tmp_sl2->next = sl->next;
-  //     sl->next = nullptr;
-  //     return 0;
-  //   }
-  //   int slab_queue_add(slabs_t *sls, slab_t *sl) {
-  //     sls->slabs++;
-  //     /* the queue is empty */
-  //     if (sls->slab_head == nullptr) {
-  //       sls->slab_head = sl;
-  //       sls->slab_tail = sl;
-  //       sl->next = nullptr;
-  //       return 0;
-  //     }
-  //     /* Or, add this slab to tail */
-  //     sls->slab_tail->next = sl;
-  //     sls->slab_tail = sl;
-  //     sl->next = nullptr;
-  //     return 0;
-  //   }
+  template <typename T> slab_t *new_slab() {
+    slab_t *sl = Allocator<slab_t>{}.allocate_def(true);
+    sl->bitseq = 0;
+    for (auto count = 0u; count < MAX_CHUNKS; count++) {
+      sl->chunks[count].value = Allocator<T>{}.allocate_def(false);
+    }
+    sl->bitseq = BITSEQ;
+    return sl;
+  }
+  void delete_slab(slab_t *sl) {
+    sl->bitseq = 0;
+    for (auto count = 0u; count < MAX_CHUNKS; count++) {
+      Allocator<uint8_t>{}.deallocate_def((uint8_t *)sl->chunks[count].value, false);
+    }
+    sl->bitseq = BITSEQ;
+    Allocator<slab_t>{}.deallocate_def(sl, true);
+  }
+  int slab_queue_remove(slabs_t *slsrc, slab_t *sl) {
+    slab_t *sl_prev{nullptr};
+    slab_t *sl_curr{nullptr};
+    if (slsrc == nullptr || sl == nullptr) {
+      fprintf(stderr, "%s %d bad parameter\n", __FILE__, __LINE__);
+      return -1;
+    }
+    if (slsrc->bitseq != BITSEQ || sl->bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return -1;
+    }
+    /* only one slab */
+    if (slsrc->slab_head == slsrc->slab_tail) {
+      slsrc->bitseq = 0;
+      slsrc->slab_head = nullptr;
+      slsrc->slab_tail = nullptr;
+      slsrc->slabs--;
+      slsrc->bitseq = BITSEQ;
+      sl->next = nullptr;
+      return 0;
+    }
+    /* sl is head */
+    if (slsrc->slab_head == sl) {
+      slsrc->bitseq = 0;
+      slsrc->slab_head = slsrc->slab_head->next;
+      slsrc->slabs--;
+      slsrc->bitseq = BITSEQ;
+      sl->next = nullptr;
+      return 0;
+    }
+    sl_prev = sl_curr = slsrc->slab_head;
+    while (sl_curr != sl) {
+      if (sl_curr->bitseq != BITSEQ) {
+        SLAB_CORRUPTED;
+        return -1;
+      }
+      sl_prev = sl_curr;
+      sl_curr = sl_curr->next;
+    }
+    slsrc->bitseq = sl_prev->bitseq = sl->bitseq = 0;
+    slsrc->slabs--;
+    sl_prev->next = sl->next;
+    sl->next = nullptr;
+    slsrc->bitseq = sl_prev->bitseq = sl->bitseq = BITSEQ;
+    return 0;
+  }
+  int slab_queue_add(slabs_t *slsrc, slab_t *sl) {
+    if (slsrc == nullptr || sl == nullptr) {
+      fprintf(stderr, "%s %d bad parameter\n", __FILE__, __LINE__);
+      return -1;
+    }
+    if (slsrc->bitseq != BITSEQ || sl->bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return -1;
+    }
+    /* the queue is empty */
+    if (slsrc->slab_head == nullptr) {
+      slsrc->bitseq = 0;
+      slsrc->slab_head = sl;
+      slsrc->slab_tail = sl;
+      slsrc->slabs++;
+      slsrc->bitseq = BITSEQ;
+      sl->next = nullptr;
+      return 0;
+    }
+    slsrc->bitseq = sl->bitseq = 0;
+    slsrc->slab_tail->next = sl;
+    slsrc->slab_tail = sl;
+    slsrc->slabs++;
+    sl->next = nullptr;
+    slsrc->bitseq = sl->bitseq = BITSEQ;
+    return 0;
+  }
 
-  // public:
-  //   template <typename T> T *cache_alloc(cache_t *&cp) {
-  //     if (bitseq != BITSEQ) {}
-  //     std::lock_guard<shmmutex> lock{m_mutex};
-  //     if ((cp = cache_match<T>()) == nullptr) {
-  //       throw std::bad_alloc{};
-  //     }
-  //     if (cp->slabs_empty_head->slab_head != nullptr) {
-  //       auto *tmp_sl = cp->slabs_partial_head->slab_head;
-  //       tmp_sl->chunks[0].flag = true;
-  //       tmp_sl->free--;
-  //       slab_queue_remove(cp->slabs_empty_head, tmp_sl);
-  //       slab_queue_add(cp->slabs_partial_head, tmp_sl);
-  //       return (T *)tmp_sl->chunks[0].value;
-  //     }
-  //     if (cp->slabs_partial_head->slab_head == nullptr) {
-  //       auto *sl = new_slab(cp->size);
-  //       cp->slabs++;
-  //       cp->slabs_partial_head->slab_head = sl;
-  //       cp->slabs_partial_head->slab_tail = sl;
-  //     }
-  //     auto *tmp_sl = cp->slabs_partial_head->slab_head;
-  //     while (tmp_sl != nullptr) {
-  //       for (auto count = 0u; count < MAX_CHUNKS; count++) {
-  //         if (tmp_sl->chunks[count].flag == false) {
-  //           tmp_sl->chunks[count].flag = true;
-  //           tmp_sl->free--;
-  //           if (tmp_sl->free == 0) {
-  //             slab_queue_remove(cp->slabs_partial_head, tmp_sl);
-  //             slab_queue_add(cp->slabs_full_head, tmp_sl);
-  //           }
-  //           return (T *)tmp_sl->chunks[count].value;
-  //         }
-  //       }
-  //       tmp_sl = tmp_sl->next;
-  //     }
-  //     throw std::bad_alloc{};
-  //   }
-  //   void cache_free(cache_t *cp, void *buf) {
-  //     slab_t *sl;
-  //     if (cp->slabs_full_head != nullptr) {
-  //       sl = cp->slabs_full_head->slab_head;
-  //       while (sl) {
-  //         for (auto count = 0u; count < MAX_CHUNKS; count++) {
-  //           if (buf == sl->chunks[count].value) {
-  //             sl->chunks[count].flag = false;
-  //             sl->free++;
-  //             slab_queue_remove(cp->slabs_full_head, sl);
-  //             slab_queue_add(cp->slabs_partial_head, sl);
-  //             return;
-  //           }
-  //         }
-  //         sl = sl->next;
-  //       }
-  //     }
-  //     if (cp->slabs_partial_head != nullptr) {
-  //       sl = cp->slabs_partial_head->slab_head;
-  //       while (sl) {
-  //         for (auto count = 0u; count < MAX_CHUNKS; count++) {
-  //           if (buf == sl->chunks[count].value) {
-  //             sl->chunks[count].flag = false;
-  //             sl->free++;
-  //             if (sl->free == MAX_CHUNKS) {
-  //               if (cp->slabs_empty_head->slabs >= FREE_THRESHOLD) {
-  //                 delete_slab(sl);
-  //                 cp->slabs--;
-  //                 return;
-  //               }
-  //               slab_queue_remove(cp->slabs_partial_head, sl);
-  //               slab_queue_add(cp->slabs_empty_head, sl);
-  //             }
-  //             return;
-  //           }
-  //         }
-  //         sl = sl->next;
-  //       }
-  //     }
-  //     printf("bad pointer\n");
-  //   }
+public:
+  SlabManager() = default;
+  ~SlabManager() {
+    clear();
+  }
+  void set(shmmutex *mutex) {
+    m_mutex = mutex;
+  }
+  template <typename T> T *cache_alloc(cache_t *&cp) {
+    // std::lock_guard<shmmutex> lock{*m_mutex};
+    if (m_bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return nullptr;
+    }
+    if ((cp = cache_match<T>()) == nullptr) {
+      fprintf(stderr, "%s %d cannot get cache\n", __FILE__, __LINE__);
+      return nullptr;
+    }
+    if (cp->bitseq != BITSEQ || cp->slabs_empty_head->bitseq != BITSEQ || cp->slabs_partial_head->bitseq != BITSEQ ||
+        cp->slabs_full_head->bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return nullptr;
+    }
+    if (cp->slabs_empty_head->slab_head != nullptr) {
+      if (cp->slabs_empty_head->slab_head->bitseq != BITSEQ) {
+        SLAB_CORRUPTED;
+        return nullptr;
+      }
+      auto *sl = cp->slabs_empty_head->slab_head;
+      sl->bitseq = sl->chunks[0].bitseq = 0;
+      sl->chunks[0].flag = true;
+      sl->free--;
+      sl->bitseq = sl->chunks[0].bitseq = BITSEQ;
+      slab_queue_remove(cp->slabs_empty_head, sl);
+      slab_queue_add(cp->slabs_partial_head, sl);
+      return (T *)sl->chunks[0].value;
+    }
+    if (cp->slabs_partial_head->slab_head == nullptr) {
+      auto *sl = new_slab<T>();
+      cp->bitseq = 0;
+      cp->slabs_partial_head->slab_head = sl;
+      cp->slabs_partial_head->slab_tail = sl;
+      cp->slabs++;
+      cp->bitseq = BITSEQ;
+    }
+    auto *sl = cp->slabs_partial_head->slab_head;
+    while (sl != nullptr) {
+      if (sl->bitseq != BITSEQ) {
+        SLAB_CORRUPTED;
+        return nullptr;
+      }
+      for (auto count = 0u; count < MAX_CHUNKS; count++) {
+        if (sl->chunks[count].flag == false) {
+          if (sl->chunks[count].bitseq != BITSEQ) {
+            SLAB_CORRUPTED;
+            return nullptr;
+          }
+          sl->bitseq = sl->chunks[count].bitseq = 0;
+          sl->chunks[count].flag = true;
+          sl->free--;
+          sl->bitseq = sl->chunks[count].bitseq = BITSEQ;
+          if (sl->free == 0) {
+            slab_queue_remove(cp->slabs_partial_head, sl);
+            slab_queue_add(cp->slabs_full_head, sl);
+          }
+          return (T *)sl->chunks[count].value;
+        }
+      }
+      sl = sl->next;
+    }
+    fprintf(stderr, "%s %d cache_alloc error\n", __FILE__, __LINE__);
+    return nullptr;
+  }
+  template <typename T> void cache_free(cache_t *cp, T *buf) {
+    // fprintf(stderr, "%s %d buf %p\n", __FILE__, __LINE__, buf);
+    // std::lock_guard<shmmutex> lock{*m_mutex};
+    if (m_bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return;
+    }
+    if (cp == nullptr) {
+      fprintf(stderr, "%s %d bad cache\n", __FILE__, __LINE__);
+      return;
+    }
+    if (cp->bitseq != BITSEQ || cp->slabs_empty_head->bitseq != BITSEQ || cp->slabs_partial_head->bitseq != BITSEQ ||
+        cp->slabs_full_head->bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return;
+    }
+    slab_t *sl{nullptr};
+    if (cp->slabs_full_head != nullptr) {
+      sl = cp->slabs_full_head->slab_head;
+      while (sl != nullptr) {
+        if (sl->bitseq != BITSEQ) {
+          SLAB_CORRUPTED;
+          return;
+        }
+        for (auto count = 0u; count < MAX_CHUNKS; count++) {
+          if (buf == sl->chunks[count].value) {
+            sl->bitseq = 0;
+            sl->chunks[count].flag = false;
+            sl->free++;
+            sl->bitseq = BITSEQ;
+            slab_queue_remove(cp->slabs_full_head, sl);
+            slab_queue_add(cp->slabs_partial_head, sl);
+            sl->bitseq = BITSEQ;
+            return;
+          }
+        }
+        sl = sl->next;
+      }
+    }
+    if (cp->slabs_partial_head != nullptr) {
+      sl = cp->slabs_partial_head->slab_head;
+      while (sl != nullptr) {
+        if (sl->bitseq != BITSEQ) {
+          SLAB_CORRUPTED;
+          return;
+        }
+        for (auto count = 0u; count < MAX_CHUNKS; count++) {
+          if (buf == sl->chunks[count].value) {
+            sl->bitseq = 0;
+            sl->chunks[count].flag = false;
+            sl->free++;
+            sl->bitseq = BITSEQ;
+            if (sl->free == MAX_CHUNKS) {
+              if (cp->slabs_empty_head->slabs >= FREE_THRESHOLD) {
+                cp->bitseq = 0;
+                delete_slab(sl);
+                cp->slabs--;
+                cp->bitseq = BITSEQ;
+                return;
+              }
+              slab_queue_remove(cp->slabs_partial_head, sl);
+              slab_queue_add(cp->slabs_empty_head, sl);
+            }
+            sl->bitseq = BITSEQ;
+            return;
+          }
+        }
+        sl = sl->next;
+      }
+    }
+    fprintf(stderr, "%s %d bad pointer %p\n", __FILE__, __LINE__, buf);
+  }
+  int clear() {
+    // std::lock_guard<shmmutex> lock{*m_mutex};
+    if (m_bitseq != BITSEQ) {
+      SLAB_CORRUPTED;
+      return -1;
+    }
+    cache_t *cp{nullptr};
+    for (cp = m_cache_chain; cp != nullptr;) {
+      if (cp->bitseq != BITSEQ || cp->slabs_empty_head->bitseq != BITSEQ || cp->slabs_partial_head->bitseq != BITSEQ ||
+          cp->slabs_full_head->bitseq != BITSEQ) {
+        SLAB_CORRUPTED;
+        return -1;
+      }
+      if (cp->slabs_empty_head->slab_head != nullptr) {
+        slab_t *sl{nullptr};
+        for (sl = cp->slabs_empty_head->slab_head; sl != nullptr;) {
+          if (sl->bitseq != BITSEQ) {
+            SLAB_CORRUPTED;
+            return -1;
+          }
+          auto *p = sl;
+          sl = sl->next;
+          delete_slab(p);
+        }
+        Allocator<slabs_t>{}.deallocate_def(cp->slabs_empty_head, false);
+      }
+      if (cp->slabs_partial_head->slab_head != nullptr) {
+        slab_t *sl{nullptr};
+        for (sl = cp->slabs_partial_head->slab_head; sl != nullptr;) {
+          if (sl->bitseq != BITSEQ) {
+            SLAB_CORRUPTED;
+            return -1;
+          }
+          auto *p = sl;
+          sl = sl->next;
+          delete_slab(p);
+        }
+        Allocator<slabs_t>{}.deallocate_def(cp->slabs_partial_head, false);
+      }
+      if (cp->slabs_full_head->slab_head != nullptr) {
+        slab_t *sl{nullptr};
+        for (sl = cp->slabs_full_head->slab_head; sl != nullptr;) {
+          if (sl->bitseq != BITSEQ) {
+            SLAB_CORRUPTED;
+            return -1;
+          }
+          auto *p = sl;
+          sl = sl->next;
+          delete_slab(p);
+        }
+        Allocator<slabs_t>{}.deallocate_def(cp->slabs_full_head, false);
+      }
+      auto *p = cp;
+      cp = cp->next;
+      Allocator<cache_t>{}.deallocate_def(p, false);
+    }
+    m_cache_chain = nullptr;
+    return 0;
+  }
 };
+#undef SLAB_CORRUPTED
 } // namespace slab
+
+using SlabCache = slab::SlabManager::cache_t;
 
 class AliveCheck {
 public:

@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <iostream>
 #include <pthread.h>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -44,6 +45,12 @@ int main(int argc, const char *const argv[]) {
     shmallocator::ObjectTag tag{0};
     shmallocator::shmqueue<Node> queue{10};
   } Queue_t;
+  typedef struct {
+    uint32_t id{0};
+    shmallocator::ObjectTag tag{0};
+    shmallocator::shmmutex mutex;
+    shmallocator::slab::SlabManager manager;
+  } Slab_t;
   // typedef struct {
   //   shmallocator::ObjectTag tag{0};
   //   shmallocator::shm_spin_mutex spin_mutex;
@@ -84,6 +91,63 @@ int main(int argc, const char *const argv[]) {
     Queue_t *queueptr = shmallocator::shmgetobjbytag<Queue_t>("queue");
     auto *pqueue = &queueptr->queue;
     printf("pqueue: %p\n", pqueue);
+    Slab_t *slabptr = shmallocator::shmgetobjbytag<Slab_t>("slab", true);
+    if (slabptr == nullptr) {
+      printf("slabptr null\n");
+      return -1;
+    }
+    auto *pslab = &slabptr->manager;
+    printf("pslab: %p\n", pslab);
+    pmutex = &slabptr->mutex;
+    // pslab->set(pmutex);
+    std::vector<std::thread> th_vec;
+    std::set<uint32_t *> set;
+    shmallocator::SlabCache *pcache{nullptr};
+    for (auto i = 0; i < 5; i++) {
+      th_vec.emplace_back(std::thread{[pmutex, pslab, &set, &pcache] {
+        for (auto i = 0; i < 100; i++) {
+          // std::lock_guard<shmallocator::shmmutex> lock{*pmutex};
+          uint32_t *pval;
+          {
+            std::lock_guard<shmallocator::shmmutex> lock{*pmutex};
+            shmallocator::SlabCache *cache;
+            pval = pslab->cache_alloc<uint32_t>(cache);
+            if (set.count(pval) > 0) {
+              printf("%p\n", pval);
+            } else {
+              set.insert(pval);
+            }
+            if (cache != pcache) {
+              if (pcache == nullptr) {
+                pcache = cache;
+              } else {
+                printf("cache diff %p %p\n", cache, pcache);
+              }
+            }
+          }
+        }
+      }});
+    }
+    for (auto i = 0; i < 5; i++) {
+      th_vec.emplace_back(std::thread{[pmutex, pslab, &set, &pcache] {
+        while (true) {
+          std::lock_guard<shmallocator::shmmutex> lock{*pmutex};
+          if (set.empty() == false) {
+            pslab->cache_free(pcache, *set.begin());
+            set.erase(set.begin());
+          } else {
+            break;
+          }
+        }
+      }});
+    }
+    std::for_each(th_vec.begin(), th_vec.end(), [&](auto &e) { e.join(); });
+    printf("slab size %lu\n", set.size());
+
+    // pslab->clear();
+    // shmallocator::shmfree(slabptr);
+    // printf("slab deallocate\n");
+
     pmonitor->start_heartbeat(shmallocator::AliveMonitor::PRODUCER, "producer_" + std::to_string(time(nullptr)));
     // auto *spinsyncptr = shmallocator::shmgetobjbytag<SpinSync_t>("spinsync");
     // printf("spinsyncptr: %p\n", spinsyncptr);
@@ -220,6 +284,7 @@ int main(int argc, const char *const argv[]) {
           }
         }
       }});
+      // std::cin.ignore();
       // thread_vec.rbegin()->detach();
     }
     std::for_each(thread_vec.begin(), thread_vec.end(), [](auto &th) { th.join(); });
