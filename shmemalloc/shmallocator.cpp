@@ -1,5 +1,6 @@
 #include "shmallocator.h"
 #include <fcntl.h>
+#include <iostream>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -9,7 +10,7 @@ namespace shmallocator {
 void *shmptr{nullptr};
 uint32_t shmsize{0};
 
-#define ALLOC_INFO_CORRUPTED fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__)
+#define ALLOC_INFO_CORRUPTED spdlog::error("{} {} allocation information is corrupted\n", __FILE__, __LINE__)
 
 static int32_t ptr2offset(void *ptr, void *shm_ptr) {
   if (ptr == nullptr || shm_ptr == nullptr) {
@@ -387,7 +388,6 @@ void *shmget(uint32_t id) {
 
 void shmfree(void *ptr) {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
     return;
   }
   Header *h{nullptr};

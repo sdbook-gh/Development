@@ -15,6 +15,8 @@
 #include <thread>
 #include <vector>
 
+#include "spdlog/spdlog.h"
+
 #define BOOST_INTERPROCESS_FORCE_GENERIC_EMULATION
 #include <boost/interprocess/sync/interprocess_condition.hpp>
 #include <boost/interprocess/sync/interprocess_mutex.hpp>
@@ -606,11 +608,11 @@ private:
 };
 
 namespace slab {
-#define SLAB_CORRUPTED fprintf(stderr, "%s %d slab is corrupted\n", __FILE__, __LINE__)
+#define SLAB_CORRUPTED spdlog::error("{} {} slab is corrupted", __FILE__, __LINE__)
 class SlabManager {
 private:
-  static constexpr uint32_t MAX_CHUNKS{8};
-  static constexpr uint32_t FREE_THRESHOLD{16};
+  static constexpr uint32_t MAX_CHUNKS{3};
+  static constexpr uint32_t FREE_THRESHOLD{6};
   struct chunk_t {
     uint32_t bitseq{BITSEQ};
     bool flag{false};
@@ -643,7 +645,7 @@ public:
 
 private:
   uint32_t m_bitseq{BITSEQ};
-  shmmutex *m_mutex;
+  shmmutex m_mutex;
   cache_t *m_cache_chain{nullptr};
 
   cache_t *add_cache(uint32_t type_size) {
@@ -746,7 +748,7 @@ private:
     slab_t *sl_prev{nullptr};
     slab_t *sl_curr{nullptr};
     if (slsrc == nullptr || sl == nullptr) {
-      fprintf(stderr, "%s %d bad parameter\n", __FILE__, __LINE__);
+      spdlog::error("{} {} bad parameter", __FILE__, __LINE__);
       return -1;
     }
     if (slsrc->bitseq != BITSEQ || sl->bitseq != BITSEQ) {
@@ -785,12 +787,15 @@ private:
     slsrc->slabs--;
     sl_prev->next = sl->next;
     sl->next = nullptr;
+    if (slsrc->slab_tail == sl) {
+      slsrc->slab_tail = sl_prev;
+    }
     slsrc->bitseq = sl_prev->bitseq = sl->bitseq = BITSEQ;
     return 0;
   }
   int slab_queue_add(slabs_t *slsrc, slab_t *sl) {
     if (slsrc == nullptr || sl == nullptr) {
-      fprintf(stderr, "%s %d bad parameter\n", __FILE__, __LINE__);
+      spdlog::error("{} {} bad parameter\n", __FILE__, __LINE__);
       return -1;
     }
     if (slsrc->bitseq != BITSEQ || sl->bitseq != BITSEQ) {
@@ -821,17 +826,14 @@ public:
   ~SlabManager() {
     clear();
   }
-  void set(shmmutex *mutex) {
-    m_mutex = mutex;
-  }
   template <typename T> T *cache_alloc(cache_t *&cp) {
-    // std::lock_guard<shmmutex> lock{*m_mutex};
+    std::lock_guard<shmmutex> lock{m_mutex};
     if (m_bitseq != BITSEQ) {
       SLAB_CORRUPTED;
       return nullptr;
     }
     if ((cp = cache_match<T>()) == nullptr) {
-      fprintf(stderr, "%s %d cannot get cache\n", __FILE__, __LINE__);
+      spdlog::error("{} {} cannot get cache\n", __FILE__, __LINE__);
       return nullptr;
     }
     if (cp->bitseq != BITSEQ || cp->slabs_empty_head->bitseq != BITSEQ || cp->slabs_partial_head->bitseq != BITSEQ ||
@@ -851,13 +853,17 @@ public:
       sl->bitseq = sl->chunks[0].bitseq = BITSEQ;
       slab_queue_remove(cp->slabs_empty_head, sl);
       slab_queue_add(cp->slabs_partial_head, sl);
+      print();
       return (T *)sl->chunks[0].value;
     }
     if (cp->slabs_partial_head->slab_head == nullptr) {
       auto *sl = new_slab<T>();
       cp->bitseq = 0;
+      cp->slabs_partial_head->bitseq = 0;
       cp->slabs_partial_head->slab_head = sl;
       cp->slabs_partial_head->slab_tail = sl;
+      cp->slabs_partial_head->slabs++;
+      cp->slabs_partial_head->bitseq = BITSEQ;
       cp->slabs++;
       cp->bitseq = BITSEQ;
     }
@@ -881,23 +887,24 @@ public:
             slab_queue_remove(cp->slabs_partial_head, sl);
             slab_queue_add(cp->slabs_full_head, sl);
           }
+          print();
           return (T *)sl->chunks[count].value;
         }
       }
       sl = sl->next;
     }
-    fprintf(stderr, "%s %d cache_alloc error\n", __FILE__, __LINE__);
+    spdlog::error("{} {} cache_alloc error\n", __FILE__, __LINE__);
+    print(true);
+    exit(-1);
     return nullptr;
   }
   template <typename T> void cache_free(cache_t *cp, T *buf) {
-    // fprintf(stderr, "%s %d buf %p\n", __FILE__, __LINE__, buf);
-    // std::lock_guard<shmmutex> lock{*m_mutex};
+    std::lock_guard<shmmutex> lock{m_mutex};
     if (m_bitseq != BITSEQ) {
       SLAB_CORRUPTED;
       return;
     }
-    if (cp == nullptr) {
-      fprintf(stderr, "%s %d bad cache\n", __FILE__, __LINE__);
+    if (cp == nullptr || buf == nullptr) {
       return;
     }
     if (cp->bitseq != BITSEQ || cp->slabs_empty_head->bitseq != BITSEQ || cp->slabs_partial_head->bitseq != BITSEQ ||
@@ -922,6 +929,7 @@ public:
             slab_queue_remove(cp->slabs_full_head, sl);
             slab_queue_add(cp->slabs_partial_head, sl);
             sl->bitseq = BITSEQ;
+            print();
             return;
           }
         }
@@ -944,25 +952,98 @@ public:
             if (sl->free == MAX_CHUNKS) {
               if (cp->slabs_empty_head->slabs >= FREE_THRESHOLD) {
                 cp->bitseq = 0;
+                spdlog::info("delete slab {} {} {} {} buf {}",
+                             (void *)sl,
+                             (void *)sl->chunks[0].value,
+                             (void *)sl->chunks[1].value,
+                             (void *)sl->chunks[2].value,
+                             (void *)buf);
                 delete_slab(sl);
                 cp->slabs--;
                 cp->bitseq = BITSEQ;
+                print();
                 return;
               }
               slab_queue_remove(cp->slabs_partial_head, sl);
               slab_queue_add(cp->slabs_empty_head, sl);
             }
             sl->bitseq = BITSEQ;
+            print();
             return;
           }
         }
         sl = sl->next;
       }
     }
-    fprintf(stderr, "%s %d bad pointer %p\n", __FILE__, __LINE__, buf);
+    spdlog::error("{} {} bad pointer {}", __FILE__, __LINE__, (void *)buf);
+    print(true);
+    exit(-1);
+  }
+  void print(bool error = false) {
+    // if (error) {
+    spdlog::info("m_bitseq {}\n", m_bitseq);
+    cache_t *cp{nullptr};
+    for (cp = m_cache_chain; cp != nullptr;) {
+      if (cp->slabs_empty_head->slab_head != nullptr) {
+        spdlog::info("  slabs_empty_head slabs {} bitseq {} head {} tail {}",
+                     cp->slabs_empty_head->slabs,
+                     cp->slabs_empty_head->bitseq,
+                     (void *)cp->slabs_empty_head->slab_head,
+                     (void *)cp->slabs_empty_head->slab_tail);
+        slab_t *sl{nullptr};
+        for (sl = cp->slabs_empty_head->slab_head; sl != nullptr;) {
+          spdlog::info("    slab bitseq {} free {} next {}", sl->bitseq, sl->free, (void *)sl->next);
+          for (auto i = 0u; i < MAX_CHUNKS; ++i) {
+            spdlog::info("      chunk bitseq {} flag {} value {}",
+                         sl->chunks[i].bitseq,
+                         sl->chunks[i].flag,
+                         (void *)sl->chunks[i].value);
+          }
+          sl = sl->next;
+        }
+      }
+      if (cp->slabs_partial_head->slab_head != nullptr) {
+        spdlog::info("  slabs_partial_head slabs {} bitseq {} head {} tail {}",
+                     cp->slabs_partial_head->slabs,
+                     cp->slabs_partial_head->bitseq,
+                     (void *)cp->slabs_partial_head->slab_head,
+                     (void *)cp->slabs_partial_head->slab_tail);
+        slab_t *sl{nullptr};
+        for (sl = cp->slabs_partial_head->slab_head; sl != nullptr;) {
+          spdlog::info("    slab bitseq {} free {} next {}", sl->bitseq, sl->free, (void *)sl->next);
+          for (auto i = 0u; i < MAX_CHUNKS; ++i) {
+            spdlog::info("      chunk bitseq {} flag {} value {}",
+                         sl->chunks[i].bitseq,
+                         sl->chunks[i].flag,
+                         (void *)sl->chunks[i].value);
+          }
+          sl = sl->next;
+        }
+      }
+      if (cp->slabs_full_head->slab_head != nullptr) {
+        spdlog::info("  slabs_full_head slabs {} bitseq {} head {} tail {}",
+                     cp->slabs_full_head->slabs,
+                     cp->slabs_full_head->bitseq,
+                     (void *)cp->slabs_full_head->slab_head,
+                     (void *)cp->slabs_full_head->slab_tail);
+        slab_t *sl{nullptr};
+        for (sl = cp->slabs_full_head->slab_head; sl != nullptr;) {
+          spdlog::info("    slab bitseq {} free {} next {}", sl->bitseq, sl->free, (void *)sl->next);
+          for (auto i = 0u; i < MAX_CHUNKS; ++i) {
+            spdlog::info("      chunk bitseq {} flag {} value {}",
+                         sl->chunks[i].bitseq,
+                         sl->chunks[i].flag,
+                         (void *)sl->chunks[i].value);
+          }
+          sl = sl->next;
+        }
+      }
+      cp = cp->next;
+    }
+    // }
   }
   int clear() {
-    // std::lock_guard<shmmutex> lock{*m_mutex};
+    std::lock_guard<shmmutex> lock{m_mutex};
     if (m_bitseq != BITSEQ) {
       SLAB_CORRUPTED;
       return -1;

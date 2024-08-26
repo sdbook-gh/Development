@@ -7,14 +7,24 @@
 #include <ctime>
 #include <filesystem>
 #include <iostream>
+#include <mutex>
 #include <pthread.h>
 #include <set>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "spdlog/sinks/basic_file_sink.h"
+#include "spdlog/spdlog.h"
+
 int main(int argc, const char *const argv[]) {
-  size_t MEM_POOL_SIZE = 10ul * 1024ul * 1024ul; // 10M
+  auto old_logger = spdlog::default_logger();
+  auto new_logger = spdlog::basic_logger_mt("basic_logger", "log.txt", true);
+  spdlog::set_default_logger(new_logger);
+  spdlog::set_level(spdlog::level::info);
+  spdlog::set_pattern("[%H:%M:%S %z] [%^%L%$] [thread %t] %v");
+
+  size_t MEM_POOL_SIZE = 100ul * 1024ul * 1024ul; // 100M
   size_t MEM_POOL_BASE_ADDR = 123ul * 1024ul * 1024ul * 1024ul; // 123G
   struct Node {
     int val{0};
@@ -98,30 +108,27 @@ int main(int argc, const char *const argv[]) {
     }
     auto *pslab = &slabptr->manager;
     printf("pslab: %p\n", pslab);
-    pmutex = &slabptr->mutex;
-    // pslab->set(pmutex);
     std::vector<std::thread> th_vec;
     std::set<uint32_t *> set;
     shmallocator::SlabCache *pcache{nullptr};
+    std::mutex mutex;
     for (auto i = 0; i < 5; i++) {
-      th_vec.emplace_back(std::thread{[pmutex, pslab, &set, &pcache] {
+      th_vec.emplace_back(std::thread{[&mutex, pslab, &set, &pcache] {
         for (auto i = 0; i < 100; i++) {
-          // std::lock_guard<shmallocator::shmmutex> lock{*pmutex};
           uint32_t *pval;
           {
-            std::lock_guard<shmallocator::shmmutex> lock{*pmutex};
             shmallocator::SlabCache *cache;
             pval = pslab->cache_alloc<uint32_t>(cache);
-            if (set.count(pval) > 0) {
-              printf("%p\n", pval);
-            } else {
+            {
+              std::lock_guard<std::mutex> lock{mutex};
+              // printf("alloc cache %p %p\n", cache, pval);
               set.insert(pval);
-            }
-            if (cache != pcache) {
-              if (pcache == nullptr) {
-                pcache = cache;
-              } else {
-                printf("cache diff %p %p\n", cache, pcache);
+              if (cache != pcache) {
+                if (pcache == nullptr) {
+                  pcache = cache;
+                } else {
+                  printf("cache diff %p %p\n", cache, pcache);
+                }
               }
             }
           }
@@ -129,15 +136,21 @@ int main(int argc, const char *const argv[]) {
       }});
     }
     for (auto i = 0; i < 5; i++) {
-      th_vec.emplace_back(std::thread{[pmutex, pslab, &set, &pcache] {
+      th_vec.emplace_back(std::thread{[&mutex, pslab, &set, &pcache] {
         while (true) {
-          std::lock_guard<shmallocator::shmmutex> lock{*pmutex};
-          if (set.empty() == false) {
-            pslab->cache_free(pcache, *set.begin());
-            set.erase(set.begin());
-          } else {
-            break;
+          uint32_t *ptr{nullptr};
+          {
+            std::lock_guard<std::mutex> lock{mutex};
+            if (set.empty() == false) {
+              ptr = *set.begin();
+              set.erase(set.begin());
+            } else {
+              break;
+            }
           }
+          // printf("free %p\n", ptr);
+          pslab->cache_free(pcache, ptr);
+          // printf("free %p completed\n", ptr);
         }
       }});
     }
