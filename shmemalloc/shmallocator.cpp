@@ -1,4 +1,5 @@
 #include "shmallocator.h"
+#include "spdlog/spdlog.h"
 #include <fcntl.h>
 #include <iostream>
 #include <sys/mman.h>
@@ -10,7 +11,7 @@ namespace shmallocator {
 void *shmptr{nullptr};
 uint32_t shmsize{0};
 
-#define ALLOC_INFO_CORRUPTED spdlog::error("{} {} allocation information is corrupted\n", __FILE__, __LINE__)
+#define ALLOC_INFO_CORRUPTED spdlog::error("{} {} allocation information is corrupted", __FILE__, __LINE__)
 
 static int32_t ptr2offset(void *ptr, void *shm_ptr) {
   if (ptr == nullptr || shm_ptr == nullptr) {
@@ -28,7 +29,7 @@ static void *offset2ptr(int32_t offset, void *shm_ptr) {
 
 void print_shmallocator(bool simple = true, bool last = false) {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return;
   }
   Header *curr = (Header *)shmptr;
@@ -75,12 +76,12 @@ void print_shmallocator(bool simple = true, bool last = false) {
 
 static void initialize_header(Header *h, size_t size, int id, bool is_first) {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return;
   }
   // Sanity check
   if (h == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return;
   }
   // ensure hreader is not valid
@@ -107,27 +108,27 @@ static void initialize_header(Header *h, size_t size, int id, bool is_first) {
 
 static void destroy_header(Header *h, void *shm_ptr) {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return;
   }
   // Sanity check
   if (h == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return;
   }
   if (h->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d bad header bitseq\n", __FILE__, __LINE__);
+    spdlog::error("{} {} bad header bitseq\n", __FILE__, __LINE__);
     return;
   }
   Header *prev = h->prev != -1 ? (Header *)offset2ptr(h->prev, shm_ptr) : nullptr;
   if (prev != nullptr && prev->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    spdlog::error("{} {} allocation information is corrupted\n", __FILE__, __LINE__);
     print_shmallocator();
     return;
   }
   Header *next = h->next != -1 ? (Header *)offset2ptr(h->next, shm_ptr) : nullptr;
   if (next != nullptr && next->bitseq != BITSEQ) {
-    fprintf(stderr, "%s %d allocation information is corrupted\n", __FILE__, __LINE__);
+    spdlog::error("{} {} allocation information is corrupted\n", __FILE__, __LINE__);
     print_shmallocator();
     return;
   }
@@ -172,7 +173,7 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
         }
       } else {
         std::string str = strerror(errno);
-        fprintf(stderr, "%s %d open shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
+        spdlog::error("{} {} open shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
         return false;
       }
     }
@@ -199,7 +200,7 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
       mmap((void *)shm_base_address, shm_max_size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, fd, 0);
     if (shmem_ptr == MAP_FAILED) {
       std::string str = strerror(errno);
-      fprintf(stderr, "%s %d mmap shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
+      spdlog::error("{} {} mmap shmem file %s error: %s\n", __FILE__, __LINE__, shm_file_path.c_str(), str.c_str());
       close(fd);
       return false;
     }
@@ -225,18 +226,18 @@ bool initshm(const std::string &shm_file_path, size_t shm_base_address, uint32_t
 
 void *shmalloc(uint32_t size, uint32_t *id) {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return nullptr;
   }
   Header *first{nullptr}, *curr{nullptr}, *best_fit{nullptr};
   uint32_t free_size{0}, best_block_size{0};
   if (size == 0 || id == nullptr) {
-    fprintf(stderr, "%s %d bad parameter\n", __FILE__, __LINE__);
+    spdlog::error("{} {} bad parameter\n", __FILE__, __LINE__);
     return nullptr;
   }
   // printf("shmalloc size %u\n", size);
   if (shmsize < size + sizeof(Header)) {
-    fprintf(stderr, "%s %d size %u too big\n", __FILE__, __LINE__, size);
+    spdlog::error("{} {} size %u too big\n", __FILE__, __LINE__, size);
     return nullptr;
   }
 
@@ -273,7 +274,7 @@ void *shmalloc(uint32_t size, uint32_t *id) {
     ret[0] = pthread_mutex_lock(&(first->mutex));
   }
   if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
-    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    spdlog::error("{} {} lock mutex in shared memory error\n", __FILE__, __LINE__);
     pthread_mutex_unlock(&(first->mutex));
     return nullptr;
   }
@@ -296,7 +297,7 @@ void *shmalloc(uint32_t size, uint32_t *id) {
   }
   // Did not find existing entry
   if (best_fit == nullptr) {
-    fprintf(stderr, "%s %d no enough free space to allocate\n", __FILE__, __LINE__);
+    spdlog::error("{} {} no enough free space to allocate", __FILE__, __LINE__);
     print_shmallocator(false, true);
     pthread_mutex_unlock(&(first->mutex));
     return nullptr;
@@ -341,12 +342,13 @@ void *shmalloc(uint32_t size, uint32_t *id) {
   *id = best_fit->id;
   pthread_mutex_unlock(&(first->mutex));
   print_shmallocator(false, true);
+  spdlog::info("{} {} allocate {} free {}", __FILE__, __LINE__, (void *)(best_fit + 1), best_fit->is_free);
   return (best_fit + 1);
 }
 
 void *shmget(uint32_t id) {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return nullptr;
   }
   Header *first{nullptr}, *curr{nullptr};
@@ -362,7 +364,7 @@ void *shmget(uint32_t id) {
     ret[0] = pthread_mutex_lock(&(first->mutex));
   }
   if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
-    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    spdlog::error("{} {} lock mutex in shared memory error\n", __FILE__, __LINE__);
     pthread_mutex_unlock(&(first->mutex));
     return nullptr;
   }
@@ -393,7 +395,7 @@ void shmfree(void *ptr) {
   Header *h{nullptr};
   Header *first{nullptr};
   if (ptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return;
   }
   h = ((Header *)ptr) - 1;
@@ -415,7 +417,7 @@ void shmfree(void *ptr) {
     return;
   }
   if (h->is_free) {
-    fprintf(stderr, "%s %d double free error\n", __FILE__, __LINE__);
+    spdlog::error("{} {} {} double free error", __FILE__, __LINE__, ptr);
     return;
   }
 
@@ -428,7 +430,7 @@ void shmfree(void *ptr) {
     ret[0] = pthread_mutex_lock(&(first->mutex));
   }
   if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
-    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    spdlog::error("{} {} lock mutex in shared memory error\n", __FILE__, __LINE__);
     pthread_mutex_unlock(&(first->mutex));
     return;
   }
@@ -465,12 +467,13 @@ void shmfree(void *ptr) {
     h->bitseq = BITSEQ;
   }
   print_shmallocator(false);
+  spdlog::info("{} {} free {} free {}", __FILE__, __LINE__, ptr, h->is_free);
   pthread_mutex_unlock(&(first->mutex));
 }
 
 int shmgetmaxid() {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return -1;
   }
   Header *first = (Header *)shmptr;
@@ -487,7 +490,7 @@ int shmgetmaxid() {
     ret[0] = pthread_mutex_lock(&(first->mutex));
   }
   if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
-    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    spdlog::error("{} {} lock mutex in shared memory error\n", __FILE__, __LINE__);
     pthread_mutex_unlock(&(first->mutex));
     return -1;
   }
@@ -498,7 +501,7 @@ int shmgetmaxid() {
 
 bool uninitshm() {
   if (shmptr == nullptr) {
-    fprintf(stderr, "%s %d nullptr\n", __FILE__, __LINE__);
+    spdlog::error("{} {} nullptr\n", __FILE__, __LINE__);
     return false;
   }
   Header *first = (Header *)shmptr;
@@ -515,7 +518,7 @@ bool uninitshm() {
     ret[0] = pthread_mutex_lock(&(first->mutex));
   }
   if (ret[0] != 0 || ret[1] != 0 || ret[2] != 0) {
-    fprintf(stderr, "%s %d lock mutex in shared memory error\n", __FILE__, __LINE__);
+    spdlog::error("{} {} lock mutex in shared memory error\n", __FILE__, __LINE__);
     pthread_mutex_unlock(&(first->mutex));
     return false;
   }

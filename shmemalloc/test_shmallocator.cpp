@@ -14,15 +14,16 @@
 #include <thread>
 #include <vector>
 
+#include "spdlog/common.h"
 #include "spdlog/sinks/basic_file_sink.h"
-#include "spdlog/spdlog.h"
 
 int main(int argc, const char *const argv[]) {
   auto old_logger = spdlog::default_logger();
   auto new_logger = spdlog::basic_logger_mt("basic_logger", "log.txt", true);
   spdlog::set_default_logger(new_logger);
-  spdlog::set_level(spdlog::level::info);
-  spdlog::set_pattern("[%H:%M:%S %z] [%^%L%$] [thread %t] %v");
+  spdlog::set_level(spdlog::level::err);
+  // spdlog::set_pattern("[%H:%M:%S %z] [%^%L%$] [thread %t] %v");
+  spdlog::set_pattern("[source %s] [function %!] [line %#] %v");
 
   size_t MEM_POOL_SIZE = 100ul * 1024ul * 1024ul; // 100M
   size_t MEM_POOL_BASE_ADDR = 123ul * 1024ul * 1024ul * 1024ul; // 123G
@@ -112,9 +113,12 @@ int main(int argc, const char *const argv[]) {
     std::set<uint32_t *> set;
     shmallocator::SlabCache *pcache{nullptr};
     std::mutex mutex;
-    for (auto i = 0; i < 5; i++) {
-      th_vec.emplace_back(std::thread{[&mutex, pslab, &set, &pcache] {
-        for (auto i = 0; i < 100; i++) {
+    const auto INSERT_THREAD_COUNT = 5u;
+    const auto ERASE_THREAD_COUNT = 5u;
+    std::atomic_uint8_t insert_thread_completed{0};
+    for (auto i = 0u; i < INSERT_THREAD_COUNT; i++) {
+      th_vec.emplace_back(std::thread{[&mutex, pslab, &set, &pcache, &insert_thread_completed] {
+        for (auto i = 0; i < 500; i++) {
           uint32_t *pval;
           {
             shmallocator::SlabCache *cache;
@@ -133,10 +137,11 @@ int main(int argc, const char *const argv[]) {
             }
           }
         }
+        insert_thread_completed++;
       }});
     }
-    for (auto i = 0; i < 5; i++) {
-      th_vec.emplace_back(std::thread{[&mutex, pslab, &set, &pcache] {
+    for (auto i = 0u; i < ERASE_THREAD_COUNT; i++) {
+      th_vec.emplace_back(std::thread{[&mutex, pslab, &set, &pcache, &insert_thread_completed] {
         while (true) {
           uint32_t *ptr{nullptr};
           {
@@ -144,6 +149,8 @@ int main(int argc, const char *const argv[]) {
             if (set.empty() == false) {
               ptr = *set.begin();
               set.erase(set.begin());
+            } else if (insert_thread_completed < INSERT_THREAD_COUNT) {
+              continue;
             } else {
               break;
             }

@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_INFO
 #include "spdlog/spdlog.h"
 
 #define BOOST_INTERPROCESS_FORCE_GENERIC_EMULATION
@@ -729,6 +730,7 @@ private:
   }
   template <typename T> slab_t *new_slab() {
     slab_t *sl = Allocator<slab_t>{}.allocate_def(true);
+    spdlog::info("new_slab {}", (void *)sl);
     sl->bitseq = 0;
     for (auto count = 0u; count < MAX_CHUNKS; count++) {
       sl->chunks[count].value = Allocator<T>{}.allocate_def(false);
@@ -736,13 +738,14 @@ private:
     sl->bitseq = BITSEQ;
     return sl;
   }
-  void delete_slab(slab_t *sl) {
+  void delete_slab(slab_t *sl, const std::string &file, int line) {
     sl->bitseq = 0;
     for (auto count = 0u; count < MAX_CHUNKS; count++) {
       Allocator<uint8_t>{}.deallocate_def((uint8_t *)sl->chunks[count].value, false);
     }
     sl->bitseq = BITSEQ;
     Allocator<slab_t>{}.deallocate_def(sl, true);
+    spdlog::info("delete_slab {} {} {}", (void *)sl, file, line);
   }
   int slab_queue_remove(slabs_t *slsrc, slab_t *sl) {
     slab_t *sl_prev{nullptr};
@@ -853,7 +856,7 @@ public:
       sl->bitseq = sl->chunks[0].bitseq = BITSEQ;
       slab_queue_remove(cp->slabs_empty_head, sl);
       slab_queue_add(cp->slabs_partial_head, sl);
-      print();
+      print(false, __FILE__, __LINE__);
       return (T *)sl->chunks[0].value;
     }
     if (cp->slabs_partial_head->slab_head == nullptr) {
@@ -887,7 +890,7 @@ public:
             slab_queue_remove(cp->slabs_partial_head, sl);
             slab_queue_add(cp->slabs_full_head, sl);
           }
-          print();
+          print(false, __FILE__, __LINE__);
           return (T *)sl->chunks[count].value;
         }
       }
@@ -929,7 +932,7 @@ public:
             slab_queue_remove(cp->slabs_full_head, sl);
             slab_queue_add(cp->slabs_partial_head, sl);
             sl->bitseq = BITSEQ;
-            print();
+            print(false, __FILE__, __LINE__);
             return;
           }
         }
@@ -951,24 +954,22 @@ public:
             sl->bitseq = BITSEQ;
             if (sl->free == MAX_CHUNKS) {
               if (cp->slabs_empty_head->slabs >= FREE_THRESHOLD) {
-                cp->bitseq = 0;
+                slab_queue_remove(cp->slabs_partial_head, sl);
                 spdlog::info("delete slab {} {} {} {} buf {}",
                              (void *)sl,
                              (void *)sl->chunks[0].value,
                              (void *)sl->chunks[1].value,
                              (void *)sl->chunks[2].value,
                              (void *)buf);
-                delete_slab(sl);
-                cp->slabs--;
-                cp->bitseq = BITSEQ;
-                print();
+                delete_slab(sl, __FILE__, __LINE__);
+                print(false, __FILE__, __LINE__);
                 return;
               }
               slab_queue_remove(cp->slabs_partial_head, sl);
               slab_queue_add(cp->slabs_empty_head, sl);
             }
             sl->bitseq = BITSEQ;
-            print();
+            print(false, __FILE__, __LINE__);
             return;
           }
         }
@@ -979,9 +980,9 @@ public:
     print(true);
     exit(-1);
   }
-  void print(bool error = false) {
+  void print(bool error = false, const std::string &file = "", int line = -1) {
     // if (error) {
-    spdlog::info("m_bitseq {}\n", m_bitseq);
+    spdlog::info("m_bitseq {} {} {}", m_bitseq, file, line);
     cache_t *cp{nullptr};
     for (cp = m_cache_chain; cp != nullptr;) {
       if (cp->slabs_empty_head->slab_head != nullptr) {
@@ -991,8 +992,10 @@ public:
                      (void *)cp->slabs_empty_head->slab_head,
                      (void *)cp->slabs_empty_head->slab_tail);
         slab_t *sl{nullptr};
+        auto count{0u};
         for (sl = cp->slabs_empty_head->slab_head; sl != nullptr;) {
-          spdlog::info("    slab bitseq {} free {} next {}", sl->bitseq, sl->free, (void *)sl->next);
+          ++count;
+          spdlog::info("    slab {} bitseq {} free {} next {}", (void *)sl, sl->bitseq, sl->free, (void *)sl->next);
           for (auto i = 0u; i < MAX_CHUNKS; ++i) {
             spdlog::info("      chunk bitseq {} flag {} value {}",
                          sl->chunks[i].bitseq,
@@ -1000,6 +1003,10 @@ public:
                          (void *)sl->chunks[i].value);
           }
           sl = sl->next;
+        }
+        if (count != cp->slabs_empty_head->slabs) {
+          spdlog::error("slabs_empty_head corrupted {}", count);
+          exit(-1);
         }
       }
       if (cp->slabs_partial_head->slab_head != nullptr) {
@@ -1009,8 +1016,10 @@ public:
                      (void *)cp->slabs_partial_head->slab_head,
                      (void *)cp->slabs_partial_head->slab_tail);
         slab_t *sl{nullptr};
+        auto count{0u};
         for (sl = cp->slabs_partial_head->slab_head; sl != nullptr;) {
-          spdlog::info("    slab bitseq {} free {} next {}", sl->bitseq, sl->free, (void *)sl->next);
+          ++count;
+          spdlog::info("    slab {} bitseq {} free {} next {}", (void *)sl, sl->bitseq, sl->free, (void *)sl->next);
           for (auto i = 0u; i < MAX_CHUNKS; ++i) {
             spdlog::info("      chunk bitseq {} flag {} value {}",
                          sl->chunks[i].bitseq,
@@ -1018,6 +1027,10 @@ public:
                          (void *)sl->chunks[i].value);
           }
           sl = sl->next;
+        }
+        if (count != cp->slabs_partial_head->slabs) {
+          spdlog::error("slabs_partial_head corrupted {}", count);
+          exit(-1);
         }
       }
       if (cp->slabs_full_head->slab_head != nullptr) {
@@ -1027,8 +1040,10 @@ public:
                      (void *)cp->slabs_full_head->slab_head,
                      (void *)cp->slabs_full_head->slab_tail);
         slab_t *sl{nullptr};
+        auto count{0u};
         for (sl = cp->slabs_full_head->slab_head; sl != nullptr;) {
-          spdlog::info("    slab bitseq {} free {} next {}", sl->bitseq, sl->free, (void *)sl->next);
+          ++count;
+          spdlog::info("    slab {} bitseq {} free {} next {}", (void *)sl, sl->bitseq, sl->free, (void *)sl->next);
           for (auto i = 0u; i < MAX_CHUNKS; ++i) {
             spdlog::info("      chunk bitseq {} flag {} value {}",
                          sl->chunks[i].bitseq,
@@ -1036,6 +1051,10 @@ public:
                          (void *)sl->chunks[i].value);
           }
           sl = sl->next;
+        }
+        if (count != cp->slabs_full_head->slabs) {
+          spdlog::error("slabs_full_head corrupted {}", count);
+          exit(-1);
         }
       }
       cp = cp->next;
@@ -1064,7 +1083,7 @@ public:
           }
           auto *p = sl;
           sl = sl->next;
-          delete_slab(p);
+          delete_slab(p, __FILE__, __LINE__);
         }
         Allocator<slabs_t>{}.deallocate_def(cp->slabs_empty_head, false);
       }
@@ -1077,7 +1096,7 @@ public:
           }
           auto *p = sl;
           sl = sl->next;
-          delete_slab(p);
+          delete_slab(p, __FILE__, __LINE__);
         }
         Allocator<slabs_t>{}.deallocate_def(cp->slabs_partial_head, false);
       }
@@ -1090,7 +1109,7 @@ public:
           }
           auto *p = sl;
           sl = sl->next;
-          delete_slab(p);
+          delete_slab(p, __FILE__, __LINE__);
         }
         Allocator<slabs_t>{}.deallocate_def(cp->slabs_full_head, false);
       }
