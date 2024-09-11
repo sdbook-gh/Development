@@ -21,7 +21,8 @@ int main(int argc, const char *const argv[]) {
   auto old_logger = spdlog::default_logger();
   auto new_logger = spdlog::basic_logger_mt("basic_logger", "log.txt", true);
   spdlog::set_default_logger(new_logger);
-  spdlog::set_level(spdlog::level::err);
+  spdlog::set_level(spdlog::level::info);
+  spdlog::flush_on(spdlog::level::err);
   // spdlog::set_pattern("[%H:%M:%S %z] [%^%L%$] [thread %t] %v");
   spdlog::set_pattern("[source %s] [function %!] [line %#] %v");
 
@@ -125,13 +126,12 @@ int main(int argc, const char *const argv[]) {
             pval = pslab->cache_alloc<uint32_t>(cache);
             {
               std::lock_guard<std::mutex> lock{mutex};
-              // printf("alloc cache %p %p\n", cache, pval);
               set.insert(pval);
               if (cache != pcache) {
                 if (pcache == nullptr) {
                   pcache = cache;
                 } else {
-                  printf("cache diff %p %p\n", cache, pcache);
+                  SPDLOG_ERROR("cache diff {} {}\n", (void *)cache, (void *)pcache);
                 }
               }
             }
@@ -155,18 +155,16 @@ int main(int argc, const char *const argv[]) {
               break;
             }
           }
-          // printf("free %p\n", ptr);
           pslab->cache_free(pcache, ptr);
-          // printf("free %p completed\n", ptr);
         }
       }});
     }
     std::for_each(th_vec.begin(), th_vec.end(), [&](auto &e) { e.join(); });
-    printf("slab size %lu\n", set.size());
+    printf("slab set size %lu\n", set.size());
 
-    // pslab->clear();
-    // shmallocator::shmfree(slabptr);
-    // printf("slab deallocate\n");
+    pslab->clear();
+    shmallocator::shmfree(slabptr);
+    SPDLOG_INFO("slab deallocate completed");
 
     pmonitor->start_heartbeat(shmallocator::AliveMonitor::PRODUCER, "producer_" + std::to_string(time(nullptr)));
     // auto *spinsyncptr = shmallocator::shmgetobjbytag<SpinSync_t>("spinsync");
