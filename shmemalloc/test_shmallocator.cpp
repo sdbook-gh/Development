@@ -51,10 +51,6 @@ int main(int argc, const char *const argv[]) {
   } Cond_t;
   typedef struct {
     shmallocator::ObjectTag tag{0};
-    shmallocator::AliveMonitor monitor;
-  } Heartbeat_t;
-  typedef struct {
-    shmallocator::ObjectTag tag{0};
     shmallocator::shmqueue<Node> queue{10};
   } Queue_t;
   typedef struct {
@@ -77,17 +73,10 @@ int main(int argc, const char *const argv[]) {
     }
   } else if (argc == 2 && std::string("monitor") == argv[1]) {
     shmallocator::initshm("/tmp/test_shmem", MEM_POOL_BASE_ADDR, MEM_POOL_SIZE);
-    auto *monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
-    printf("monitorptr: %p\n", monitorptr);
-    auto *pmonitor = &monitorptr->monitor;
-    printf("pmonitor: %p\n", pmonitor);
-    pmonitor->start_monitor();
+    shmallocator::start_alive_monitor();
   } else if (argc == 2 && std::string("producer") == argv[1]) {
     shmallocator::initshm("/tmp/test_shmem", MEM_POOL_BASE_ADDR, MEM_POOL_SIZE);
-    auto *monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
-    printf("monitorptr: %p\n", monitorptr);
-    auto *pmonitor = &monitorptr->monitor;
-    printf("pmonitor: %p\n", pmonitor);
+    shmallocator::start_heart_beat();
     auto *vecptr = shmallocator::shmgetobjbytag<Vector_t>("vec");
     auto *pvec = &vecptr->vec;
     printf("pvec: %p\n", pvec);
@@ -166,7 +155,6 @@ int main(int argc, const char *const argv[]) {
     shmallocator::shmfree(slabptr);
     SPDLOG_INFO("slab deallocate completed");
 
-    pmonitor->start_heartbeat(shmallocator::AliveMonitor::PRODUCER, "producer_" + std::to_string(time(nullptr)));
     // auto *spinsyncptr = shmallocator::shmgetobjbytag<SpinSync_t>("spinsync");
     // printf("spinsyncptr: %p\n", spinsyncptr);
     // auto *pspinmutex = &spinsyncptr->spin_mutex;
@@ -216,10 +204,7 @@ int main(int argc, const char *const argv[]) {
     printf("producer completed\n");
   } else if (argc == 2 && std::string("consumer") == argv[1]) {
     shmallocator::initshm("/tmp/test_shmem", MEM_POOL_BASE_ADDR, MEM_POOL_SIZE);
-    auto *monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
-    printf("monitorptr: %p\n", monitorptr);
-    auto *pmonitor = &monitorptr->monitor;
-    printf("pmonitor: %p\n", pmonitor);
+    shmallocator::start_heart_beat();
     auto *vecptr = shmallocator::shmgetobjbytag<Vector_t>("vec");
     auto *pvec = &vecptr->vec;
     printf("pvec: %p\n", pvec);
@@ -240,7 +225,6 @@ int main(int argc, const char *const argv[]) {
     // auto *pspinmutex = &spinsyncptr->spin_mutex;
     // auto *pspincond = &spinsyncptr->spin_cond;
 
-    pmonitor->start_heartbeat(shmallocator::AliveMonitor::CONSUMER, "consumer_" + std::to_string(time(nullptr)));
     // ready go
     std::vector<std::thread> thread_vec;
     for (int i = 0; i < 10; ++i) {

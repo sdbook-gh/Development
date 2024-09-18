@@ -10,7 +10,6 @@
 #include <mutex>
 #include <pthread.h>
 #include <semaphore.h>
-#include <spdlog/spdlog.h>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -500,112 +499,6 @@ private:
   shmmutex m_mutex;
   shmvector<shmsemaphore *> m_wait_semaphore_list;
   shmvector<shmsemaphore *> m_free_semaphore_list;
-};
-
-template <typename T> class shmqueue {
-private:
-  struct Record {
-    Record() {}
-    Record(const Record &other) {
-      m_sequence.store(other.m_sequence.load(std::memory_order_acquire), std::memory_order_release);
-      m_data = other.m_data;
-    }
-    std::atomic<uint32_t> m_sequence{0};
-    T m_data;
-  };
-  static inline uint32_t nextPowerOfTwo(uint32_t m_buffersize) {
-    uint32_t result = m_buffersize - 1;
-    for (uint32_t i = 1; i <= sizeof(void *) * 4; i <<= 1) {
-      result |= result >> i;
-    }
-    return result + 1;
-  }
-
-public:
-  shmqueue(uint32_t buffersize) {
-    m_buffer.resize(nextPowerOfTwo(buffersize));
-    m_buffer_mask = (nextPowerOfTwo(buffersize) - 1);
-    buffersize = m_buffer_mask + 1;
-    m_enqueue_pos.store(0, std::memory_order_relaxed);
-    m_dequeue_pos.store(0, std::memory_order_relaxed);
-    for (uint32_t i = 0; i != buffersize; i += 1) {
-      m_buffer[i].m_sequence.store(i, std::memory_order_relaxed);
-    }
-  }
-
-  ~shmqueue() {}
-
-  uint32_t size() const {
-    uint32_t head = m_dequeue_pos.load(std::memory_order_acquire);
-    return m_enqueue_pos.load(std::memory_order_relaxed) - head;
-  }
-
-  uint32_t capacity() const {
-    return m_buffer_mask + 1;
-  }
-
-  bool push(T const &data) {
-    Record *record;
-    uint32_t pos = m_enqueue_pos.load(std::memory_order_relaxed);
-    for (;;) {
-      record = &m_buffer[pos & m_buffer_mask];
-      uint32_t seq = record->m_sequence.load(std::memory_order_acquire);
-      intptr_t dif = (intptr_t)seq - (intptr_t)pos;
-      if (dif == 0) {
-        if (m_enqueue_pos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
-          break;
-        }
-      } else if (dif < 0) {
-        // printf("queue size %d\n", size());
-        return false;
-      } else {
-        pos = m_enqueue_pos.load(std::memory_order_relaxed);
-      }
-    }
-    record->m_data = data;
-    record->m_sequence.store(pos + 1, std::memory_order_release);
-    m_semaphore.signal();
-    // printf("queue size %d\n", size());
-    return true;
-  }
-
-  void pop(T &data) {
-    while (true) {
-      bool need_wait{false};
-      Record *record;
-      uint32_t pos = m_dequeue_pos.load(std::memory_order_relaxed);
-      for (;;) {
-        record = &m_buffer[pos & m_buffer_mask];
-        uint32_t seq = record->m_sequence.load(std::memory_order_acquire);
-        intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
-        if (dif == 0) {
-          if (m_dequeue_pos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
-            break;
-          }
-        } else if (dif < 0) {
-          need_wait = true;
-          break;
-        } else {
-          pos = m_dequeue_pos.load(std::memory_order_relaxed);
-        }
-      }
-      if (!need_wait) {
-        data = record->m_data;
-        record->m_sequence.store(pos + m_buffer_mask + 1, std::memory_order_release);
-        return;
-      }
-      m_semaphore.wait();
-    }
-  }
-
-private:
-  shmvector<Record> m_buffer;
-  uint32_t m_buffer_mask;
-  std::atomic<uint32_t> m_enqueue_pos;
-  std::atomic<uint32_t> m_dequeue_pos;
-  shmqueue(shmqueue const &);
-  void operator=(shmqueue const &);
-  shmsemaphore m_semaphore;
 };
 
 namespace slab {
@@ -1123,7 +1016,6 @@ public:
 };
 #undef SLAB_CORRUPTED
 } // namespace slab
-
 using SlabCache = slab::SlabManager::cache_t;
 
 class AliveCheck {
@@ -1180,9 +1072,15 @@ private:
   std::atomic_int8_t status{0};
 };
 
+struct MonitorStatus_t {
+  shmallocator::ObjectTag tag{0};
+  AliveCheck m_alivecheck;
+};
+
 class AliveMonitor {
 public:
-  enum Type { PRODUCER, CONSUMER };
+  enum Type { NODE = 0, PRODUCER, CONSUMER };
+
   class TrackRecord {
   public:
     enum Operation : int8_t { UNKNOWN = 0, RUNNING, MONITORING };
@@ -1200,25 +1098,8 @@ public:
     char name[64]{0};
   };
 
-private:
-  using TrackRecordVec_t = shmvector<TrackRecord *>;
-  shmmutex m_monitor_mutex;
-  shmmutex m_producer_vec_mutex;
-  TrackRecordVec_t m_producer_vec;
-  shmmutex m_consumer_vec_mutex;
-  TrackRecordVec_t m_consumer_vec;
-  bool m_any_producer_dead{true};
-  bool m_any_consumer_dead{true};
-  static constexpr int CHECK_INTERVAL_MS{100};
-  static constexpr int CHECK_MAX_COUNT{2};
-  typedef struct {
-    shmallocator::ObjectTag tag{0};
-    AliveCheck m_alivecheck;
-  } MonitorStatus_t;
-  MonitorStatus_t *m_pmonitorstatus{nullptr};
-
-public:
   AliveMonitor() {}
+
   bool start_monitor() {
     m_pmonitorstatus = shmgetobjbytag<MonitorStatus_t>("monitor_status", true);
     printf("monitor_status %p\n", m_pmonitorstatus);
@@ -1273,6 +1154,7 @@ public:
         }
       };
       while (true) {
+        check(m_node_vec_mutex, m_node_vec, m_any_node_dead, NODE);
         check(m_producer_vec_mutex, m_producer_vec, m_any_producer_dead, PRODUCER);
         check(m_consumer_vec_mutex, m_consumer_vec, m_any_consumer_dead, CONSUMER);
         std::this_thread::sleep_for(std::chrono::milliseconds(CHECK_INTERVAL_MS));
@@ -1281,6 +1163,7 @@ public:
     }
     return false;
   }
+
   bool start_heartbeat(Type type, const std::string &name) {
     m_pmonitorstatus = shmgetobjbytag<MonitorStatus_t>("monitor_status", false);
     printf("monitor_status %p\n", m_pmonitorstatus);
@@ -1291,7 +1174,10 @@ public:
       TrackRecord *pRecord{nullptr};
       AliveMonitor::TrackRecordVec_t *pvec{nullptr};
       shmmutex *pmutex{nullptr};
-      if (type == PRODUCER) {
+      if (type == NODE) {
+        pvec = &m_node_vec;
+        pmutex = &m_node_vec_mutex;
+      } else if (type == PRODUCER) {
         pvec = &m_producer_vec;
         pmutex = &m_producer_vec_mutex;
       } else {
@@ -1315,7 +1201,7 @@ public:
         strncpy((*pvec->rbegin())->name, name.c_str(), sizeof(TrackRecord::name));
         pRecord = *pvec->rbegin();
       }
-      std::thread heatbeat_thread([pRecord, this] {
+      std::thread heartbeat_thread([pRecord, this] {
         while (true) {
           if (m_pmonitorstatus->m_alivecheck.is_alive() < 0) {
             printf("monitor is dead, exit\n");
@@ -1329,11 +1215,216 @@ public:
           std::this_thread::sleep_for(std::chrono::milliseconds{CHECK_INTERVAL_MS});
         }
       });
-      heatbeat_thread.detach();
+      heartbeat_thread.detach();
       return true;
     }();
     return res;
   }
+
+  bool is_alive(Type type, const std::string &name) {
+    AliveMonitor::TrackRecordVec_t *pvec{nullptr};
+    shmmutex *pmutex{nullptr};
+    if (type == NODE) {
+      pvec = &m_node_vec;
+      pmutex = &m_node_vec_mutex;
+    } else if (type == PRODUCER) {
+      pvec = &m_producer_vec;
+      pmutex = &m_producer_vec_mutex;
+    } else {
+      pvec = &m_consumer_vec;
+      pmutex = &m_consumer_vec_mutex;
+    }
+    {
+      std::lock_guard<shmallocator::shmmutex> lock(*pmutex);
+      for (auto it = pvec->begin(); it != pvec->end(); ++it) {
+        if (strncmp((*it)->name, name.c_str(), sizeof((*it)->name)) == 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+private:
+  using TrackRecordVec_t = shmvector<TrackRecord *>;
+  shmmutex m_monitor_mutex;
+  shmmutex m_node_vec_mutex;
+  TrackRecordVec_t m_node_vec;
+  shmmutex m_producer_vec_mutex;
+  TrackRecordVec_t m_producer_vec;
+  shmmutex m_consumer_vec_mutex;
+  TrackRecordVec_t m_consumer_vec;
+  bool m_any_node_dead{true};
+  bool m_any_producer_dead{true};
+  bool m_any_consumer_dead{true};
+  static constexpr int CHECK_INTERVAL_MS{100};
+  static constexpr int CHECK_MAX_COUNT{2};
+  MonitorStatus_t *m_pmonitorstatus{nullptr};
+};
+
+struct Heartbeat_t {
+  shmallocator::ObjectTag tag{0};
+  shmallocator::AliveMonitor monitor;
+};
+
+bool start_alive_monitor();
+bool start_heart_beat();
+
+template <typename T> class shmqueue {
+private:
+  struct Record {
+    Record() {}
+    Record(const Record &other) {
+      m_sequence.store(other.m_sequence.load(std::memory_order_acquire), std::memory_order_release);
+      m_data = other.m_data;
+    }
+    std::atomic<uint32_t> m_sequence{0};
+    T m_data;
+  };
+
+  static inline uint32_t nextPowerOfTwo(uint32_t m_buffersize) {
+    uint32_t result = m_buffersize - 1;
+    for (uint32_t i = 1; i <= sizeof(void *) * 4; i <<= 1) {
+      result |= result >> i;
+    }
+    return result + 1;
+  }
+
+  void isProducerAlive() {
+    Heartbeat_t *monitorptr{nullptr};
+    static bool res = [&monitorptr]() {
+      monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
+      // printf("monitorptr: %p\n", monitorptr);
+      return true;
+    }();
+    std::lock_guard<shmmutex> lock{m_mutex};
+    for (auto i = 0l; i < m_producer_vec.size(); ++i) {
+      auto *pmonitor = &monitorptr->monitor;
+      if (!pmonitor->is_alive(AliveMonitor::NODE, m_producer_vec[i].c_str())) {
+        printf("producer %s dead\n", m_producer_vec[i].c_str());
+        m_producer_vec.erase(m_producer_vec.begin() + i);
+      }
+    }
+  }
+
+  void isConsumerAlive() {
+    Heartbeat_t *monitorptr{nullptr};
+    static bool res = [&monitorptr]() {
+      monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
+      // printf("monitorptr: %p\n", monitorptr);
+      return true;
+    }();
+    std::lock_guard<shmmutex> lock{m_mutex};
+    for (auto i = 0l; i < m_consumer_vec.size(); ++i) {
+      auto *pmonitor = &monitorptr->monitor;
+      if (!pmonitor->is_alive(AliveMonitor::NODE, m_consumer_vec[i].c_str())) {
+        printf("consumer %s dead\n", m_consumer_vec[i].c_str());
+        m_consumer_vec.erase(m_consumer_vec.begin() + i);
+      }
+    }
+  }
+
+public:
+  shmqueue(uint32_t buffersize) {
+    m_buffer.resize(nextPowerOfTwo(buffersize));
+    m_buffer_mask = (nextPowerOfTwo(buffersize) - 1);
+    buffersize = m_buffer_mask + 1;
+    m_enqueue_pos.store(0, std::memory_order_relaxed);
+    m_dequeue_pos.store(0, std::memory_order_relaxed);
+    for (uint32_t i = 0; i != buffersize; i += 1) {
+      m_buffer[i].m_sequence.store(i, std::memory_order_relaxed);
+    }
+  }
+
+  ~shmqueue() {}
+
+  void registerProducer(const std::string &name) {
+    std::lock_guard<shmmutex> lock{m_mutex};
+    m_producer_vec.emplace_back(name);
+  }
+
+  void registerConsumer(const std::string &name) {
+    std::lock_guard<shmmutex> lock{m_mutex};
+    m_consumer_vec.emplace_back(name);
+  }
+
+  uint32_t size() const {
+    uint32_t head = m_dequeue_pos.load(std::memory_order_acquire);
+    return m_enqueue_pos.load(std::memory_order_relaxed) - head;
+  }
+
+  uint32_t capacity() const {
+    return m_buffer_mask + 1;
+  }
+
+  bool push(T const &data) {
+    Record *record;
+    uint32_t pos = m_enqueue_pos.load(std::memory_order_relaxed);
+    for (;;) {
+      record = &m_buffer[pos & m_buffer_mask];
+      uint32_t seq = record->m_sequence.load(std::memory_order_acquire);
+      intptr_t dif = (intptr_t)seq - (intptr_t)pos;
+      if (dif == 0) {
+        if (m_enqueue_pos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
+          break;
+        }
+      } else if (dif < 0) {
+        isConsumerAlive();
+        printf("queue is full\n");
+        return false;
+      } else {
+        pos = m_enqueue_pos.load(std::memory_order_relaxed);
+      }
+    }
+    record->m_data = data;
+    record->m_sequence.store(pos + 1, std::memory_order_release);
+    m_semaphore.signal();
+    // printf("queue size %d\n", size());
+    return true;
+  }
+
+  void pop(T &data) {
+    while (true) {
+      bool need_wait{false};
+      Record *record;
+      uint32_t pos = m_dequeue_pos.load(std::memory_order_relaxed);
+      for (;;) {
+        record = &m_buffer[pos & m_buffer_mask];
+        uint32_t seq = record->m_sequence.load(std::memory_order_acquire);
+        intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
+        if (dif == 0) {
+          if (m_dequeue_pos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
+            break;
+          }
+        } else if (dif < 0) {
+          isProducerAlive();
+          printf("queue is full\n");
+          need_wait = true;
+          break;
+        } else {
+          pos = m_dequeue_pos.load(std::memory_order_relaxed);
+        }
+      }
+      if (!need_wait) {
+        data = record->m_data;
+        record->m_sequence.store(pos + m_buffer_mask + 1, std::memory_order_release);
+        return;
+      }
+      m_semaphore.wait();
+    }
+  }
+
+private:
+  shmvector<Record> m_buffer;
+  uint32_t m_buffer_mask;
+  std::atomic<uint32_t> m_enqueue_pos;
+  std::atomic<uint32_t> m_dequeue_pos;
+  shmqueue(shmqueue const &);
+  void operator=(shmqueue const &);
+  shmsemaphore m_semaphore;
+  shmmutex m_mutex;
+  shmvector<shmstring> m_producer_vec;
+  shmvector<shmstring> m_consumer_vec;
 };
 
 } // namespace shmallocator

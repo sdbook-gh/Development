@@ -527,4 +527,28 @@ bool uninitshm() {
   return true;
 }
 
+bool start_alive_monitor() {
+  static bool res = []() {
+    auto *monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
+    printf("monitorptr: %p\n", monitorptr);
+    auto *pmonitor = &monitorptr->monitor;
+    printf("pmonitor: %p\n", pmonitor);
+    pmonitor->start_monitor();
+    return true;
+  }();
+  return res;
+}
+
+bool start_heart_beat() {
+  static bool res = []() {
+    auto *monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
+    printf("monitorptr: %p\n", monitorptr);
+    auto *pmonitor = &monitorptr->monitor;
+    printf("pmonitor: %p\n", pmonitor);
+    pmonitor->start_heartbeat(shmallocator::AliveMonitor::NODE, "node_" + std::to_string(time(nullptr)));
+    return true;
+  }();
+  return res;
+}
+
 } // namespace shmallocator
