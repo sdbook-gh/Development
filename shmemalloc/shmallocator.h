@@ -1290,38 +1290,62 @@ private:
     return result + 1;
   }
 
-  void isProducerAlive() {
-    Heartbeat_t *monitorptr{nullptr};
-    static bool res = [&monitorptr]() {
+  bool checkProducerAlive() {
+    static Heartbeat_t *monitorptr{nullptr};
+    static AliveMonitor *pmonitor{nullptr};
+    static bool res = []() {
       monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
-      // printf("monitorptr: %p\n", monitorptr);
+      printf("monitorptr: %p\n", monitorptr);
+      pmonitor = &monitorptr->monitor;
+      printf("pmonitor: %p\n", pmonitor);
       return true;
     }();
+    (void)res;
     std::lock_guard<shmmutex> lock{m_mutex};
-    for (auto i = 0l; i < m_producer_vec.size(); ++i) {
-      auto *pmonitor = &monitorptr->monitor;
+    if (m_producer_vec.empty()) {
+      printf("empty producer\n");
+      return false;
+    }
+    for (auto i = 0lu; i < m_producer_vec.size(); ++i) {
       if (!pmonitor->is_alive(AliveMonitor::NODE, m_producer_vec[i].c_str())) {
         printf("producer %s dead\n", m_producer_vec[i].c_str());
         m_producer_vec.erase(m_producer_vec.begin() + i);
       }
     }
+    if (m_producer_vec.empty()) {
+      printf("all producers died\n");
+      return false;
+    }
+    return true;
   }
 
-  void isConsumerAlive() {
-    Heartbeat_t *monitorptr{nullptr};
-    static bool res = [&monitorptr]() {
+  bool checkConsumerAlive() {
+    static Heartbeat_t *monitorptr{nullptr};
+    static AliveMonitor *pmonitor{nullptr};
+    static bool res = []() {
       monitorptr = shmallocator::shmgetobjbytag<Heartbeat_t>("monitor");
-      // printf("monitorptr: %p\n", monitorptr);
+      printf("monitorptr: %p\n", monitorptr);
+      pmonitor = &monitorptr->monitor;
+      printf("pmonitor: %p\n", pmonitor);
       return true;
     }();
+    (void)res;
     std::lock_guard<shmmutex> lock{m_mutex};
-    for (auto i = 0l; i < m_consumer_vec.size(); ++i) {
-      auto *pmonitor = &monitorptr->monitor;
+    if (m_consumer_vec.empty()) {
+      printf("empty consumer\n");
+      return false;
+    }
+    for (auto i = 0lu; i < m_consumer_vec.size(); ++i) {
       if (!pmonitor->is_alive(AliveMonitor::NODE, m_consumer_vec[i].c_str())) {
         printf("consumer %s dead\n", m_consumer_vec[i].c_str());
         m_consumer_vec.erase(m_consumer_vec.begin() + i);
       }
     }
+    if (m_consumer_vec.empty()) {
+      printf("all consumers died\n");
+      return false;
+    }
+    return true;
   }
 
 public:
@@ -1369,8 +1393,12 @@ public:
           break;
         }
       } else if (dif < 0) {
-        isConsumerAlive();
-        printf("queue is full\n");
+        if (!checkConsumerAlive()) {
+          T tmp{};
+          pop(tmp);
+          continue;
+        }
+        printf("queue is full, pop too slow\n");
         return false;
       } else {
         pos = m_enqueue_pos.load(std::memory_order_relaxed);
@@ -1383,35 +1411,37 @@ public:
     return true;
   }
 
-  void pop(T &data) {
-    while (true) {
-      bool need_wait{false};
-      Record *record;
-      uint32_t pos = m_dequeue_pos.load(std::memory_order_relaxed);
-      for (;;) {
-        record = &m_buffer[pos & m_buffer_mask];
-        uint32_t seq = record->m_sequence.load(std::memory_order_acquire);
-        intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
-        if (dif == 0) {
-          if (m_dequeue_pos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
-            break;
-          }
-        } else if (dif < 0) {
-          isProducerAlive();
-          printf("queue is full\n");
-          need_wait = true;
+  bool pop(T &data) {
+    // while (true) {
+    bool empty{false};
+    Record *record;
+    uint32_t pos = m_dequeue_pos.load(std::memory_order_relaxed);
+    for (;;) {
+      record = &m_buffer[pos & m_buffer_mask];
+      uint32_t seq = record->m_sequence.load(std::memory_order_acquire);
+      intptr_t dif = (intptr_t)seq - (intptr_t)(pos + 1);
+      if (dif == 0) {
+        if (m_dequeue_pos.compare_exchange_weak(pos, pos + 1, std::memory_order_relaxed)) {
           break;
-        } else {
-          pos = m_dequeue_pos.load(std::memory_order_relaxed);
         }
+      } else if (dif < 0) {
+        if (checkProducerAlive()) {
+          printf("queue is empty, push too slow\n");
+        }
+        empty = true;
+        break;
+      } else {
+        pos = m_dequeue_pos.load(std::memory_order_relaxed);
       }
-      if (!need_wait) {
-        data = record->m_data;
-        record->m_sequence.store(pos + m_buffer_mask + 1, std::memory_order_release);
-        return;
-      }
-      m_semaphore.wait();
     }
+    if (!empty) {
+      data = record->m_data;
+      record->m_sequence.store(pos + m_buffer_mask + 1, std::memory_order_release);
+      return true;
+    }
+    return false;
+    // m_semaphore.wait();
+    // }
   }
 
 private:
