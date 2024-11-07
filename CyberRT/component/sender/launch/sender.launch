@@ -1,0 +1,7 @@
+<cyber>
+  <module>
+    <name>sender</name>
+    <dag_conf>component/sender/dag/sender.dag</dag_conf>
+    <process_name>sender</process_name>
+  </module>
+</cyber>

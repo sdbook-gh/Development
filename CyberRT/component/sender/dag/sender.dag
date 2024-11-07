@@ -1,0 +1,12 @@
+module_config {
+  module_library : "component/sender/libsender_component.so"
+  timer_components {
+    class_name : "Sender"
+    config {
+      name: "sender"
+      config_file_path:  "component/sender/conf/sender.pb.txt"
+      flag_file_path:  "component/sender/conf/sender.conf"
+      interval: 500
+    }
+  }
+}

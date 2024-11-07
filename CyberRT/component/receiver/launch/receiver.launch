@@ -1,0 +1,7 @@
+<cyber>
+  <module>
+    <name>receiver</name>
+    <dag_conf>component/receiver/dag/receiver.dag</dag_conf>
+    <process_name>receiver</process_name>
+  </module>
+</cyber>

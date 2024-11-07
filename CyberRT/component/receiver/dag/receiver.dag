@@ -1,0 +1,14 @@
+module_config {
+  module_library : "component/receiver/libreceiver_component.so"
+  components {
+    class_name : "Receiver"
+    config {
+      name : "receiver"
+      config_file_path: "component/receiver/conf/receiver.pb.txt"
+      flag_file_path: "component/receiver/conf/receiver.conf"
+      readers {
+        channel: "/sender/message"
+      }
+    }
+  }
+}

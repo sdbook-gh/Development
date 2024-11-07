@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package apollo;
+
+// message type of channel, just a placeholder for demo,
+// you should use `--channel_message_type` option to specify the real message type
+message ControlMsg {
+  optional uint64 speed = 5;
+}
+
+message ReceiverConfig {
+  optional string name = 1;
+  optional string control_topic = 2;
+};

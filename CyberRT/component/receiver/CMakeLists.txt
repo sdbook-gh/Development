@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.10)
+set(COMPONENT_NAME receiver_component)
+project(${COMPONENT_NAME})
+file(GLOB PROTOS "${CMAKE_CURRENT_LIST_DIR}/proto/*.proto")
+foreach (_proto ${PROTOS})
+  message(STATUS "invoke protoc for ${_proto}")
+  execute_process(COMMAND bash -c "/ec_workspace/dep_lib/protoc --cpp_out=${CMAKE_CURRENT_LIST_DIR}/proto --proto_path=${CMAKE_CURRENT_LIST_DIR}/proto ${_proto}"
+                  RESULT_VARIABLE result_var
+                  OUTPUT_VARIABLE output_var
+                  ERROR_VARIABLE error_var)
+  if (NOT ${result_var} MATCHES "0")
+    message(STATUS "protoc output:${output_var}")
+    message(STATUS "protoc error:${error_var}")
+  else()
+    message(STATUS "protoc ok")
+  endif()
+endforeach()
+file(GLOB SRCS "${CMAKE_CURRENT_LIST_DIR}/*.cc" "${CMAKE_CURRENT_LIST_DIR}/**/*.cc" "/ec_workspace/component/sender/proto/sender*.cc")
+message(STATUS "build ${COMPONENT_NAME}")
+add_library(${COMPONENT_NAME} SHARED ${SRCS})
+target_include_directories(${COMPONENT_NAME} PUBLIC "/ec_workspace/dep_lib/include" "/ec_workspace")
+install(TARGETS ${COMPONENT_NAME} DESTINATION ${CMAKE_CURRENT_LIST_DIR})
