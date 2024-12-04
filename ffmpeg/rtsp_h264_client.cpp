@@ -89,22 +89,22 @@ int main(int argc, char *argv[]) {
     printf("cannot allocate AVFrame\n");
     return -1;
   }
-  auto saveYUV420PFrame = [](const std::string &filename, AVFrame *pFrame) {
-    std::fstream out_file;
-    out_file.open(filename, std::ios::out | std::ios::binary);
-    if (out_file) {
-      out_file.write((char *)pFrame->data[0], pFrame->linesize[0] * pFrame->height);
-      out_file.write((char *)pFrame->data[1], pFrame->linesize[1] / 2 * pFrame->height);
-      out_file.write((char *)pFrame->data[2], pFrame->linesize[2] / 2 * pFrame->height);
-    }
-  };
-  auto saveRGB24Frame = [](const std::string &filename, AVFrame *pFrame) {
-    std::fstream out_file;
-    out_file.open(filename, std::ios::out | std::ios::binary);
-    if (out_file) {
-      out_file.write((char *)pFrame->data[0], pFrame->linesize[0] * pFrame->height);
-    }
-  };
+  // auto saveYUV420PFrame = [](const std::string &filename, AVFrame *pFrame) {
+  //   std::fstream out_file;
+  //   out_file.open(filename, std::ios::out | std::ios::binary);
+  //   if (out_file) {
+  //     out_file.write((char *)pFrame->data[0], pFrame->linesize[0] * pFrame->height);
+  //     out_file.write((char *)pFrame->data[1], pFrame->linesize[1] / 2 * pFrame->height);
+  //     out_file.write((char *)pFrame->data[2], pFrame->linesize[2] / 2 * pFrame->height);
+  //   }
+  // };
+  // auto saveRGB24Frame = [](const std::string &filename, AVFrame *pFrame) {
+  //   std::fstream out_file;
+  //   out_file.open(filename, std::ios::out | std::ios::binary);
+  //   if (out_file) {
+  //     out_file.write((char *)pFrame->data[0], pFrame->linesize[0] * pFrame->height);
+  //   }
+  // };
   while (true) {
     if (av_read_frame(pFormatCtx, av_packet) >= 0) {
       if (av_packet->stream_index == videoindex) {
