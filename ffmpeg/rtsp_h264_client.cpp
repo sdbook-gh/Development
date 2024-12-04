@@ -111,7 +111,7 @@ int main(int argc, char *argv[]) {
         // 解码视频帧
         if (avcodec_send_packet(codec_ctx, av_packet) == 0) {
           while (avcodec_receive_frame(codec_ctx, av_frame) >= 0) {
-            static int save_count{0};
+            // static int save_count{0};
             // if (save_count < 10) {
             //   printf("save frame format %d width %d height %d linesize %d yuv420p size %d\n", (AVPixelFormat)av_frame->format,  av_frame->width, av_frame->height, av_frame->linesize[0], av_image_get_buffer_size(AV_PIX_FMT_YUV420P, av_frame->width, av_frame->height, 1));
             //   saveYUV420PFrame("out_" + std::to_string(save_count) + ".yuv", av_frame);
