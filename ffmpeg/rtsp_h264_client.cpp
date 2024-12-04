@@ -10,7 +10,6 @@ extern "C" {
 }
 
 int main(int argc, char *argv[]) {
-  int status_error_ = -1;
   std::string videourl = "rtsp://127.0.0.1:8554/test";
   AVFormatContext *pFormatCtx = nullptr;
   AVDictionary *options = nullptr;
