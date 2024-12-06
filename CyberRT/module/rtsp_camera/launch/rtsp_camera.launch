@@ -1,0 +1,7 @@
+<cyber>
+  <module>
+    <name>rtsp_camera</name>
+    <dag_conf>module/rtsp_camera/dag/rtsp_camera.dag</dag_conf>
+    <process_name>rtsp_camera</process_name>
+  </module>
+</cyber>

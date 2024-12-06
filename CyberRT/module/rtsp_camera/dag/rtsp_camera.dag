@@ -1,0 +1,10 @@
+module_config {
+  module_library : "module/rtsp_camera/librtsp_camera_component.so"
+  components {
+    class_name : "RtspCamera"
+    config {
+      name : "rtsp_camera"
+      flag_file_path: "module/rtsp_camera/conf/rtsp_camera.conf"
+    }
+  }
+}

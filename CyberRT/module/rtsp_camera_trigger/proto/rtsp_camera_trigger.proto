@@ -1,0 +1,12 @@
+syntax = "proto2";
+
+package apollo;
+
+message RtspCameraTriggerRequest {
+  required string action = 1;
+  required string result = 2;
+}
+
+message RtspCameraTriggerResponse {
+  required string result = 1;
+}

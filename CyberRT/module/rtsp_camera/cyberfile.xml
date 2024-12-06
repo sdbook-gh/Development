@@ -1,0 +1,18 @@
+<package format="2">
+  <name>rtsp-camera</name>
+  <version>local</version>
+  <description>
+    rtsp camera
+  </description>
+
+  <type>module</type>
+  <src_path>//module/rtsp_camera</src_path>
+  <builder>bazel</builder>
+
+  <depend>cyber</depend>
+  <depend>rtsp-camera-trigger</depend>
+  <depend>common-msgs</depend>
+  <depend>3rd-ffmpeg</depend>
+  <depend>3rd-gflags</depend>
+  <depend>bazel-extend-tools</depend>
+</package>
