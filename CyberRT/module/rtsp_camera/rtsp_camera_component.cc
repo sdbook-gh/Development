@@ -163,7 +163,7 @@ int RtspCamera::run() {
             }
             #endif
             apollo::drivers::Image out_image;
-            out_image.mutable_header()->set_frame_id("rtps_camera");
+            out_image.mutable_header()->set_frame_id("rtsp_camera");
             out_image.set_measurement_time(cyber::Time::Now().ToNanosecond());
             topic_writer->Write(out_image);
             av_frame_free(&rgb_frame);
