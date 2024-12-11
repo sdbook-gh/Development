@@ -1,0 +1,18 @@
+<package format="2">
+  <name>seyond-lidar</name>
+  <version>local</version>
+  <description>
+    seyond lidar
+  </description>
+
+  <type>module</type>
+  <src_path>//module/seyond_lidar</src_path>
+  <builder>bazel</builder>
+
+  <depend>cyber</depend>
+  <depend>common-msgs</depend>
+  <depend>3rd-ffmpeg</depend>
+  <depend>3rd-gflags</depend>
+  <depend>seyond-driver</depend>
+  <depend>bazel-extend-tools</depend>
+</package>

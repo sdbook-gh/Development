@@ -1,0 +1,7 @@
+<cyber>
+    <module>
+        <name>seyond</name>
+        <dag_conf>module/seyond_lidar/dag/seyond_lidar.dag</dag_conf>
+        <process_name>seyond_lidar</process_name>
+    </module>
+</cyber>

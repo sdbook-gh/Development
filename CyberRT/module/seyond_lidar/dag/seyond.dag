@@ -1,0 +1,10 @@
+module_config {
+    module_library : "module/seyond_lidar/libseyond_lidar.so"
+    components {
+        class_name : "SeyondComponent"
+        config {
+          name : "Seyond_Driver"
+          config_file_path : "module/seyond_lidar/conf/seyond_lidar.pb.txt"
+        }
+    }
+}
