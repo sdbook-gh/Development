@@ -1,16 +1,18 @@
 <package format="2">
-  <name>seyond-lidar</name>
+  <name>hesai-lidar</name>
   <version>local</version>
   <description>
-    seyond lidar
+    hesai lidar
   </description>
 
   <type>module</type>
-  <src_path>//module/seyond_lidar</src_path>
+  <src_path>//module/hesai_lidar</src_path>
   <builder>bazel</builder>
 
   <depend>cyber</depend>
   <depend>common-msgs</depend>
-  <depend>seyond-driver</depend>
+  <depend>3rd-boost</depend>
+  <depend>libssl-dev</depend>
+  <depend>hesai2-driver</depend>
   <depend>bazel-extend-tools</depend>
 </package>

@@ -1,0 +1,7 @@
+<cyber>
+    <module>
+        <name>hesai</name>
+        <dag_conf>/apollo/module/hesai_lidar/dag/hesai.dag</dag_conf>
+        <process_name>hesai</process_name>
+    </module>
+</cyber>

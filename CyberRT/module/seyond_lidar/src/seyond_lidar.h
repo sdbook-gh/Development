@@ -1,11 +1,14 @@
 #pragma once
 
 #include <memory>
+#include <atomic>
+#include <string>
 #include "cyber/cyber.h"
 #include "cyber/component/component.h"
 #include "module/seyond_lidar/src/seyond_driver.h"
 #include "module/seyond_lidar/proto/seyond.pb.h"
 #include "module/seyond_lidar/proto/seyond_config.pb.h"
+#include "modules/common_msgs/sensor_msgs/pointcloud.pb.h"
 
 namespace apollo {
 namespace drivers {

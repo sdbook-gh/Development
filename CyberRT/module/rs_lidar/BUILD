@@ -3,7 +3,7 @@ load("//tools:cpplint.bzl", "cpplint")
 
 package(default_visibility = ["//visibility:public"])
 
-SEYOND_COPTS = ['-DMODULE_NAME=\\"seyond-lidar\\"']
+ROBOSENSE_COPTS = ['-DMODULE_NAME=\\"rs-lidar\\"']
 
 filegroup(
     name = "runtime_data",
@@ -16,24 +16,24 @@ filegroup(
 )
 
 apollo_component(
-    name = "libseyond_lidar.so",
+    name = "librs_component.so",
     srcs = [
-        "src/seyond_lidar.cpp",
-        "src/seyond_driver.cpp",
+        "src/rs_component.cpp",
     ],
     hdrs = [
-        "src/seyond_lidar.h",
-        "src/seyond_driver.h",
+        "src/rs_component.h",
     ],
-    copts = SEYOND_COPTS + ["-std=c++17"],
     deps = [
         "//cyber",
         "//modules/common_msgs/sensor_msgs:pointcloud_cc_proto",
-        "//module/seyond_lidar/proto:seyond_config_proto",
-        "//module/seyond_lidar/proto:seyond_proto",
+        "//module/rs_lidar/proto:rs_config_proto",
+        "//module/rs_lidar/proto:rs_proto",
+    ],
+    copts = ROBOSENSE_COPTS + [
+        "-std=c++17",
     ],
     linkopts = [
-        "-linnoclientsdk",
+        "-lpcap",
     ]
 )
 

@@ -1,0 +1,7 @@
+<cyber>
+    <module>
+        <name>rs</name>
+        <dag_conf>/apollo/module/rs_lidar/dag/rs.dag</dag_conf>
+        <process_name>rs</process_name>
+    </module>
+</cyber>

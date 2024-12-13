@@ -1,0 +1,10 @@
+module_config {
+    module_library : "module/hesai_lidar/libhesai_component.so"
+    components {
+        class_name : "HesaiComponent"
+        config {
+          name : "Hesai_Driver"
+          config_file_path : "/apollo/module/hesai_lidar/conf/hesai.pb.txt"
+        }
+    }
+}

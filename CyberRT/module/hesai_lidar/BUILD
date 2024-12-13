@@ -3,7 +3,7 @@ load("//tools:cpplint.bzl", "cpplint")
 
 package(default_visibility = ["//visibility:public"])
 
-SEYOND_COPTS = ['-DMODULE_NAME=\\"seyond-lidar\\"']
+HESAI_COPTS = ['-DMODULE_NAME=\\"hesai-lidar\\"']
 
 filegroup(
     name = "runtime_data",
@@ -16,24 +16,25 @@ filegroup(
 )
 
 apollo_component(
-    name = "libseyond_lidar.so",
+    name = "libhesai_component.so",
     srcs = [
-        "src/seyond_lidar.cpp",
-        "src/seyond_driver.cpp",
+        "src/hesai_component.cpp",
     ],
     hdrs = [
-        "src/seyond_lidar.h",
-        "src/seyond_driver.h",
+        "src/hesai_component.h",
     ],
-    copts = SEYOND_COPTS + ["-std=c++17"],
     deps = [
         "//cyber",
         "//modules/common_msgs/sensor_msgs:pointcloud_cc_proto",
-        "//module/seyond_lidar/proto:seyond_config_proto",
-        "//module/seyond_lidar/proto:seyond_proto",
+        "//module/hesai_lidar/proto:hesai_config_proto",
+        "//module/hesai_lidar/proto:hesai_proto",
+    ],
+    copts = HESAI_COPTS + [
+        "-std=c++17",
+        "-fopenmp",
     ],
     linkopts = [
-        "-linnoclientsdk",
+        "-lgomp", "-lssl", "-pthread", "-lm", "-lhesai2-driver",
     ]
 )
 

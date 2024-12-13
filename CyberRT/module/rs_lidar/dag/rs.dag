@@ -1,0 +1,10 @@
+module_config {
+    module_library : "module/rs_lidar/librs_component.so"
+    components {
+        class_name : "RsComponent"
+        config {
+          name : "Rs_Driver"
+          config_file_path : "/apollo/module/rs_lidar/conf/rs.pb.txt"
+        }
+    }
+}

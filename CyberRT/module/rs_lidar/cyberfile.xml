@@ -1,16 +1,17 @@
 <package format="2">
-  <name>seyond-lidar</name>
+  <name>rs-lidar</name>
   <version>local</version>
   <description>
-    seyond lidar
+    rs lidar
   </description>
 
   <type>module</type>
-  <src_path>//module/seyond_lidar</src_path>
+  <src_path>//module/rs_lidar</src_path>
   <builder>bazel</builder>
 
   <depend>cyber</depend>
   <depend>common-msgs</depend>
-  <depend>seyond-driver</depend>
+  <depend>libpcap-dev</depend>
+  <depend>rsdriver</depend>
   <depend>bazel-extend-tools</depend>
 </package>
