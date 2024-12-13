@@ -162,10 +162,16 @@ int RtspCamera::run() {
               save_count++;
             }
             #endif
-            apollo::drivers::Image out_image;
-            out_image.mutable_header()->set_frame_id("rtsp_camera");
-            out_image.set_measurement_time(cyber::Time::Now().ToNanosecond());
-            topic_writer->Write(out_image);
+            auto pb_image = std::make_shared<apollo::drivers::Image>();
+            pb_image->mutable_header()->set_sequence_num(0);
+            pb_image->mutable_header()->set_frame_id("rtps_camera");
+            pb_image->set_measurement_time(cyber::Time::Now().ToNanosecond());
+            pb_image->set_width(rgb_frame->width);
+            pb_image->set_height(rgb_frame->height);
+            pb_image->set_encoding("rgb8");
+            pb_image->set_step(3 * pb_image->width());
+            pb_image->set_data(rgb_frame->data[0], rgb_frame->linesize[0] * rgb_frame->height);
+            topic_writer->Write(pb_image);
             av_frame_free(&rgb_frame);
             sws_freeContext(sws_ctx);
             av_frame_unref(av_frame);
