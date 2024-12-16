@@ -163,7 +163,6 @@ int RtspCamera::run() {
             }
             #endif
             auto pb_image = std::make_shared<apollo::drivers::Image>();
-            pb_image->mutable_header()->set_sequence_num(0);
             pb_image->mutable_header()->set_frame_id("rtps_camera");
             pb_image->set_measurement_time(cyber::Time::Now().ToNanosecond());
             pb_image->set_width(rgb_frame->width);
