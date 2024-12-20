@@ -8,7 +8,7 @@
 #include <QOpenGLBuffer>
 
 class MyWidget : public QOpenGLWidget, protected QOpenGLFunctions {
-    Q_OBJECT
+  Q_OBJECT
 
   public:
     MyWidget(QWidget *parent = 0);
