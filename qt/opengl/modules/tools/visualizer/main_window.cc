@@ -307,7 +307,7 @@ MainWindow::VideoImgProxy* MainWindow::AddVideoImgViewer() {
     int index = video_image_viewer_list_.count();
     ret->video_image_viewer_.set_index(index);
 
-    ret->video_image_viewer_.setStyleSheet("background-color:black;");
+    ret->video_image_viewer_.setStyleSheet("{background-color:white;color:black;}");
     ret->video_image_viewer_.setVisible(false);
 
     QString imgName = tr("Camera%1").arg(index);
