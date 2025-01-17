@@ -7,7 +7,7 @@
 #include <QTableWidget>
 #include <QTextDocument>
 #include <iostream>
-#include <qDebug>
+#include <QDebug>
 
 #include "demomain.h"
 #include "mainwindow.h"
