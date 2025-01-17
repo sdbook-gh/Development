@@ -1,0 +1,6 @@
+include_directories(${CMAKE_CURRENT_LIST_DIR}/test_lib)
+link_directories(${CMAKE_CURRENT_LIST_DIR}/test_lib/build)
+find_package(glog REQUIRED)
+add_executable(test_app test_app.cpp)
+target_compile_options(test_app PRIVATE -g)
+target_link_libraries(test_app PRIVATE test_lib glog::glog)
