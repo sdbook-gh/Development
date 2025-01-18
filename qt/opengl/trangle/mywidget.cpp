@@ -32,12 +32,12 @@ void MyWidget::initializeGL() {
     program = new QOpenGLShaderProgram;
     program->bind();
     // 向program中添加顶点着色器
-    if (!program->addShaderFromSourceFile(QOpenGLShader::Vertex, "/apollo/modules/tools/qt_test/shaders/triangle.vert")) {
+    if (!program->addShaderFromSourceFile(QOpenGLShader::Vertex, "shaders/triangle.vert")) {
         qDebug() << (program->log());
         return;
     }
     // 向program中添加片段着色器
-    if (!program->addShaderFromSourceFile(QOpenGLShader::Fragment, "/apollo/modules/tools/qt_test/shaders/triangle.frag")) {
+    if (!program->addShaderFromSourceFile(QOpenGLShader::Fragment, "shaders/triangle.frag")) {
         qDebug() << (program->log());
         return;
     }
