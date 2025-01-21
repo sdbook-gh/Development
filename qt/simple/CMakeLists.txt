@@ -12,8 +12,4 @@ qt5_add_resources(rcfiles ${CMAKE_CURRENT_SOURCE_DIR}/qrc/demo.qrc)
 set(project_sources demomain.cpp timer.cpp mainwindow.cpp test_signal_slot.cpp)
 add_executable(helloqt ${project_sources} ${rcfiles} ${uifiles})
 
-target_link_libraries(helloqt PUBLIC
-	Qt5::Core
-	Qt5::Gui
-	Qt5::Widgets
-)
+target_link_libraries(helloqt PUBLIC Qt5::Core Qt5::Gui Qt5::Widgets)
