@@ -5,16 +5,21 @@
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/CommandLine.h"
+#include <clang/AST/ASTConsumer.h>
+#include <clang/AST/RecursiveASTVisitor.h>
+#include <clang/Frontend/FrontendAction.h>
 #include <sstream>
+#include <cstdlib>
 
 using namespace clang;
 using namespace clang::tooling;
+using namespace llvm;
 
-class MacroAnalysisCallback : public PPCallbacks {
+class AnalysisCallback : public PPCallbacks {
   Preprocessor &PP;
 
  public:
-  MacroAnalysisCallback(Preprocessor &PP) : PP(PP) {}
+  AnalysisCallback(Preprocessor &PP) : PP(PP) {}
 
   void MacroDefined(const Token &MacroNameTok,
                     const MacroDirective *MD) override {
@@ -27,30 +32,50 @@ class MacroAnalysisCallback : public PPCallbacks {
     if (filename.empty() || filename.find("<") != std::string::npos) return;
     // StringRef MacroText = PP.getMacroSourceText(MI, SM);
     std::stringstream ss;
-    ss << "{type:macrodefine,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << MacroNameTok.getIdentifierInfo()->getName().str() << "}";
+    ss << "{\"type\":\"macrodefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 
   void MacroExpands(const Token &MacroNameTok,
-                    const MacroDefinition &MacroDefinition, SourceRange Range,
+                    const MacroDefinition &MacroDefinition,
+                    SourceRange Range,
                     const MacroArgs *Args) override {
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = SM.getSpellingLoc(MacroNameTok.getLocation());
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:macroexpand,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << MacroNameTok.getIdentifierInfo()->getName().str() << "}";
+    ss << "{\"type\":\"macroexpand\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 
+  void InclusionDirective(SourceLocation HashLoc,
+                          const Token &IncludeTok,
+                          StringRef FileName,
+                          bool IsAngled,
+                          CharSourceRange FilenameRange,
+                          OptionalFileEntryRef File,
+                          StringRef SearchPath,
+                          StringRef RelativePath,
+                          const Module *Imported,
+                          SrcMgr::CharacteristicKind FileType) override {
+    SourceManager &SM = PP.getSourceManager();
+    SourceLocation Loc = SM.getSpellingLoc(IncludeTok.getLocation());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    std::stringstream ss;
+    std::string realIncludePath{realpath(File->getName().str().c_str(), nullptr)};
+    if (realIncludePath.find("/usr/") != std::string::npos) return;
+    ss << "{\"type\":\"includedefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"includefilepath\":\"" << realIncludePath << "\"}";
+    printf("%s\n", ss.str().c_str());
+  }
 };
 
-class MacroAnalysisAction : public PreprocessorFrontendAction {
+class AnalysisAction : public PreprocessorFrontendAction {
  protected:
   void ExecuteAction() override {
     Preprocessor &PP = getCompilerInstance().getPreprocessor();
-    PP.addPPCallbacks(std::make_unique<MacroAnalysisCallback>(PP));
-
+    PP.addPPCallbacks(std::make_unique<AnalysisCallback>(PP));
     // Process all tokens to trigger preprocessing callbacks
     PP.EnterMainSourceFile();
     Token Tok;
@@ -60,24 +85,10 @@ class MacroAnalysisAction : public PreprocessorFrontendAction {
   }
 };
 
-#include <clang/AST/ASTConsumer.h>
-#include <clang/AST/RecursiveASTVisitor.h>
-#include <clang/Frontend/CompilerInstance.h>
-#include <clang/Frontend/FrontendAction.h>
-#include <clang/Tooling/CommonOptionsParser.h>
-#include <clang/Tooling/Tooling.h>
-#include <llvm/Support/CommandLine.h>
-
-using namespace clang;
-using namespace clang::tooling;
-
-// 定义命令行选项
-static llvm::cl::OptionCategory NsCategory("Namespace Analysis Options");
-
 // AST访问器类
-class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
+class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
  public:
-  explicit NamespaceVisitor(ASTContext &Context, SourceManager &SM)
+  explicit AnalysisVisitor(ASTContext &Context, SourceManager &SM)
       : Context(Context), SM(SM) {}
 
   // 捕获命名空间定义
@@ -87,7 +98,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:namespacedeclare,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << "null" << "}";
+    ss << "{\"type\":\"namespacedeclare\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"namespace\":\"" << D->getName().str() << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -100,7 +111,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
       std::stringstream ss;
-      ss << "{type:usingnamespace,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << "null" << "}";
+      ss << "{\"type\":\"usingnamespace\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << "}";
       printf("%s\n", ss.str().c_str());
     }
     return true;
@@ -117,7 +128,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:using,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << "null" << "}";
+    ss << "{\"type\":\"using\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << "}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -131,7 +142,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:functiondefine,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << FD->getNameAsString() << "}";
+    ss << "{\"type\":\"functiondefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functionname\":\"" << FD->getNameAsString() << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -144,8 +155,9 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
       SourceLocation FDLoc = SM.getSpellingLoc(FD->getLocation());
       if (FDLoc.isInvalid() || SM.isInSystemHeader(FDLoc)) return true;
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      PresumedLoc PFDLoc = SM.getPresumedLoc(FDLoc);
       std::stringstream ss;
-      ss << "{type:functioncall,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << FD->getNameAsString() << "}";
+      ss << "{\"type\":\"functioncall\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\"" << PFDLoc.getFilename() << "\"}";
       printf("%s\n", ss.str().c_str());
     }
     return true;
@@ -159,8 +171,9 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
       SourceLocation FDLoc = SM.getSpellingLoc(MD->getLocation());
       if (FDLoc.isInvalid() || SM.isInSystemHeader(FDLoc)) return true;
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      PresumedLoc PFDLoc = SM.getPresumedLoc(FDLoc);
       std::stringstream ss;
-      ss << "{type:memberfunctioncall,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << << MD->getNameAsString() << "}";
+      ss << "{\"type\":\"memberfunctioncall\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\"" << PFDLoc.getFilename() << "\"}";
       printf("%s\n", ss.str().c_str());
     }
     return true;
@@ -172,7 +185,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:classdefine,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << D->getNameAsString() << "}";
+    ss << "{\"type\":\"classdefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definename\":\"" << D->getNameAsString() << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -185,7 +198,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
     std::string typeName = Type.getAsString();
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:variabledefine,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << typeName << "}";
+    ss << "{\"type\":\"variabledefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definetype\":\"" << typeName << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -198,7 +211,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
     std::string typeName = Type.getAsString();
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:fielddefine,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << typeName << "}";
+    ss << "{\"type\":\"fielddefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definetype\":\"" << typeName << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -211,7 +224,7 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
     std::string typeName = Type.getAsString();
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{type:parameterdefine,file:" << PLoc.getFilename() << + ",line:" << PLoc.getLine() << ",cloumn:" << PLoc.getColumn()<< ",info:" << typeName << "}";
+    ss << "{\"type\":\"parameterdefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definename\":\"" << typeName << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -393,17 +406,14 @@ class NamespaceVisitor : public RecursiveASTVisitor<NamespaceVisitor> {
 };
 
 // AST消费者类
-class NamespaceConsumer : public ASTConsumer {
+class AnalysisConsumer : public ASTConsumer {
  public:
-  explicit NamespaceConsumer(ASTContext &Context, SourceManager &SM)
-      : Visitor(Context, SM) {}
-
+  explicit AnalysisConsumer(ASTContext &Context, SourceManager &SM) : Visitor(Context, SM) {}
   void HandleTranslationUnit(ASTContext &Context) override {
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
   }
-
  private:
-  NamespaceVisitor Visitor;
+  AnalysisVisitor Visitor;
 };
 
 // FrontendAction类
@@ -411,23 +421,24 @@ class NamespaceAction : public ASTFrontendAction {
  public:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef File) override {
-    return std::make_unique<NamespaceConsumer>(CI.getASTContext(),
+    return std::make_unique<AnalysisConsumer>(CI.getASTContext(),
                                                CI.getSourceManager());
   }
 };
 
+// 定义命令行选项
+static llvm::cl::OptionCategory Category("Analysis Options");
 int main(int argc, const char **argv) {
   // 解析命令行参数和编译命令
-  auto ExpectedParser = CommonOptionsParser::create(argc, argv, NsCategory);
+  auto ExpectedParser = CommonOptionsParser::create(argc, argv, Category);
   if (!ExpectedParser) {
     llvm::errs() << llvm::toString(ExpectedParser.takeError());
     return 1;
   }
-
   // 创建工具并运行
   ClangTool Tool(ExpectedParser->getCompilations(),
                  ExpectedParser->getSourcePathList());
-  Tool.run(newFrontendActionFactory<MacroAnalysisAction>().get());
+  Tool.run(newFrontendActionFactory<AnalysisAction>().get());
   Tool.run(newFrontendActionFactory<NamespaceAction>().get());
   return 0;
 }
