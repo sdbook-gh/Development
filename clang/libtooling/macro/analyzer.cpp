@@ -30,9 +30,12 @@ class AnalysisCallback : public PPCallbacks {
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::string filename{PLoc.getFilename() != nullptr ? PLoc.getFilename() : ""};
     if (filename.empty() || filename.find("<") != std::string::npos) return;
-    // StringRef MacroText = PP.getMacroSourceText(MI, SM);
+    SourceLocation BeginLoc = Lexer::GetBeginningOfToken(MI->getDefinitionLoc(), SM, LangOptions());
+    SourceLocation EndLoc = Lexer::getLocForEndOfToken(MI->getDefinitionEndLoc(), 0, SM, LangOptions());
+    CharSourceRange FullRange = CharSourceRange::getCharRange(BeginLoc, EndLoc);
+    StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
     std::stringstream ss;
-    ss << "{\"type\":\"macrodefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\"}";
+    ss << "{\"type\":\"macrodefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\",\"stmt\":\"" << Text.str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 
@@ -44,8 +47,12 @@ class AnalysisCallback : public PPCallbacks {
     SourceLocation Loc = SM.getSpellingLoc(MacroNameTok.getLocation());
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    SourceLocation BeginLoc = Lexer::GetBeginningOfToken(MacroNameTok.getLocation(), SM, LangOptions());
+    SourceLocation EndLoc = Lexer::getLocForEndOfToken(Range.getEnd(), 0, SM, LangOptions());
+    CharSourceRange FullRange = CharSourceRange::getCharRange(BeginLoc, EndLoc);
+    StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
     std::stringstream ss;
-    ss << "{\"type\":\"macroexpand\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\"}";
+    ss << "{\"type\":\"macroexpand\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\",\"stmt\":\"" << Text.str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 
@@ -66,7 +73,13 @@ class AnalysisCallback : public PPCallbacks {
     std::stringstream ss;
     std::string realIncludePath{realpath(File->getName().str().c_str(), nullptr)};
     if (realIncludePath.find("/usr/") != std::string::npos) return;
-    ss << "{\"type\":\"includedefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"includefilepath\":\"" << realIncludePath << "\"}";
+    // 获取#include指令的结束位置
+    SourceLocation EndLoc = Lexer::getLocForEndOfToken(FilenameRange.getEnd(), 0, SM, LangOptions());
+    // 获取完整指令的源码范围
+    CharSourceRange FullRange = CharSourceRange::getCharRange(HashLoc, EndLoc);
+    // 提取源码文本
+    StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
+    ss << "{\"type\":\"includedefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"includefilepath\":\"" << realIncludePath << "\",\"stmt\":\"" << Text.str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 };
@@ -141,8 +154,14 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
     SourceLocation Loc = SM.getSpellingLoc(FD->getLocation());
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    const CompoundStmt *Body = dyn_cast_or_null<CompoundStmt>(FD->getBody());
     std::stringstream ss;
-    ss << "{\"type\":\"functiondefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functionname\":\"" << FD->getNameAsString() << "\"}";
+    if (Body != nullptr) {
+      PresumedLoc PLocImp = SM.getPresumedLoc(Body->getLBracLoc());
+      ss << "{\"type\":\"functionimplement\",\"file\":\"" << PLocImp.getFilename() << "\",\"line\":" << PLocImp.getLine() << ",\"startcolumn\":" << PLoc.getColumn()  << ",\"endcolumn\":" << PLocImp.getColumn()-1 << ",\"functionname\":\"" << FD->getNameAsString() << "\"}";
+    } else {
+      ss << "{\"type\":\"functiondefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functionname\":\"" << FD->getNameAsString() << "\"}";
+    }
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -156,8 +175,11 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
       if (FDLoc.isInvalid() || SM.isInSystemHeader(FDLoc)) return true;
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
       PresumedLoc PFDLoc = SM.getPresumedLoc(FDLoc);
+      SourceLocation EndLoc = Lexer::getLocForEndOfToken(CE->getSourceRange().getEnd(), 0, SM, LangOptions());
+      CharSourceRange FullRange = CharSourceRange::getCharRange(CE->getSourceRange().getBegin(), EndLoc);
+      StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
       std::stringstream ss;
-      ss << "{\"type\":\"functioncall\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\"" << PFDLoc.getFilename() << "\"}";
+      ss << "{\"type\":\"functioncall\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\"" << PFDLoc.getFilename() << "\",\"stmt\":\"" << Text.str() << "\"}";
       printf("%s\n", ss.str().c_str());
     }
     return true;
@@ -224,7 +246,7 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
     std::string typeName = Type.getAsString();
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{\"type\":\"parameterdefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definename\":\"" << typeName << "\"}";
+    ss << "{\"type\":\"parameterdefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definetype\":\"" << typeName << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
