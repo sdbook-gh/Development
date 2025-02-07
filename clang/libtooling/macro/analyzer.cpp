@@ -8,8 +8,8 @@
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/Frontend/FrontendAction.h>
-#include <sstream>
 #include <cstdlib>
+#include <sstream>
 
 using namespace clang;
 using namespace clang::tooling;
@@ -18,7 +18,7 @@ using namespace llvm;
 class AnalysisCallback : public PPCallbacks {
   Preprocessor &PP;
 
- public:
+public:
   AnalysisCallback(Preprocessor &PP) : PP(PP) {}
 
   void MacroDefined(const Token &MacroNameTok,
@@ -26,66 +26,85 @@ class AnalysisCallback : public PPCallbacks {
     const MacroInfo *MI = MD->getMacroInfo();
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = SM.getSpellingLoc(MacroNameTok.getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-    std::string filename{PLoc.getFilename() != nullptr ? PLoc.getFilename() : ""};
-    if (filename.empty() || filename.find("<") != std::string::npos) return;
-    SourceLocation BeginLoc = Lexer::GetBeginningOfToken(MI->getDefinitionLoc(), SM, LangOptions());
-    SourceLocation EndLoc = Lexer::getLocForEndOfToken(MI->getDefinitionEndLoc(), 0, SM, LangOptions());
+    std::string filename{PLoc.getFilename() != nullptr ? PLoc.getFilename()
+                                                       : ""};
+    if (filename.empty() || filename.find("<") != std::string::npos)
+      return;
+    SourceLocation BeginLoc =
+        Lexer::GetBeginningOfToken(MI->getDefinitionLoc(), SM, LangOptions());
+    SourceLocation EndLoc = Lexer::getLocForEndOfToken(
+        MI->getDefinitionEndLoc(), 0, SM, LangOptions());
     CharSourceRange FullRange = CharSourceRange::getCharRange(BeginLoc, EndLoc);
     StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
     std::stringstream ss;
-    ss << "{\"type\":\"macrodefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\",\"stmt\":\"" << Text.str() << "\"}";
+    ss << "{\"type\":\"macrodefine\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"macroname\":\""
+       << MacroNameTok.getIdentifierInfo()->getName().str() << "\",\"stmt\":\""
+       << Text.str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 
   void MacroExpands(const Token &MacroNameTok,
-                    const MacroDefinition &MacroDefinition,
-                    SourceRange Range,
+                    const MacroDefinition &MacroDefinition, SourceRange Range,
                     const MacroArgs *Args) override {
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = SM.getSpellingLoc(MacroNameTok.getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) ||
+        !SM.isWrittenInMainFile(Loc))
+      return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-    SourceLocation BeginLoc = Lexer::GetBeginningOfToken(MacroNameTok.getLocation(), SM, LangOptions());
-    SourceLocation EndLoc = Lexer::getLocForEndOfToken(Range.getEnd(), 0, SM, LangOptions());
+    SourceLocation BeginLoc = Lexer::GetBeginningOfToken(
+        MacroNameTok.getLocation(), SM, LangOptions());
+    SourceLocation EndLoc =
+        Lexer::getLocForEndOfToken(Range.getEnd(), 0, SM, LangOptions());
     CharSourceRange FullRange = CharSourceRange::getCharRange(BeginLoc, EndLoc);
     StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
     std::stringstream ss;
-    ss << "{\"type\":\"macroexpand\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"macroname\":\"" << MacroNameTok.getIdentifierInfo()->getName().str() << "\",\"stmt\":\"" << Text.str() << "\"}";
+    ss << "{\"type\":\"macroexpand\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"macroname\":\""
+       << MacroNameTok.getIdentifierInfo()->getName().str() << "\",\"stmt\":\""
+       << Text.str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 
-  void InclusionDirective(SourceLocation HashLoc,
-                          const Token &IncludeTok,
-                          StringRef FileName,
-                          bool IsAngled,
+  void InclusionDirective(SourceLocation HashLoc, const Token &IncludeTok,
+                          StringRef FileName, bool IsAngled,
                           CharSourceRange FilenameRange,
-                          OptionalFileEntryRef File,
-                          StringRef SearchPath,
-                          StringRef RelativePath,
-                          const Module *Imported,
+                          OptionalFileEntryRef File, StringRef SearchPath,
+                          StringRef RelativePath, const Module *Imported,
                           SrcMgr::CharacteristicKind FileType) override {
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = SM.getSpellingLoc(IncludeTok.getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    std::string realIncludePath{realpath(File->getName().str().c_str(), nullptr)};
-    if (realIncludePath.find("/usr/") != std::string::npos) return;
+    std::string realIncludePath{
+        realpath(File->getName().str().c_str(), nullptr)};
+    if (realIncludePath.find("/usr/") != std::string::npos)
+      return;
     // 获取#include指令的结束位置
-    SourceLocation EndLoc = Lexer::getLocForEndOfToken(FilenameRange.getEnd(), 0, SM, LangOptions());
+    SourceLocation EndLoc = Lexer::getLocForEndOfToken(FilenameRange.getEnd(),
+                                                       0, SM, LangOptions());
     // 获取完整指令的源码范围
     CharSourceRange FullRange = CharSourceRange::getCharRange(HashLoc, EndLoc);
     // 提取源码文本
     StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
-    ss << "{\"type\":\"includedefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"includefilepath\":\"" << realIncludePath << "\",\"stmt\":\"" << Text.str() << "\"}";
+    ss << "{\"type\":\"includedefine\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"includefilepath\":\"" << realIncludePath << "\",\"stmt\":\""
+       << Text.str() << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 };
 
 class AnalysisAction : public PreprocessorFrontendAction {
- protected:
+protected:
   void ExecuteAction() override {
     Preprocessor &PP = getCompilerInstance().getPreprocessor();
     PP.addPPCallbacks(std::make_unique<AnalysisCallback>(PP));
@@ -100,7 +119,7 @@ class AnalysisAction : public PreprocessorFrontendAction {
 
 // AST访问器类
 class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
- public:
+public:
   explicit AnalysisVisitor(ASTContext &Context, SourceManager &SM)
       : Context(Context), SM(SM) {}
 
@@ -108,10 +127,14 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
   bool VisitNamespaceDecl(NamespaceDecl *D) {
     // report("NamespaceDef", D->getNameAsString(), D->getSourceRange());
     SourceLocation Loc = SM.getSpellingLoc(D->getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) ||
+        !SM.isWrittenInMainFile(Loc))
+      return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{\"type\":\"namespacedeclare\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"namespace\":\"" << D->getName().str() << "\"}";
+    ss << "{\"type\":\"namespacedeclare\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"namespace\":\"" << D->getName().str() << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -121,10 +144,14 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
     if (const NamespaceDecl *ND = D->getNominatedNamespace()) {
       // report("UsingNamespace", ND->getNameAsString(), D->getSourceRange());
       SourceLocation Loc = SM.getSpellingLoc(D->getLocation());
-      if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc) ||
+          !SM.isWrittenInMainFile(Loc))
+        return true;
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
       std::stringstream ss;
-      ss << "{\"type\":\"usingnamespace\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << "}";
+      ss << "{\"type\":\"usingnamespace\",\"file\":\"" << PLoc.getFilename()
+         << "\",\"line\":" << PLoc.getLine()
+         << ",\"column\":" << PLoc.getColumn() << "}";
       printf("%s\n", ss.str().c_str());
     }
     return true;
@@ -138,10 +165,14 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
     // os << D->getNameAsString();
     // report("UsingDecl", os.str(), D->getSourceRange());
     SourceLocation Loc = SM.getSpellingLoc(D->getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) ||
+        !SM.isWrittenInMainFile(Loc))
+      return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{\"type\":\"using\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << "}";
+    ss << "{\"type\":\"using\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << "}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -152,15 +183,24 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
     // if (SM.isInSystemHeader(FD->getLocation())) return true;  // 过滤系统函数
     // analyzeFunction(FD);
     SourceLocation Loc = SM.getSpellingLoc(FD->getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) || !SM.isWrittenInMainFile(Loc)) return true;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc) ||
+        !SM.isWrittenInMainFile(Loc))
+      return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     const CompoundStmt *Body = dyn_cast_or_null<CompoundStmt>(FD->getBody());
     std::stringstream ss;
     if (Body != nullptr) {
       PresumedLoc PLocImp = SM.getPresumedLoc(Body->getLBracLoc());
-      ss << "{\"type\":\"functionimplement\",\"file\":\"" << PLocImp.getFilename() << "\",\"line\":" << PLocImp.getLine() << ",\"startcolumn\":" << PLoc.getColumn()  << ",\"endcolumn\":" << PLocImp.getColumn()-1 << ",\"functionname\":\"" << FD->getNameAsString() << "\"}";
+      ss << "{\"type\":\"functionimplement\",\"file\":\""
+         << PLocImp.getFilename() << "\",\"line\":" << PLocImp.getLine()
+         << ",\"startcolumn\":" << PLoc.getColumn()
+         << ",\"endcolumn\":" << PLocImp.getColumn() - 1
+         << ",\"functionname\":\"" << FD->getNameAsString() << "\"}";
     } else {
-      ss << "{\"type\":\"functiondefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functionname\":\"" << FD->getNameAsString() << "\"}";
+      ss << "{\"type\":\"functiondefine\",\"file\":\"" << PLoc.getFilename()
+         << "\",\"line\":" << PLoc.getLine()
+         << ",\"column\":" << PLoc.getColumn() << ",\"functionname\":\""
+         << FD->getNameAsString() << "\"}";
     }
     printf("%s\n", ss.str().c_str());
     return true;
@@ -172,14 +212,20 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
       // reportCall(FD, CE->getSourceRange());
       SourceLocation Loc = SM.getSpellingLoc(CE->getSourceRange().getBegin());
       SourceLocation FDLoc = SM.getSpellingLoc(FD->getLocation());
-      if (FDLoc.isInvalid() || SM.isInSystemHeader(FDLoc)) return true;
+      if (FDLoc.isInvalid() || SM.isInSystemHeader(FDLoc))
+        return true;
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
       PresumedLoc PFDLoc = SM.getPresumedLoc(FDLoc);
-      SourceLocation EndLoc = Lexer::getLocForEndOfToken(CE->getSourceRange().getEnd(), 0, SM, LangOptions());
-      CharSourceRange FullRange = CharSourceRange::getCharRange(CE->getSourceRange().getBegin(), EndLoc);
+      SourceLocation EndLoc = Lexer::getLocForEndOfToken(
+          CE->getSourceRange().getEnd(), 0, SM, LangOptions());
+      CharSourceRange FullRange = CharSourceRange::getCharRange(
+          CE->getSourceRange().getBegin(), EndLoc);
       StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
       std::stringstream ss;
-      ss << "{\"type\":\"functioncall\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\"" << PFDLoc.getFilename() << "\",\"stmt\":\"" << Text.str() << "\"}";
+      ss << "{\"type\":\"functioncall\",\"file\":\"" << PLoc.getFilename()
+         << "\",\"line\":" << PLoc.getLine()
+         << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\""
+         << PFDLoc.getFilename() << "\",\"stmt\":\"" << Text.str() << "\"}";
       printf("%s\n", ss.str().c_str());
     }
     return true;
@@ -191,11 +237,15 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
       // reportCall(MD, MCE->getSourceRange());
       SourceLocation Loc = SM.getSpellingLoc(MCE->getSourceRange().getBegin());
       SourceLocation FDLoc = SM.getSpellingLoc(MD->getLocation());
-      if (FDLoc.isInvalid() || SM.isInSystemHeader(FDLoc)) return true;
+      if (FDLoc.isInvalid() || SM.isInSystemHeader(FDLoc))
+        return true;
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
       PresumedLoc PFDLoc = SM.getPresumedLoc(FDLoc);
       std::stringstream ss;
-      ss << "{\"type\":\"memberfunctioncall\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\"" << PFDLoc.getFilename() << "\"}";
+      ss << "{\"type\":\"memberfunctioncall\",\"file\":\"" << PLoc.getFilename()
+         << "\",\"line\":" << PLoc.getLine()
+         << ",\"column\":" << PLoc.getColumn() << ",\"functiondefinefile\":\""
+         << PFDLoc.getFilename() << "\"}";
       printf("%s\n", ss.str().c_str());
     }
     return true;
@@ -204,10 +254,13 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
   // 捕获类/结构体/联合体声明
   bool VisitCXXRecordDecl(CXXRecordDecl *D) {
     SourceLocation Loc = SM.getSpellingLoc(D->getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return true;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return true;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{\"type\":\"classdefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definename\":\"" << D->getNameAsString() << "\"}";
+    ss << "{\"type\":\"classdefine\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"definename\":\"" << D->getNameAsString() << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -215,12 +268,15 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
   // 捕获全局变量、局部变量、静态变量
   bool VisitVarDecl(VarDecl *VD) {
     SourceLocation Loc = SM.getSpellingLoc(VD->getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return true;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return true;
     QualType Type = VD->getType();
     std::string typeName = Type.getAsString();
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{\"type\":\"variabledefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definetype\":\"" << typeName << "\"}";
+    ss << "{\"type\":\"variabledefine\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"definetype\":\"" << typeName << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -228,12 +284,15 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
   // 捕获类成员变量
   bool VisitFieldDecl(FieldDecl *FD) {
     SourceLocation Loc = SM.getSpellingLoc(FD->getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return true;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return true;
     QualType Type = FD->getType();
     std::string typeName = Type.getAsString();
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{\"type\":\"fielddefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definetype\":\"" << typeName << "\"}";
+    ss << "{\"type\":\"fielddefine\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"definetype\":\"" << typeName << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
@@ -241,210 +300,112 @@ class AnalysisVisitor : public RecursiveASTVisitor<AnalysisVisitor> {
   // 捕获函数参数
   bool VisitParmVarDecl(ParmVarDecl *PD) {
     SourceLocation Loc = SM.getSpellingLoc(PD->getLocation());
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return true;
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return true;
     QualType Type = PD->getType();
     std::string typeName = Type.getAsString();
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     std::stringstream ss;
-    ss << "{\"type\":\"parameterdefine\",\"file\":\"" << PLoc.getFilename() << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn() << ",\"definetype\":\"" << typeName << "\"}";
+    ss << "{\"type\":\"parameterdefine\",\"file\":\"" << PLoc.getFilename()
+       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+       << ",\"definetype\":\"" << typeName << "\"}";
     printf("%s\n", ss.str().c_str());
     return true;
   }
 
- private:
-  // std::string getSourceLocationString(Preprocessor &PP, SourceLocation Loc) {
-  //   if (Loc.isInvalid()) return std::string("(none)");
-  //   if (Loc.isFileID()) {
-  //     PresumedLoc PLoc = PP.getSourceManager().getPresumedLoc(Loc);
-  //     if (PLoc.isInvalid()) {
-  //       return std::string("(invalid)");
-  //     }
-  //     std::string Str;
-  //     llvm::raw_string_ostream SS(Str);
-  //     // The macro expansion and spelling pos is identical for file locs.
-  //     SS << "\"" << PLoc.getFilename() << ':' << PLoc.getLine() << ':'
-  //        << PLoc.getColumn() << "\"";
-  //     std::string Result = SS.str();
-  //     return Result;
-  //   }
-  //   return std::string("(nonfile)");
-  // }
+  bool VisitDeclRefExpr(DeclRefExpr *DRE) {
+    if (auto *NNS = DRE->getQualifier()) {
+      analyzeNestedNameSpecifier(NNS, DRE->getLocation());
+    }
+    return true;
+  }
 
-  // std::string getInfo(Preprocessor &PP, SourceRange Value) {
-  //   if (Value.isInvalid()) {
-  //     return "";
-  //   }
-  //   std::string Str;
-  //   llvm::raw_string_ostream SS(Str);
-  //   SS << "[" << getSourceLocationString(PP, Value.getBegin()) << ", "
-  //      << getSourceLocationString(PP, Value.getEnd()) << "]";
-  //   std::string Result = SS.str();
-  //   return Result;
-  // }
+  bool VisitTypeLoc(TypeLoc TL) {
+    if (auto elaboratedLoc = TL.getAs<ElaboratedTypeLoc>()) {
+      NestedNameSpecifierLoc qualifierLoc = elaboratedLoc.getQualifierLoc();
+      if (auto *NNS = qualifierLoc.getNestedNameSpecifier()) {
+        analyzeNestedNameSpecifier(NNS, qualifierLoc.getBeginLoc());
+      }
+    }
+    return true;
+  }
 
-  // std::string getInfo(Preprocessor &PP, const MacroArgs *Value) {
-  //   if (!Value) {
-  //     return "";
-  //   }
-  //   std::string Str;
-  //   llvm::raw_string_ostream SS(Str);
-  //   SS << "[";
+  void analyzeNestedNameSpecifier(NestedNameSpecifier *NNS,
+                                  SourceLocation UseLoc) {
+    auto getLocationString = [&](SourceLocation Loc) -> std::string {
+      if (Loc.isInvalid())
+        return "<unknown>";
+      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      return std::string(PLoc.getFilename()) + ":" +
+             std::to_string(PLoc.getLine()) + ":" +
+             std::to_string(PLoc.getColumn());
+    };
+    auto getScopeTypeName = [](const Decl *D) -> std::string {
+      if (isa<NamespaceDecl>(D))
+        return "Namespace";
+      if (isa<CXXRecordDecl>(D))
+        return "Class/Struct";
+      if (isa<EnumDecl>(D))
+        return "Enum";
+      return "Unknown";
+    };
 
-  //   // Each argument is is a series of contiguous Tokens, terminated by a eof.
-  //   // Go through each argument printing tokens until we reach eof.
-  //   for (unsigned I = 0; I < Value->getNumMacroArguments(); ++I) {
-  //     const Token *Current = Value->getUnexpArgument(I);
-  //     if (I) SS << ", ";
-  //     bool First = true;
-  //     while (Current->isNot(tok::eof)) {
-  //       if (!First) SS << " ";
-  //       // We need to be careful here because the arguments might not be legal
-  //       // in YAML, so we use the token name for anything but identifiers and
-  //       // numeric literals.
-  //       if (Current->isAnyIdentifier() || Current->is(tok::numeric_constant)) {
-  //         SS << PP.getSpelling(*Current);
-  //       } else {
-  //         SS << "<" << Current->getName() << ">";
-  //       }
-  //       ++Current;
-  //       First = false;
-  //     }
-  //   }
-  //   SS << "]";
-  //   std::string Result = SS.str();
-  //   return Result;
-  // }
+    if (!NNS)
+      return;
+    // 遍历嵌套作用域
+    while (NNS) {
+      if (NNS->getKind() == NestedNameSpecifier::TypeSpec ||
+          NNS->getKind() == NestedNameSpecifier::Namespace) {
+        // 获取作用域声明
+        const Decl *ScopeDecl = nullptr;
+        if (const auto *T = NNS->getAsType()) {
+          if (const auto *TD = T->getAsTagDecl()) {
+            ScopeDecl = TD;
+          }
+        } else if (NNS->getKind() == NestedNameSpecifier::Namespace) {
+          ScopeDecl = NNS->getAsNamespace();
+        }
+        // 输出作用域信息
+        if (ScopeDecl && !SM.isInSystemHeader(ScopeDecl->getLocation())) {
+          std::string ScopeType = getScopeTypeName(ScopeDecl);
+          std::string DeclLocation =
+              getLocationString(ScopeDecl->getLocation());
+          std::string UseLocation = getLocationString(UseLoc);
+          llvm::outs() << "Found Scope Resolution Operator (::)\n"
+                       << "  Scope Type:    " << ScopeType << "\n"
+                       << "  Declared At:   " << DeclLocation << "\n"
+                       << "  Used At:       " << UseLocation << "\n\n";
+        }
+      }
+      NNS = NNS->getPrefix();
+    }
+  }
 
-  // void report(const char *Type, const std::string &Name, SourceRange Range) {
-  //   // 获取开始和结束位置
-  //   SourceLocation BeginLoc = Range.getBegin();
-  //   SourceLocation EndLoc = Range.getEnd();
-  //   // 过滤无效和系统头文件位置
-  //   if (BeginLoc.isInvalid() || SM.isInSystemHeader(BeginLoc)) return;
-  //   if (EndLoc.isInvalid() || SM.isInSystemHeader(EndLoc)) return;
-  //   // 转换为可读位置
-  //   PresumedLoc PLocBegin = SM.getPresumedLoc(BeginLoc);
-  //   PresumedLoc PLocEnd = SM.getPresumedLoc(EndLoc);
-  //   llvm::outs() << "[" << Type << "] " << Name << "\n"
-  //                << "  Start: " << PLocBegin.getFilename() << ":"
-  //                << PLocBegin.getLine() << ":" << PLocBegin.getColumn() << "\n"
-  //                << "  End:   " << PLocEnd.getFilename() << ":"
-  //                << PLocEnd.getLine() << ":" << PLocEnd.getColumn() << "\n\n";
-  // }
-  // // 辅助函数：获取完整的命名空间链
-  // std::string getNamespaceChain(const DeclContext *DC) {
-  //   std::vector<std::string> namespaces;
-  //   while (DC && !DC->isTranslationUnit()) {
-  //     if (const auto *NS = dyn_cast<NamespaceDecl>(DC)) {
-  //       if (!NS->isAnonymousNamespace()) {
-  //         namespaces.push_back(NS->getNameAsString());
-  //       }
-  //     }
-  //     DC = DC->getParent();
-  //   }
-  //   std::reverse(namespaces.begin(), namespaces.end());
-  //   return llvm::join(namespaces, "::");
-  // }
-  // std::string getLocationString(SourceLocation Loc, SourceManager &SM) {
-  //   if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) return "";
-  //   PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-  //   return std::string(PLoc.getFilename()) + ":" +
-  //          std::to_string(PLoc.getLine()) + ":" +
-  //          std::to_string(PLoc.getColumn());
-  // }
-  // void analyzeFunction(FunctionDecl *FD) {
-  //   // 基础信息
-  //   std::string funcName = FD->getNameAsString();
-  //   std::string returnType = FD->getReturnType().getAsString();
-  //   // 参数信息
-  //   std::vector<std::string> params;
-  //   for (ParmVarDecl *P : FD->parameters()) {
-  //     params.push_back(P->getType().getAsString() + " " + P->getNameAsString());
-  //   }
-  //   // 位置信息
-  //   SourceRange funcRange = FD->getSourceRange();
-  //   // std::string locStart = getLocationString(funcRange.getBegin());
-  //   // std::string locEnd = getLocationString(funcRange.getEnd());
-  //   std::string loc = getLocationString(FD->getLocation(), SM);
-  //   // 输出基本信息
-  //   llvm::outs() << "Function Implementation:\n"
-  //                << "Name: " << returnType << " " << funcName << "("
-  //                << llvm::join(params, ", ") << ")\n"
-  //                << "Location: " << loc << "\n";
-
-  //   // 分析函数体
-  //   if (Stmt *Body = FD->getBody()) {
-  //     // analyzeFunctionBody(Body);
-  //   }
-  //   llvm::outs() << "-----------------------\n";
-  // }
-  // void reportCall(FunctionDecl *FD, SourceRange Range) {
-  //   // 获取命名空间信息
-  //   std::string nsChain = getNamespaceChain(FD->getDeclContext());
-  //   // 获取完整函数签名
-  //   std::string funcName = nsChain.empty()
-  //                              ? FD->getNameAsString()
-  //                              : nsChain + "::" + FD->getNameAsString();
-  //   std::string returnType = FD->getReturnType().getAsString();
-  //   // 获取参数列表
-  //   std::vector<std::string> params;
-  //   for (auto *P : FD->parameters()) {
-  //     params.push_back(P->getType().getAsString() + " " + P->getNameAsString());
-  //   }
-  //   // 获取声明位置信息
-  //   const std::string declLoc = getLocationString(FD->getLocation(), SM);
-  //   // 获取函数签名
-  //   std::string funcSig;
-  //   llvm::raw_string_ostream os(funcSig);
-  //   FD->printQualifiedName(os);
-  //   os << FD->getType().getAsString();
-  //   // 获取位置信息
-  //   SourceLocation Begin = Range.getBegin();
-  //   SourceLocation End = Range.getEnd();
-  //   // if (Begin.isInvalid() || SM.isInSystemHeader(Begin)) return;
-  //   PresumedLoc PLocBegin = SM.getPresumedLoc(Begin);
-  //   PresumedLoc PLocEnd = SM.getPresumedLoc(End);
-  //   // if (nsChain.empty() || nsChain.find("std::") != std::string::npos ||
-  //   // nsChain == "std") {
-  //   //   return;
-  //   // }
-  //   // 打印结果
-  //   llvm::outs() << "Function Call:\n"
-  //                << "  Declaration: " << os.str() << "\n"
-  //                << "  Declared At: "
-  //                << (declLoc.empty() ? "<built-in>" : declLoc) << "\n"
-  //                << "  Name: " << funcName << "\n"
-  //                << "  Namespace: " << (nsChain.empty() ? "(global)" : nsChain)
-  //                << "\n"
-  //                << "  Returntype:" << returnType << "\n"
-  //                << "  Parameters: (" << llvm::join(params, ", ") << ")\n"
-  //                << "  Location: " << PLocBegin.getFilename() << " ["
-  //                << PLocBegin.getLine() << ":" << PLocBegin.getColumn() << " - "
-  //                << PLocEnd.getLine() << ":" << PLocEnd.getColumn() << "]\n\n";
-  // }
-
+private:
   ASTContext &Context;
   SourceManager &SM;
 };
 
 // AST消费者类
 class AnalysisConsumer : public ASTConsumer {
- public:
-  explicit AnalysisConsumer(ASTContext &Context, SourceManager &SM) : Visitor(Context, SM) {}
+public:
+  explicit AnalysisConsumer(ASTContext &Context, SourceManager &SM)
+      : Visitor(Context, SM) {}
   void HandleTranslationUnit(ASTContext &Context) override {
     Visitor.TraverseDecl(Context.getTranslationUnitDecl());
   }
- private:
+
+private:
   AnalysisVisitor Visitor;
 };
 
 // FrontendAction类
 class NamespaceAction : public ASTFrontendAction {
- public:
+public:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef File) override {
     return std::make_unique<AnalysisConsumer>(CI.getASTContext(),
-                                               CI.getSourceManager());
+                                              CI.getSourceManager());
   }
 };
 
