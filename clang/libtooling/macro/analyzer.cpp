@@ -657,8 +657,6 @@ public:
          << ",\"namespace\":\"" << ND->getName().str() << "\"}";
       printf("%s\n", ss.str().c_str());
     } else if (const auto *TL = Result.Nodes.getNodeAs<TypeLoc>("TypeLoc|")) {
-      // if (std::string(TL->getType()->getTypeClassName()) != "Elaborated")
-      //   return;
       std::string file, Dfile, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
@@ -693,7 +691,7 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (file.empty())
+      if (!file.empty() && skipPath(file))
         return;
       PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
       if (DPLoc.isValid()) {
@@ -701,11 +699,8 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      if (Dfile.empty() == false && skipPath(Dfile))
+      if (!Dfile.empty() && skipPath(Dfile))
         return;
-      // if (auto RTL = TL->getAs<RecordTypeLoc>()) {
-      //   DPLoc = SM.getPresumedLoc(DLoc);
-      // }
       std::stringstream ss;
       ss << "{\"type\":\"TypeLoc\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
@@ -715,8 +710,6 @@ public:
       printf("%s\n", ss.str().c_str());
     } else if (const auto *DRE =
                    Result.Nodes.getNodeAs<DeclRefExpr>("DeclRefExpr|")) {
-      // if (std::string(DRE->getType()->getTypeClassName()) != "Elaborated")
-      //   return;
       std::string file, Dfile, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
@@ -737,7 +730,7 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (file.empty())
+      if (!file.empty() && skipPath(file))
         return;
       PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
       if (DPLoc.isValid()) {
@@ -745,7 +738,7 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      if (Dfile.empty() == false && skipPath(Dfile))
+      if (!Dfile.empty() && skipPath(Dfile))
         return;
       {
         auto FullRange =
@@ -762,8 +755,6 @@ public:
       printf("%s\n", ss.str().c_str());
     } else if (const auto *FD =
                    Result.Nodes.getNodeAs<FunctionDecl>("FunctionDecl|")) {
-      if (!FD->isThisDeclarationADefinition())
-        return;
       std::string file, Dfile, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
@@ -771,17 +762,14 @@ public:
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
         return;
       const CompoundStmt *Body = dyn_cast_or_null<CompoundStmt>(FD->getBody());
-      if (Body == nullptr)
-        return;
-      {
-        PresumedLoc DPLoc = SM.getPresumedLoc(FD->getReturnTypeSourceRange().getEnd());
-        if (DPLoc.isValid()) {
-          Dfile = getPath(DPLoc.getFilename());
-          Dline = DPLoc.getLine();
-          Dcolumn = DPLoc.getColumn();
-        }
-        auto FullRange =
-            CharSourceRange::getCharRange(FD->getBeginLoc(), FD->getBody()->getBeginLoc());
+      if (Body != nullptr) {
+        auto FullRange = CharSourceRange::getCharRange(
+            FD->getBeginLoc(), FD->getBody()->getBeginLoc());
+        auto Text = Lexer::getSourceText(FullRange, SM, LangOptions());
+        stmt = escapeJsonString(Text.str());
+      } else {
+        auto FullRange = CharSourceRange::getCharRange(
+            FD->getBeginLoc(), FD->getEndLoc());
         auto Text = Lexer::getSourceText(FullRange, SM, LangOptions());
         stmt = escapeJsonString(Text.str());
       }
@@ -791,33 +779,59 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (file.empty())
+      if (!file.empty() && skipPath(file))
         return;
-      if (NestedNameSpecifier *NNS = FD->getQualifier()) {
-        while (NNS) {
-          if (NNS->getKind() == NestedNameSpecifier::Namespace ||
-              NNS->getKind() == NestedNameSpecifier::NamespaceAlias) {
-            // 获取命名空间声明
-            const NamespaceDecl *NS = nullptr;
-            if (NNS->getKind() == NestedNameSpecifier::Namespace) {
-              NS = NNS->getAsNamespace();
-            } else if (NNS->getKind() == NestedNameSpecifier::NamespaceAlias) {
-              NS = NNS->getAsNamespaceAlias()->getNamespace();
-            }
-            if (NS && !SM.isInSystemHeader(NS->getLocation())) {
-              // 输出限定符信息
-              std::string QualifierName = NS->getNameAsString();
-              Dstmt = QualifierName + "::" + Dstmt;
-            }
-          }
-          NNS = NNS->getPrefix(); // 处理嵌套命名空间（如A::B::func）
-        }
+      // const DeclContext *DC = FD->getDeclContext();
+      // while (DC) {
+      //   // printf("getDeclKindName %s\n", DC->getDeclKindName());
+      //   if (const auto *NS = dyn_cast<NamespaceDecl>(DC)) {
+      //     std::string QualifierName = NS->getNameAsString();
+      //     Dstmt = QualifierName + "::" + Dstmt;
+      //   }
+      //   DC = DC->getParent();
+      // }
+      SourceLocation BeginLoc = Lexer::GetBeginningOfToken(
+          FD->getQualifierLoc().getBeginLoc(), SM, LangOptions());
+      SourceLocation EndLoc = Lexer::getLocForEndOfToken(
+          FD->getQualifierLoc().getEndLoc(), 0, SM, LangOptions());
+      CharSourceRange FullRange =
+          CharSourceRange::getCharRange(BeginLoc, EndLoc);
+      StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
+      Dstmt = Text.str();
+      PresumedLoc DPLoc =
+          SM.getPresumedLoc(FD->getQualifierLoc().getBeginLoc());
+      if (DPLoc.isValid()) {
+        Dfile = getPath(DPLoc.getFilename());
+        Dline = DPLoc.getLine();
+        Dcolumn = DPLoc.getColumn();
       }
+      // if (NestedNameSpecifier *NNS = FD->getQualifier()) {
+      //   while (NNS) {
+      //     // printf("getKind %d\n", NNS->getKind());
+      //     if (NNS->getKind() == NestedNameSpecifier::Namespace) {
+      //       auto NS = NNS->getAsNamespace();
+      //       std::string QualifierName = NS->getNameAsString();
+      //       Dstmt = QualifierName + "::" + Dstmt;
+      //     } else if (NNS->getKind() == NestedNameSpecifier::NamespaceAlias) {
+      //       auto NS = NNS->getAsNamespaceAlias();
+      //       std::string QualifierName = NS->getNameAsString();
+      //       Dstmt = QualifierName + "::" + Dstmt;
+      //     } else if (NNS->getKind() == NestedNameSpecifier::TypeSpec) {
+      //       auto T = NNS->getAsType();
+      //       if (std::string{T->getTypeClassName()} == "Record") {
+      //         std::string QualifierName =
+      //         T->getAsRecordDecl()->getNameAsString(); Dstmt = QualifierName
+      //         + "::" + Dstmt;
+      //       }
+      //     }
+      //     NNS = NNS->getPrefix(); // 处理嵌套命名空间（如A::B::func）
+      //   }
+      // }
       std::stringstream ss;
       ss << "{\"type\":\"FunctionDecl\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
          << stmt << "\",\"definename\":\""
-         << "functionbody"
+         << (!FD->isThisDeclarationADefinition() || FD->getBody() == nullptr ? "functiondecl" : "functionimp")
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
@@ -840,7 +854,7 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (file.empty())
+      if (!file.empty() && skipPath(file))
         return;
       std::stringstream ss;
       ss << "{\"type\":\"Stmt\",\"file\":\"" << file << "\",\"line\":" << line
