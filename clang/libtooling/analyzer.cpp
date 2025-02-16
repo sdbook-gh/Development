@@ -631,6 +631,108 @@ protected:
   }
 };
 
+static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
+  if (const auto *M = Result.Nodes.getNodeAs<NamespaceDecl>("check")) {
+    std::string file, Dfile;
+    int line = 0, column = 0;
+    int Dline = 0, Dcolumn = 0;
+    SourceLocation Loc = SM.getSpellingLoc(M->getLocation());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    if (PLoc.isValid()) {
+      file = getPath(PLoc.getFilename());
+      line = PLoc.getLine();
+      column = PLoc.getColumn();
+    }
+    std::cout << "NamespaceDecl " << file << " " << line << " " << column << "\n";
+  } else if (const auto *M = Result.Nodes.getNodeAs<TypeLoc>("check")) {
+    std::string file, Dfile;
+    int line = 0, column = 0;
+    int Dline = 0, Dcolumn = 0;
+    SourceLocation Loc = SM.getSpellingLoc(M->getBeginLoc());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    if (PLoc.isValid()) {
+      file = getPath(PLoc.getFilename());
+      line = PLoc.getLine();
+      column = PLoc.getColumn();
+    }
+    std::cout << "TypeLoc " << file << " " << line << " " << column << "\n";
+  } else if (const auto *M = Result.Nodes.getNodeAs<DeclRefExpr>("check")) {
+    std::string file, Dfile;
+    int line = 0, column = 0;
+    int Dline = 0, Dcolumn = 0;
+    SourceLocation Loc = SM.getSpellingLoc(M->getBeginLoc());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    if (PLoc.isValid()) {
+      file = getPath(PLoc.getFilename());
+      line = PLoc.getLine();
+      column = PLoc.getColumn();
+    }
+    std::cout << "DeclRefExpr " << file << " " << line << " " << column << "\n";
+  } else if (const auto *M = Result.Nodes.getNodeAs<UsingDirectiveDecl>("check")) {
+    std::string file, Dfile;
+    int line = 0, column = 0;
+    int Dline = 0, Dcolumn = 0;
+    SourceLocation Loc = SM.getSpellingLoc(M->getBeginLoc());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    if (PLoc.isValid()) {
+      file = getPath(PLoc.getFilename());
+      line = PLoc.getLine();
+      column = PLoc.getColumn();
+    }
+    std::cout << "UsingDirectiveDecl " << file << " " << line << " " << column << "\n";
+  } else if (const auto *M = Result.Nodes.getNodeAs<QualType>("check")) {
+    std::string file, Dfile;
+    int line = 0, column = 0;
+    int Dline = 0, Dcolumn = 0;
+    // SourceLocation Loc = SM.getSpellingLoc(M->getBeginLoc());
+    // if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+    //   return;
+    // PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    // if (PLoc.isValid()) {
+    //   file = getPath(PLoc.getFilename());
+    //   line = PLoc.getLine();
+    //   column = PLoc.getColumn();
+    // }
+    // std::cout << "QualType " << file << " " << line << " " << column << "\n";
+  } else if (const auto *M = Result.Nodes.getNodeAs<NamedDecl>("check")) {
+    std::string file, Dfile;
+    int line = 0, column = 0;
+    int Dline = 0, Dcolumn = 0;
+    SourceLocation Loc = SM.getSpellingLoc(M->getBeginLoc());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    if (PLoc.isValid()) {
+      file = getPath(PLoc.getFilename());
+      line = PLoc.getLine();
+      column = PLoc.getColumn();
+    }
+    std::cout << "TypeLoc " << file << " " << line << " " << column << "\n";
+  } else if (const auto *M = Result.Nodes.getNodeAs<Stmt>("check")) {
+    std::string file, Dfile;
+    int line = 0, column = 0;
+    int Dline = 0, Dcolumn = 0;
+    SourceLocation Loc = SM.getSpellingLoc(M->getBeginLoc());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    if (PLoc.isValid()) {
+      file = getPath(PLoc.getFilename());
+      line = PLoc.getLine();
+      column = PLoc.getColumn();
+    }
+    std::cout << "Stmt " << file << " " << line << " " << column << "\n";
+  }
+}
+
 class AnalysisMatchCallback : public MatchFinder::MatchCallback {
 public:
   explicit AnalysisMatchCallback(ASTContext &Context, SourceManager &SM)
@@ -890,6 +992,21 @@ public:
     MatchFinder Finder;
     auto *Callback{
         new AnalysisMatchCallback{CI.getASTContext(), CI.getSourceManager()}};
+
+    // Finder.addMatcher(clang::ast_matchers::namespaceDecl().bind("check"),
+    //                   Callback);
+    // Finder.addMatcher(clang::ast_matchers::nestedNameSpecifierLoc().bind(
+    //                       "nestedNameSpecifierLoc"),
+    //                   Callback);
+    // Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("check"),
+    //                   Callback);
+    // Finder.addMatcher(clang::ast_matchers::usingDirectiveDecl().bind("check"),
+    //                   Callback);
+    // Finder.addMatcher(clang::ast_matchers::qualType().bind("check"), Callback);
+    // Finder.addMatcher(clang::ast_matchers::namedDecl().bind("check"), Callback);
+    // Finder.addMatcher(clang::ast_matchers::typeLoc().bind("check"), Callback);
+    // Finder.addMatcher(clang::ast_matchers::stmt().bind("check"), Callback);
+
     if (option.find("NamespaceDecl|") != std::string::npos) {
       Finder.addMatcher(
           clang::ast_matchers::namespaceDecl().bind("NamespaceDecl|"),
