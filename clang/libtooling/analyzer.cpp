@@ -631,7 +631,8 @@ protected:
   }
 };
 
-static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
+static void process(const MatchFinder::MatchResult &Result, SourceManager &SM,
+                    ASTContext &Context) {
   if (const auto *M = Result.Nodes.getNodeAs<NamespaceDecl>("check")) {
     std::string file, Dfile;
     int line = 0, column = 0;
@@ -645,7 +646,14 @@ static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
       line = PLoc.getLine();
       column = PLoc.getColumn();
     }
-    std::cout << "NamespaceDecl " << file << " " << line << " " << column << "\n";
+    if (file.empty())
+      return;
+    StringRef Text = Lexer::getSourceText(
+        CharSourceRange::getTokenRange(M->getSourceRange()), SM,
+        Context.getLangOpts());
+    auto stmt = escapeJsonString(Text.str());
+    std::cout << "NamespaceDecl " << file << " " << line << " " << column << " "
+              << stmt << "\n";
   } else if (const auto *M = Result.Nodes.getNodeAs<TypeLoc>("check")) {
     std::string file, Dfile;
     int line = 0, column = 0;
@@ -659,7 +667,12 @@ static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
       line = PLoc.getLine();
       column = PLoc.getColumn();
     }
-    std::cout << "TypeLoc " << file << " " << line << " " << column << "\n";
+    StringRef Text = Lexer::getSourceText(
+        CharSourceRange::getTokenRange(M->getSourceRange()), SM,
+        Context.getLangOpts());
+    auto stmt = escapeJsonString(Text.str());
+    std::cout << "TypeLoc " << file << " " << line << " " << column << " "
+              << M->getType()->getTypeClassName() << " " << stmt << "\n";
   } else if (const auto *M = Result.Nodes.getNodeAs<DeclRefExpr>("check")) {
     std::string file, Dfile;
     int line = 0, column = 0;
@@ -673,8 +686,14 @@ static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
       line = PLoc.getLine();
       column = PLoc.getColumn();
     }
-    std::cout << "DeclRefExpr " << file << " " << line << " " << column << "\n";
-  } else if (const auto *M = Result.Nodes.getNodeAs<UsingDirectiveDecl>("check")) {
+    StringRef Text = Lexer::getSourceText(
+        CharSourceRange::getTokenRange(M->getSourceRange()), SM,
+        Context.getLangOpts());
+    auto stmt = escapeJsonString(Text.str());
+    std::cout << "DeclRefExpr " << file << " " << line << " " << column << " "
+              << stmt << "\n";
+  } else if (const auto *M =
+                 Result.Nodes.getNodeAs<UsingDirectiveDecl>("check")) {
     std::string file, Dfile;
     int line = 0, column = 0;
     int Dline = 0, Dcolumn = 0;
@@ -687,7 +706,12 @@ static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
       line = PLoc.getLine();
       column = PLoc.getColumn();
     }
-    std::cout << "UsingDirectiveDecl " << file << " " << line << " " << column << "\n";
+    StringRef Text = Lexer::getSourceText(
+        CharSourceRange::getTokenRange(M->getSourceRange()), SM,
+        Context.getLangOpts());
+    auto stmt = escapeJsonString(Text.str());
+    std::cout << "UsingDirectiveDecl " << file << " " << line << " " << column
+              << " " << stmt << "\n";
   } else if (const auto *M = Result.Nodes.getNodeAs<QualType>("check")) {
     std::string file, Dfile;
     int line = 0, column = 0;
@@ -715,7 +739,12 @@ static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
       line = PLoc.getLine();
       column = PLoc.getColumn();
     }
-    std::cout << "TypeLoc " << file << " " << line << " " << column << "\n";
+    StringRef Text = Lexer::getSourceText(
+        CharSourceRange::getTokenRange(M->getSourceRange()), SM,
+        Context.getLangOpts());
+    auto stmt = escapeJsonString(Text.str());
+    std::cout << "NamedDecl " << file << " " << line << " " << column << " "
+              << stmt << "\n";
   } else if (const auto *M = Result.Nodes.getNodeAs<Stmt>("check")) {
     std::string file, Dfile;
     int line = 0, column = 0;
@@ -729,7 +758,12 @@ static void process(const MatchFinder::MatchResult &Result, SourceManager &SM) {
       line = PLoc.getLine();
       column = PLoc.getColumn();
     }
-    std::cout << "Stmt " << file << " " << line << " " << column << "\n";
+    StringRef Text = Lexer::getSourceText(
+        CharSourceRange::getTokenRange(M->getSourceRange()), SM,
+        Context.getLangOpts());
+    auto stmt = escapeJsonString(Text.str());
+    std::cout << "Stmt " << file << " " << line << " " << column << " " << stmt
+              << "\n";
   }
 }
 
@@ -739,9 +773,13 @@ public:
       : Context(Context), SM(SM) {}
 
   virtual void run(const MatchFinder::MatchResult &Result) {
+#if 0
+    process(Result, SM, Context);
+    return;
+#endif
     if (const auto *ND =
             Result.Nodes.getNodeAs<NamespaceDecl>("NamespaceDecl|")) {
-      std::string file, Dfile;
+      std::string file, Dfile, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
       SourceLocation Loc = SM.getSpellingLoc(ND->getLocation());
@@ -752,11 +790,15 @@ public:
         file = getPath(PLoc.getFilename());
         line = PLoc.getLine();
         column = PLoc.getColumn();
+        stmt = ND->getNameAsString();
       }
       std::stringstream ss;
       ss << "{\"type\":\"NamespaceDecl\",\"file\":\"" << file
-         << "\",\"line\":" << line << ",\"column\":" << column
-         << ",\"namespace\":\"" << ND->getName().str() << "\"}";
+         << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
+         << stmt << "\",\"exptype\":\""
+         << "NamespaceDecl"
+         << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
+         << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
     } else if (const auto *TL = Result.Nodes.getNodeAs<TypeLoc>("TypeLoc|")) {
       std::string file, Dfile, stmt, Dstmt;
@@ -793,7 +835,7 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (!file.empty() && skipPath(file))
+      if (file.empty())
         return;
       PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
       if (DPLoc.isValid()) {
@@ -801,12 +843,12 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      if (!Dfile.empty() && skipPath(Dfile))
+      if (Dfile.empty() == false && skipPath(Dfile))
         return;
       std::stringstream ss;
       ss << "{\"type\":\"TypeLoc\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
-         << stmt << "\",\"definename\":\"" << TL->getType()->getTypeClassName()
+         << stmt << "\",\"exptype\":\"" << TL->getType()->getTypeClassName()
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
@@ -832,7 +874,7 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (!file.empty() && skipPath(file))
+      if (file.empty())
         return;
       PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
       if (DPLoc.isValid()) {
@@ -840,7 +882,7 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      if (!Dfile.empty() && skipPath(Dfile))
+      if (Dfile.empty() == false && skipPath(Dfile))
         return;
       {
         auto FullRange =
@@ -851,7 +893,7 @@ public:
       std::stringstream ss;
       ss << "{\"type\":\"DeclRefExpr\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
-         << stmt << "\",\"definename\":\"" << DRE->getType()->getTypeClassName()
+         << stmt << "\",\"exptype\":\"" << DRE->getType()->getTypeClassName()
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
@@ -870,8 +912,8 @@ public:
         auto Text = Lexer::getSourceText(FullRange, SM, LangOptions());
         stmt = escapeJsonString(Text.str());
       } else {
-        auto FullRange = CharSourceRange::getCharRange(
-            FD->getBeginLoc(), FD->getEndLoc());
+        auto FullRange =
+            CharSourceRange::getCharRange(FD->getBeginLoc(), FD->getEndLoc());
         auto Text = Lexer::getSourceText(FullRange, SM, LangOptions());
         stmt = escapeJsonString(Text.str());
       }
@@ -881,6 +923,8 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
+      if (file.empty())
+        return;
       if (!file.empty() && skipPath(file))
         return;
       // const DeclContext *DC = FD->getDeclContext();
@@ -932,8 +976,46 @@ public:
       std::stringstream ss;
       ss << "{\"type\":\"FunctionDecl\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
-         << stmt << "\",\"definename\":\""
-         << (!FD->isThisDeclarationADefinition() || FD->getBody() == nullptr ? "functiondecl" : "functionimp")
+         << stmt << "\",\"exptype\":\""
+         << (!FD->isThisDeclarationADefinition() || FD->getBody() == nullptr
+                 ? "FunctionDecl"
+                 : "FunctionImpl")
+         << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
+         << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
+      printf("%s\n", ss.str().c_str());
+    } else if (const auto *UDD = Result.Nodes.getNodeAs<UsingDirectiveDecl>(
+                   "UsingDirectiveDecl|")) {
+      std::string file, Dfile, stmt, Dstmt;
+      int line = 0, column = 0;
+      int Dline = 0, Dcolumn = 0;
+      SourceLocation Loc = SM.getSpellingLoc(UDD->getBeginLoc());
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+        return;
+      {
+        SourceLocation End =
+            Lexer::findLocationAfterToken(UDD->getEndLoc(), clang::tok::semi,
+                                          SM, Context.getLangOpts(), false);
+        if (End.isInvalid()) {
+          End = Lexer::getLocForEndOfToken(UDD->getEndLoc(), 0, SM,
+                                           Context.getLangOpts());
+        }
+        auto FullRange = CharSourceRange::getCharRange(UDD->getBeginLoc(), End);
+        auto Text = Lexer::getSourceText(FullRange, SM, LangOptions());
+        stmt = escapeJsonString(Text.str());
+      }
+      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      if (PLoc.isValid()) {
+        file = getPath(PLoc.getFilename());
+        line = PLoc.getLine();
+        column = PLoc.getColumn();
+      }
+      if (file.empty())
+        return;
+      std::stringstream ss;
+      ss << "{\"type\":\"UsingDirectiveDecl\",\"file\":\"" << file
+         << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
+         << stmt << "\",\"exptype\":\""
+         << "UsingDirectiveDecl"
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
@@ -956,12 +1038,12 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (!file.empty() && skipPath(file))
+      if (file.empty())
         return;
       std::stringstream ss;
       ss << "{\"type\":\"Stmt\",\"file\":\"" << file << "\",\"line\":" << line
          << ",\"column\":" << column << ",\"stmt\":\"" << stmt
-         << "\",\"definename\":\"" << S->getStmtClassName() << "\",\"dfile\":\""
+         << "\",\"exptype\":\"" << S->getStmtClassName() << "\",\"dfile\":\""
          << Dfile << "\",\"dline\":" << Dline << ",\"dcolumn\":" << Dcolumn
          << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
@@ -992,21 +1074,23 @@ public:
     MatchFinder Finder;
     auto *Callback{
         new AnalysisMatchCallback{CI.getASTContext(), CI.getSourceManager()}};
+#if 0
+    Finder.addMatcher(clang::ast_matchers::namespaceDecl().bind("check"),
+                      Callback);
+    Finder.addMatcher(clang::ast_matchers::nestedNameSpecifierLoc().bind(
+                          "nestedNameSpecifierLoc"),
+                      Callback);
+    Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("check"),
+                      Callback);
+    Finder.addMatcher(clang::ast_matchers::usingDirectiveDecl().bind("check"),
+                      Callback);
+    Finder.addMatcher(clang::ast_matchers::qualType().bind("check"), Callback);
+    Finder.addMatcher(clang::ast_matchers::namedDecl().bind("check"), Callback);
+    Finder.addMatcher(clang::ast_matchers::typeLoc().bind("check"), Callback);
+    Finder.addMatcher(clang::ast_matchers::stmt().bind("check"), Callback);
+#endif
 
-    // Finder.addMatcher(clang::ast_matchers::namespaceDecl().bind("check"),
-    //                   Callback);
-    // Finder.addMatcher(clang::ast_matchers::nestedNameSpecifierLoc().bind(
-    //                       "nestedNameSpecifierLoc"),
-    //                   Callback);
-    // Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("check"),
-    //                   Callback);
-    // Finder.addMatcher(clang::ast_matchers::usingDirectiveDecl().bind("check"),
-    //                   Callback);
-    // Finder.addMatcher(clang::ast_matchers::qualType().bind("check"), Callback);
-    // Finder.addMatcher(clang::ast_matchers::namedDecl().bind("check"), Callback);
-    // Finder.addMatcher(clang::ast_matchers::typeLoc().bind("check"), Callback);
-    // Finder.addMatcher(clang::ast_matchers::stmt().bind("check"), Callback);
-
+#if 1
     if (option.find("NamespaceDecl|") != std::string::npos) {
       Finder.addMatcher(
           clang::ast_matchers::namespaceDecl().bind("NamespaceDecl|"),
@@ -1020,9 +1104,14 @@ public:
     } else if (option.find("FunctionDecl|") != std::string::npos) {
       Finder.addMatcher(
           clang::ast_matchers::functionDecl().bind("FunctionDecl|"), Callback);
+    } else if (option.find("UsingDirectiveDecl|") != std::string::npos) {
+      Finder.addMatcher(
+          clang::ast_matchers::usingDirectiveDecl().bind("UsingDirectiveDecl|"),
+          Callback);
     } else if (option.find("Stmt|") != std::string::npos) {
       Finder.addMatcher(clang::ast_matchers::stmt().bind("Stmt|"), Callback);
     }
+#endif
     return std::make_unique<AnalysisConsumer>(Finder);
   }
 };
