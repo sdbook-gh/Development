@@ -2,23 +2,17 @@ import os
 import argparse
 import re
 import json
-# import clang.cindex
 import logging
 import sys
 
 '''
-此脚本在给定的根目录中搜索所有名为 'Export_Inc' 的目录
-然后将这些目录中所有包含 'AMap' 的文件重命名为用户指定的新名称
-此外，它还会更新所有C、C++源码文件中的 include 语句，以反映新的文件名
 '''
 
-# AMAP_STRING_LIST = ['AMap', 'Amap', 'amap', 'AMAP']
 AMAP_STRING_LIST = ['LbsAmap', 'NS']
 
-# clang.cindex.Config.set_library_file('/usr/lib/x86_64-linux-gnu/libclang-17.so.17')
 log_file = 'update_sourcecode.log'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename=log_file, filemode='w')
-analyzer = '/share/dev/test_cpp/build/analyzer'
+analyzer = './build/analyzer'
 reuse_analyzed_result = True
 
 class SourceCodeUpdateInfo:
@@ -48,7 +42,6 @@ class SourceCodeUpdater:
       exit(1)
     if os.path.exists(self.output_directory):
       logging.warning(f"输出目录 '{self.output_directory}' 已存在")
-    # self.index = clang.cindex.Index.create()
     self.cantidate_replace_files = {}
     self.rename_file_list = []
     self.source_files_dependencies = {}
@@ -119,8 +112,10 @@ class SourceCodeUpdater:
   def match_macro(self, macroname):
     if macroname == 'BEGIN_NS':
       return f'namespace {self.new_name} {{'
-    if macroname == 'END_NS':
+    elif macroname == 'END_NS':
       return f'}}'
+    elif macroname == 'NS':
+      return f'{self.new_name}'
     return None
 
   def analyze_source_files_MacroExpands(self):
@@ -402,7 +397,7 @@ class SourceCodeUpdater:
       exit(1)
 
   def process_source_files(self):
-    # self.copy_source_files()
+    self.copy_source_files()
     self.analyze_source_files_MacroExpands()
     self.analyze_source_files_NamespaceDecl()
     self.analyze_source_files_TypeLoc()
@@ -417,10 +412,14 @@ class SourceCodeUpdater:
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument('compile_commands_json', type=str, help='Path to compile_commands.json')
-  parser.add_argument('input_directory', type=str, help='The root directory to search for Export_Inc directories')
-  parser.add_argument('output_directory', type=str, help='The directory to save the updated files')
-  parser.add_argument('new_name', type=str, help='The new name to replace AMap with')
-  parser.add_argument('extra_cmd', type=str, help='')
+  parser.add_argument('input_directory', type=str, help='The directory of source code files')
+  parser.add_argument('output_directory', type=str, help='The directory to save the updated source code files')
+  parser.add_argument('new_name', type=str, help='The new name to be replaced with')
+  parser.add_argument('extra_cmd', type=str, help='The shell command to execute before updating source code files')
+  if len(sys.argv) == 1:
+    parser.print_help(sys.stderr)
+    sys.exit(1)
+
   args = parser.parse_args()
 
   if not args.compile_commands_json:
