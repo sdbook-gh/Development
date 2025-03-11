@@ -4,16 +4,91 @@ import re
 import json
 import logging
 import sys
+import threading
 
 '''
 '''
 
-AMAP_STRING_LIST = ['LbsAmap', 'NS']
+AMAP_NS_STRING_LIST = ['NM']
+AMAP_NS_NEW_STRING = 'NewNM'
+AMAP_CLS_STRING_LIST = ['ns', 'NM', 'NSDEF']
+AMAP_CLS_NEW_STRING = 'NewNM'
+def match_macro(macroname, macrotype, macrostmt):
+  if macrotype == 'MacroExpands':
+    if macroname == 'BEGIN_NS':
+      return f'namespace {AMAP_NS_NEW_STRING} {{'
+    elif macroname == 'END_NS':
+      return f'}}'
+    return None
+  if macrotype == 'MacroDefined':
+    if macroname == 'NS_PREFIX':
+      return f'NS_PREFIX(DECL) {AMAP_NS_NEW_STRING}##DECL'
+  return None
+
+# AMAP_NS_STRING_LIST = ['LbsAmap', 'NS']
+# AMAP_NS_NEW_STRING = 'LbsTJ'
+# AMAP_CLS_STRING_LIST = ['AMap']
+# AMAP_CLS_NEW_STRING = 'TJ'
+
+# def match_macro(macroname, macrotype, macrostmt):
+#   if macrotype == 'MacroExpands':
+#     if macroname == 'BEGIN_NS':
+#       return f'namespace {AMAP_NS_NEW_STRING} {{'
+#     elif macroname == 'END_NS':
+#       return f'}}'
+#     return None
+#   elif macrotype == 'MacroDefined':
+#     if macroname == 'NS':
+#       return f'NS {AMAP_NS_NEW_STRING}'
+#     if macroname == 'SEARCH_LOG_D':
+#       return f'SEARCH_LOG_D(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_DEBUG, SEARCH_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+#     if macroname == 'SEARCH_LOG_I':
+#       return f'SEARCH_LOG_I(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_INFO, SEARCH_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+#     if macroname == 'SEARCH_LOG_W':
+#       return f'SEARCH_LOG_W(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_WARN, SEARCH_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+#     if macroname == 'SEARCH_LOG_E':
+#       return f'SEARCH_LOG_E(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_ERROR, SEARCH_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+
+#     if macroname == 'NAVI_LOG_D':
+#       return f'NAVI_LOG_D(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_DEBUG, NAVI_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+#     if macroname == 'NAVI_LOG_I':
+#       return f'NAVI_LOG_I(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_INFO, NAVI_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+#     if macroname == 'NAVI_LOG_W':
+#       return f'NAVI_LOG_W(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_WARN, NAVI_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+#     if macroname == 'NAVI_LOG_E':
+#       return f'NAVI_LOG_E(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_ERROR, NAVI_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+#     if macroname == 'NAVI_TIME_START':
+#       return f'NAVI_TIME_START {AMAP_CLS_NEW_STRING}LogStartTiming(SOURCE_INFO)'
+#     if macroname == 'NAVI_TIME_END':
+#       return f'NAVI_TIME_END(handle, fmt, ...) {AMAP_CLS_NEW_STRING}LogEndTiming(handle, AMAP_LOG_LEVEL_INFO, NAVI_PERF_TAG, SOURCE_INFO, fmt, ##__VA_ARGS__)'
+
+#     if macroname == 'MAP_LOG_D':
+#       return f'MAP_LOG_D(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_DEBUG, AMAP_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, FUNCTION_SIGNATURE), fmt, ##__VA_ARGS__)'
+#     if macroname == 'MAP_LOG_I':
+#       return f'MAP_LOG_I(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_INFO, AMAP_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, FUNCTION_SIGNATURE), fmt, ##__VA_ARGS__)'
+#     if macroname == 'MAP_LOG_W':
+#       return f'MAP_LOG_W(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_WARN, AMAP_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, FUNCTION_SIGNATURE), fmt, ##__VA_ARGS__)'
+#     if macroname == 'MAP_LOG_E':
+#       return f'MAP_LOG_E(fmt,...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_ERROR, AMAP_LOG_TAG, SOURCE_LOC(__FILE__, __LINE__, FUNCTION_SIGNATURE), fmt, ##__VA_ARGS__)'
+
+#     if macroname == 'LOGE':
+#       return f'LOGE(fmt, ...) {AMAP_CLS_NEW_STRING}Log(AMAP_LOG_LEVEL_ERROR, "AMapCLog", SOURCE_LOC(__FILE__, __LINE__, __FUNCTION__), fmt, ##__VA_ARGS__)'
+
+#   return None
 
 log_file = 'update_sourcecode.log'
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename=log_file, filemode='w')
+# logging_lock = threading.Lock()
 analyzer = './build/analyzer'
-reuse_analyzed_result = True
+
+def LOG(level, message):
+  # with logging_lock:
+  if level == 'info':
+    logging.info(message)
+  elif level == 'warning':
+    logging.warning(message)
+  elif level == 'error':
+    logging.error(message)
 
 class SourceCodeUpdateInfo:
   def __init__(self, file_path):
@@ -28,20 +103,31 @@ class SourceCodeUpdatePosition:
     self.stmt = stmt
     self.tostmt = tostmt
     self.type = type
+  def match(self, line, column, stmt):
+    if self.line == line:
+      current_start = self.column
+      current_end = self.column + len(self.stmt)
+      new_start = column
+      new_end = column + len(stmt)
+      if new_start < current_end and new_end > current_start:
+        return True
+    return False
 
 class SourceCodeUpdater:
-  def __init__(self, compile_commands_json, input_directory, output_directory, new_name):
+  def __init__(self, compile_commands_json, input_directory, output_directory, log_directory):
     self.compile_commands_json = compile_commands_json
     self.source_files = {}
     self.parse_compile_commands()
-    self.input_directory = input_directory
-    self.output_directory = output_directory
-    self.new_name = new_name
+    self.input_directory = os.path.realpath(input_directory)
+    self.output_directory = os.path.realpath(output_directory)
+    self.log_directory = os.path.realpath(log_directory)
     if not os.path.exists(self.input_directory):
       print(f"错误: 输入目录 '{self.input_directory}' 不存在", file=sys.stderr)
       exit(1)
     if os.path.exists(self.output_directory):
-      logging.warning(f"输出目录 '{self.output_directory}' 已存在")
+      LOG('warning', f"输出目录 '{self.output_directory}' 已存在")
+    if os.path.exists(self.log_directory):
+      LOG('warning', f"日志目录 '{self.log_directory}' 已存在")
     self.cantidate_replace_files = {}
     self.rename_file_list = []
     self.source_files_dependencies = {}
@@ -76,131 +162,246 @@ class SourceCodeUpdater:
       if times != -1 and count >= times:
         return
       count += 1
-      logging.info(f"分析{cmd}: {file_path}")
+      LOG('info', f"分析{cmd}: {file_path}")
       compile_commands = self.source_files.get(file_path)
+      # filter
+      # if file_path != '/home/shenda/dev/mapdev/MMShell_1500/AMap3D-Cpp/MapsLibrary/Source/AMapAdapter.cpp':
+      #   continue
       if compile_commands is None:
-        result = os.system(f'echo "# {file_path}" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -p {os.path.dirname(self.compile_commands_json)} >> {analyzer_log_file}')
+        LOG('info', f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
+        result = os.system(f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -p {os.path.dirname(self.compile_commands_json)} >> {analyzer_log_file}')
       else:
-        result = os.system(f'echo "# {file_path}" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
+        LOG('info', f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
+        result = os.system(f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
       if result != 0:
         print(f"错误: 分析源文件时出错，返回值: {result} {file_path}", file=sys.stderr)
         exit(1)
 
-  def analyze_source_files_InclusionDirective(self):
-    analyzer_log_file = 'analyzer_InclusionDirective.log'
-    self.exec_analyzer(analyzer_log_file, "InclusionDirective|", self.source_files.keys(), -1, reuse_analyzed_result)
-    with open(analyzer_log_file, 'r') as analyzer_log_file_content:
-      for line in analyzer_log_file_content:
+  def match_update_position(self, file_path, line, column, stmt):
+    if file_path not in self.cantidate_replace_files:
+      self.cantidate_replace_files[file_path] = SourceCodeUpdateInfo(file_path)
+    for pos in self.cantidate_replace_files[file_path].update_position.values():
+      if pos.match(line, column, stmt):
+        return True
+    return False
+
+  # def analyze_source_files_InclusionDirective(self):
+  #   analyzer_log_file = 'analyzer_InclusionDirective.log'
+  #   self.exec_analyzer(analyzer_log_file, "InclusionDirective|", self.source_files.keys(), -1, reuse_analyzed_result)
+  #   with open(analyzer_log_file, 'r') as analyzer_log_file_content:
+  #     for line in analyzer_log_file_content:
+  #       if line.startswith('#'):
+  #         continue
+  #       try:
+  #         log_entry = json.loads(line)
+  #         if log_entry['type'] != 'InclusionDirective':
+  #           continue
+  #         filepath = log_entry['file']
+  #         includefilepath = log_entry['includefilepath']
+  #         if filepath == includefilepath:
+  #           continue
+  #         if self.source_files_dependencies.get(includefilepath) is None:
+  #           self.source_files_dependencies[includefilepath] = []
+  #         if filepath not in self.source_files_dependencies[includefilepath]:
+  #           self.source_files_dependencies[includefilepath].append(filepath)
+  #       except json.JSONDecodeError as e:
+  #         print(f"错误: 解析include分析日志时出错: {e} {line}", file=sys.stderr)
+  #         exit(1)
+
+  def analyze_source_files_MacroDefExp(self, reuse_analyzed_result = False):
+    analyze_log_file = f'{self.log_directory}/analyze_MacroDefExp.log'
+    self.exec_analyzer(analyze_log_file, "MacroDefExp|", self.source_files.keys(), -1, reuse_analyzed_result)
+    with open(analyze_log_file, 'r') as analyze_log_file_content:
+      for line in analyze_log_file_content:
         if line.startswith('#'):
           continue
         try:
           log_entry = json.loads(line)
-          if log_entry['type'] != 'InclusionDirective':
-            continue
-          filepath = log_entry['file']
-          includefilepath = log_entry['includefilepath']
-          if filepath == includefilepath:
-            continue
-          if self.source_files_dependencies.get(includefilepath) is None:
-            self.source_files_dependencies[includefilepath] = []
-          if filepath not in self.source_files_dependencies[includefilepath]:
-            self.source_files_dependencies[includefilepath].append(filepath)
+          macrotype = log_entry['type']
+          if macrotype == 'MacroExpands' or macrotype == 'MacroDefined':
+            file_path = log_entry['file']
+            file_line = log_entry['line']
+            file_column = log_entry['column']
+            macroname = log_entry['macroname']
+            macrostmt = log_entry['macrostmt']
+            matchupdate = match_macro(macroname, macrotype, macrostmt)
+            if matchupdate is not None and len(matchupdate) > 0:
+              if not self.match_update_position(file_path, file_line, file_column, macroname):
+                self.cantidate_replace_files[file_path].update_position[(file_line, file_column)] = SourceCodeUpdatePosition(file_line, file_column, 'MacroDefExp', macrostmt, matchupdate)
         except json.JSONDecodeError as e:
           print(f"错误: 解析include分析日志时出错: {e} {line}", file=sys.stderr)
           exit(1)
 
-  def match_macro(self, macroname):
-    if macroname == 'BEGIN_NS':
-      return f'namespace {self.new_name} {{'
-    elif macroname == 'END_NS':
-      return f'}}'
-    elif macroname == 'NS':
-      return f'{self.new_name}'
-    return None
+  def get_match_string_list(self, log_entry_type, expression_type = None):  
+    if expression_type.endswith('+'):
+      if expression_type == 'Elaborated+':
+        return []
+      else:
+        return AMAP_CLS_STRING_LIST
+    elif log_entry_type == 'NamedDecl':
+      return AMAP_CLS_STRING_LIST
+    elif log_entry_type == 'CXXRecordDecl':
+      return AMAP_CLS_STRING_LIST
+    elif expression_type == 'CallExpr':
+      return []
+    return AMAP_NS_STRING_LIST
 
-  def analyze_source_files_MacroExpands(self):
-    analyzer_log_file = 'analyzer_MacroExpands.log'
-    self.exec_analyzer(analyzer_log_file, "MacroExpands|", self.source_files.keys(), -1, reuse_analyzed_result)
-    with open(analyzer_log_file, 'r') as analyzer_log_file_content:
-      for line in analyzer_log_file_content:
-        if line.startswith('#'):
-          continue
-        try:
-          log_entry = json.loads(line)
-          if log_entry['type'] != 'MacroExpands':
-            continue
-          file_path = log_entry['file']
-          file_line = log_entry['line']
-          file_column = log_entry['column']
-          macroname = log_entry['macroname']
-          matchupdate = self.match_macro(macroname)
-          if matchupdate :
-            if file_path not in self.cantidate_replace_files:
-              self.cantidate_replace_files[file_path] = SourceCodeUpdateInfo(file_path)
-            position_key = (file_line, file_column)
-            if position_key not in self.cantidate_replace_files[file_path].update_position:
-              self.cantidate_replace_files[file_path].update_position[position_key] = SourceCodeUpdatePosition(file_line, file_column, 'MacroExpands', macroname, matchupdate)
-        except json.JSONDecodeError as e:
-          print(f"错误: 解析include分析日志时出错: {e} {line}", file=sys.stderr)
-          exit(1)
+  def skip_stmt(self, stmt, expression_type):
+    for ns in ['AMapSDK_Common::', 'lbs::navi::']:
+      if  ns in stmt:
+        return True
+    # if expression_type == 'Elaborated+':
+    #   pattern_list = ['AMapNaviCoreEyrieViewWrap', 'AMapNaviCoreEyrieObserverImpl', 'AMapNaviCoreEyrieViewManager', 'AMapNaviCoreManager', 'AMapNaviCoreObserver']
+    #   if "AMapNaviCore" in stmt:
+    #     if not any(pattern in stmt for pattern in pattern_list):
+    #       return True
+    #   pattern_list = ['AMapNaviRouteNotifyDataType', 'AMapNaviRouteGuideGroup', 'AMapNaviRouteGuideSegment', 'AMapNaviRouteNotifyData']
+    #   if "AMapNaviRoute" in stmt:
+    #     if not any(pattern in stmt for pattern in pattern_list):
+    #       return True
+    # pattern_list = ['DIMENSION_NUM']
+    # if "DIME" in stmt:
+    #   if any(pattern in stmt for pattern in pattern_list):
+    #     return True
+    return False
 
-  def analyze_source_files_NamespaceDecl(self):
-    analyzer_log_file = 'analyzer_NamespaceDecl.log'
-    self.exec_analyzer(analyzer_log_file, "NamespaceDecl|", self.source_files.keys(), -1, reuse_analyzed_result)
-    with open(analyzer_log_file, 'r') as analyzer_log_file_content:
-      for line in analyzer_log_file_content:
-        if line.startswith('#'):
-          continue
-        try:
-          log_entry = json.loads(line)
-          if log_entry['type'] != 'NamespaceDecl':
-            continue
-          file_path = log_entry['file']
-          file_line = log_entry['line']
-          file_column = log_entry['column']
-          namespace = log_entry['stmt']
-          if any(amap_string in namespace for amap_string in AMAP_STRING_LIST):
-            if file_path not in self.cantidate_replace_files:
-              self.cantidate_replace_files[file_path] = SourceCodeUpdateInfo(file_path)
-            position_key = (file_line, file_column)
-            if position_key not in self.cantidate_replace_files[file_path].update_position:
-              self.cantidate_replace_files[file_path].update_position[position_key] = SourceCodeUpdatePosition(file_line, file_column, 'NamespaceDecl', namespace)
-            # return
-        except json.JSONDecodeError as e:
-          print(f"错误: 解析NamespaceDecl分析日志时出错: {e} {line}", file=sys.stderr)
-          exit(1)
-    return
+  def match_expression(self, match_string_list, stmt, expression_type):
+    def mark_string_pos(stmt, match_string_list, mark, prefix = '', suffix = '', pos_start = -1, pos_end = -1):
+      new_stmt = stmt
+      found = False
+      for match_string in match_string_list:
+        pattern = f'{prefix}{match_string}{suffix}'
+        pos = 0
+        while pos != -1:
+          pos = new_stmt.find(pattern, pos)
+          if pos != -1:
+            if pos_start >= 0 and pos < pos_start:
+              pos += 1
+              continue
+            if pos_end >= 0 and pos > pos_end:
+              pos += 1
+              continue
+            found = True
+            new_stmt = new_stmt[:pos] + mark + new_stmt[pos + len(pattern):]
+      return found, new_stmt
 
-  def match_expression(self, amap_string, stmt, expression_type):
-    if expression_type == 'Elaborated':
-      pattern = re.compile(r'^' + re.escape(amap_string) + r'(::)?')
-      pos = pattern.search(stmt)
-      if pos is not None:
-        return stmt[pos.start():pos.end()]
-    elif expression_type == 'Enum':
-      pattern = re.compile(r'^' + re.escape(amap_string) + r'::')
-      pos = pattern.search(stmt)
-      if pos is not None:
-        return stmt[pos.start():pos.end()]
-    elif expression_type == 'FunctionProto':
-      pattern = re.compile(r'^' + re.escape(amap_string) + r'::')
-      pos = pattern.search(stmt)
-      if pos is not None:
-        return stmt[pos.start():pos.end()]
-    elif expression_type == 'FunctionImpl':
-      pattern = re.compile(r'^' + re.escape(amap_string) + r'::')
-      pos = pattern.search(stmt)
-      if pos is not None:
-        return stmt[pos.start():pos.end()]
+    if len(stmt) == 0:
+      return '', ''
+    if expression_type.endswith('+'):
+      new_stmt = re.sub(r'\bconst\s+', '', stmt)
+      if expression_type == 'Elaborated+':
+        if self.skip_stmt(new_stmt, expression_type):
+          return '', ''
+        found_ns, new_stmt = mark_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::')
+        found_cls, new_stmt = mark_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|')
+        if found_ns or found_cls:
+          new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
+          new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+          return new_stmt, stmt
+        return '', ''
+      else:
+        found_cls, new_stmt = mark_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|')
+        if found_cls:
+          new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+          return new_stmt, stmt
+        return '', ''
+    if expression_type == 'NamespaceDecl':
+      found, new_stmt = mark_string_pos(stmt, match_string_list, '|+|')
+      if found:
+        new_stmt = new_stmt.replace('|+|', AMAP_NS_NEW_STRING)
+        return new_stmt, stmt
+      return '', ''
+    elif expression_type == 'NamedDecl':
+      # if self.skip_stmt(stmt):
+      #   return '', ''
+      if stmt.startswith('(lambda ') or stmt.startswith('~(lambda ') or stmt.startswith('operator '):
+        return '', ''
+      found, new_stmt = mark_string_pos(stmt, match_string_list, '|-|')
+      if found:
+        new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+        return new_stmt, stmt
+      return '', ''
+    elif expression_type == 'CXXRecordDecl':
+      found, new_stmt = mark_string_pos(stmt, match_string_list, '|-|')
+      if found:
+        new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+        return new_stmt, stmt
+      return '', ''
+    elif expression_type == 'CallExpr':
+      stmt_list = stmt.split('%%')
+      if len(stmt_list) != 2:
+        return '', ''
+      if len(stmt_list[0]) == 0:
+        return '', ''
+      found = False
+      new_stmt = stmt_list[0]
+      func_pos_start = stmt_list[0].find(stmt_list[1])
+      func_pos_end = func_pos_start + len(stmt_list[1])
+      for amap_string in AMAP_CLS_STRING_LIST:
+        if amap_string in stmt_list[1]:
+          found = True
+          new_stmt = stmt_list[0][:func_pos_start] + stmt_list[1].replace(amap_string, AMAP_CLS_NEW_STRING) + stmt_list[0][func_pos_end:]
+      pos_start = 0
+      pos_end = 0
+      match_obj = re.search(r'(\.|->)', new_stmt[:func_pos_start])
+      if match_obj:
+        pos_start = match_obj.start()
+        pos_end = match_obj.end()
+      found_ns, new_stmt = mark_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::', pos_end, func_pos_start)
+      found_cls, new_stmt = mark_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|', '', '::', pos_end, func_pos_start)
+      if found_ns or found_cls:
+        found = True
+        new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
+        new_stmt = new_stmt.replace('|-|', f'{AMAP_CLS_NEW_STRING}::')
+      if found:
+        return new_stmt, stmt_list[0]
+      return '', ''
+    elif expression_type == 'FunctionDecl' or expression_type == 'FunctionImpl':
+      function_exp_list = stmt.split('%%')
+      function_prefix = ''
+      if len(function_exp_list) == 2:
+        pos_prefix = stmt.find(function_exp_list[1])
+        if pos_prefix != -1:
+          function_prefix = stmt[:pos_prefix + len(function_exp_list[1])]
+          stmt = stmt[len(function_prefix):]
+      pos_call = stmt.find('(')
+      if pos_call != -1:
+        stmt = stmt[:pos_call]
+      new_stmt = stmt
+      found_ns, new_stmt = mark_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::')
+      found_cls, new_stmt = mark_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|')
+      if found_ns or found_cls:
+        new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
+        new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+        return new_stmt, stmt
+      return '', ''
     elif expression_type == 'UsingDirectiveDecl':
-      if amap_string in stmt:
-        return stmt
-    return None
-  
-  def check_log_entry(self, log_entry, log_entry_type):
+      namespace_pattern = r'using\s+namespace\s+'
+      namespace_pos = re.search(namespace_pattern, stmt)
+      found_ns = False
+      found_cls = False
+      if namespace_pos:
+        new_stmt = stmt
+        found_ns, new_stmt = mark_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|')
+        if found_ns:
+          new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}')
+          return new_stmt, stmt
+      else:
+        found_ns, new_stmt = mark_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::')
+        found_cls, new_stmt = mark_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|')
+        if found_ns or found_cls:
+          new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
+          new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+          return new_stmt, stmt
+      return '', ''
+    return None, None
+
+  def check_log_entry(self, log_entry, log_entry_type, append_type = ''):
     if log_entry['type'] != log_entry_type:
       return
     file_path = log_entry['file']
+    if len(file_path) == 0:
+      return
     file_line = log_entry['line']
     file_column = log_entry['column']
     stmt = log_entry['stmt']
@@ -209,104 +410,51 @@ class SourceCodeUpdater:
     dfile_line = log_entry['dline']
     dfile_column = log_entry['dcolumn']
     dstmt = log_entry['dstmt']
-    found = False
-    for amap_string in AMAP_STRING_LIST:
-      new_stmt = self.match_expression(amap_string, stmt, expression_type)
-      if new_stmt:
-        found = True
-        if file_path not in self.cantidate_replace_files:
-          self.cantidate_replace_files[file_path] = SourceCodeUpdateInfo(file_path)
-        position_key = (file_line, file_column)
-        if position_key not in self.cantidate_replace_files[file_path].update_position:
-          self.cantidate_replace_files[file_path].update_position[position_key] = SourceCodeUpdatePosition(file_line, file_column, log_entry_type, new_stmt)
-    if found:
+    # found = False
+    match_string_list = self.get_match_string_list(log_entry_type, expression_type + append_type)
+    new_stmt, adj_stmt = self.match_expression(match_string_list, stmt, expression_type + append_type)
+    if new_stmt is not None:
+      if len(new_stmt) == 0:
+        return
+      file_column += stmt.find(adj_stmt)
+      stmt = adj_stmt
+      if not self.match_update_position(file_path, file_line, file_column, stmt):
+        self.cantidate_replace_files[file_path].update_position[(file_line, file_column)] = SourceCodeUpdatePosition(file_line, file_column, log_entry_type + ":" + expression_type + append_type, stmt, new_stmt)
       return
-    for amap_string in AMAP_STRING_LIST:
-      new_stmt = self.match_expression(amap_string, dstmt, expression_type)
-      if new_stmt:
-        if dfile_path not in self.cantidate_replace_files:
-          self.cantidate_replace_files[dfile_path] = SourceCodeUpdateInfo(dfile_path)
-        position_key = (dfile_line, dfile_column)
-        if position_key not in self.cantidate_replace_files[dfile_path].update_position:
-          self.cantidate_replace_files[dfile_path].update_position[position_key] = SourceCodeUpdatePosition(dfile_line, dfile_column, log_entry_type, new_stmt)
+    if len(dfile_path) == 0:
+      return
+    new_stmt, adj_stmt = self.match_expression(match_string_list, dstmt, expression_type + append_type)
+    if new_stmt is not None:
+      if len(new_stmt) == 0:
+        return
+      dfile_column += dstmt.find(adj_stmt)
+      dstmt = adj_stmt
+      if not self.match_update_position(dfile_path, dfile_line, dfile_column, dstmt):
+        self.cantidate_replace_files[dfile_path].update_position[(dfile_line, dfile_column)] = SourceCodeUpdatePosition(dfile_line, dfile_column, log_entry_type + ":" + expression_type + append_type, dstmt, new_stmt)
 
-  def analyze_source_files_TypeLoc(self):
-    analyzer_log_file = 'analyzer_TypeLoc.log'
-    self.exec_analyzer(analyzer_log_file, "TypeLoc|", self.source_files.keys(), -1, reuse_analyzed_result)
-    with open(analyzer_log_file, 'r') as analyzer_log_file_content:
-      for line in analyzer_log_file_content:
+  def analyze_source_files(self, analyze_type, append_type = '', reuse_analyzed_result = True):
+    analyze_log_file = f'{self.log_directory}/analyze_{analyze_type}.log'
+    self.exec_analyzer(analyze_log_file, f'{analyze_type}|', self.source_files.keys(), -1, reuse_analyzed_result)
+    with open(analyze_log_file, 'r') as analyze_log_file_content:
+      line_no = 0
+      for line in analyze_log_file_content:
+        line_no += 1
         if line.startswith('#'):
           continue
         try:
           log_entry = json.loads(line)
-          self.check_log_entry(log_entry, 'TypeLoc')
+          self.check_log_entry(log_entry, analyze_type, append_type)
           # return
-        except json.JSONDecodeError as e:
-          print(f"错误: 解析TypeLoc分析日志时出错: {e} {line}", file=sys.stderr)
+        except Exception as e:
+          print(f'错误: 解析{analyze_log_file} {line_no}行出错: {e} {line}', file=sys.stderr)
           exit(1)
     return
 
-  def analyze_source_files_DeclRefExpr(self):
-    analyzer_log_file = 'analyzer_DeclRefExpr.log'
-    self.exec_analyzer(analyzer_log_file, "DeclRefExpr|", self.source_files.keys(), -1, reuse_analyzed_result)
-    with open(analyzer_log_file, 'r') as analyzer_log_file_content:
-      for line in analyzer_log_file_content:
-        if line.startswith('#'):
-          continue
-        try:
-          log_entry = json.loads(line)
-          self.check_log_entry(log_entry, 'DeclRefExpr')
-          # return
-        except json.JSONDecodeError as e:
-          print(f"错误: 解析DeclRefExpr分析日志时出错: {e} {line}", file=sys.stderr)
-          exit(1)
-    return
-
-  def analyze_source_files_FunctionDecl(self):
-    analyzer_log_file = 'analyzer_FunctionDecl.log'
-    self.exec_analyzer(analyzer_log_file, "FunctionDecl|", self.source_files.keys(), -1, reuse_analyzed_result)
-    with open(analyzer_log_file, 'r') as analyzer_log_file_content:
-      for line in analyzer_log_file_content:
-        if line.startswith('#'):
-          continue
-        try:
-          log_entry = json.loads(line)
-          self.check_log_entry(log_entry, 'FunctionDecl')
-          # return
-        except json.JSONDecodeError as e:
-          print(f"错误: 解析FunctionDecl分析日志时出错: {e} {line}", file=sys.stderr)
-          exit(1)
-    return
-
-  def analyze_source_files_UsingDirectiveDecl(self):
-    # 分析namespace
-    analyzer_log_file = 'analyzer_UsingDirectiveDecl.log'
-    self.exec_analyzer(analyzer_log_file, "UsingDirectiveDecl|", self.source_files.keys(), -1, reuse_analyzed_result)
-    with open(analyzer_log_file, 'r') as analyzer_log_file_content:
-      for line in analyzer_log_file_content:
-        if line.startswith('#'):
-          continue
-        try:
-          log_entry = json.loads(line)
-          self.check_log_entry(log_entry, 'UsingDirectiveDecl')
-          # return
-        except json.JSONDecodeError as e:
-          print(f"错误: 解析UsingDirectiveDecl分析日志时出错: {e} {line}", file=sys.stderr)
-          exit(1)
-    return
-
-  def replace_statement(self, statement):
-    replaced = statement
-    for amap_string in AMAP_STRING_LIST:
-      if amap_string in replaced:
-        replaced = replaced.replace(amap_string, self.new_name)
-    return replaced
-
-  def replace_namespace_in_source_files(self):
+  def replace_in_source_files(self):
     for source_file, update_info in self.cantidate_replace_files.items():
       output_source_file = os.path.join(self.output_directory, os.path.relpath(source_file, self.input_directory))
-      logging.info(f"from file: {source_file}")
-      logging.info(f"to file: {output_source_file}")
+      LOG('info', f"from file: {source_file}")
+      LOG('info', f"to file: {output_source_file}")
       os.system(f'cp {source_file} {output_source_file}')
       lines = []
       with open(source_file, 'r') as input_source:
@@ -327,101 +475,69 @@ class SourceCodeUpdater:
                 line_content = lines[replace_line_number]
                 replace_diff = 0
               stmt = update_position.stmt
-              new_stmt = ''
-              if update_position.tostmt:
-                new_stmt = update_position.tostmt
-              else:
-                new_stmt = self.replace_statement(stmt)
+              new_stmt = update_position.tostmt
+              multi_lines = new_stmt.rstrip('\n').count('\n')
+              for index in range(1, multi_lines + 1):
+                line_content += lines[replace_line_number + index]
+                index = index + 1
               column = update_position.column + replace_diff - 1
+              src_stmt = line_content[column:column + len(stmt)]
+              if src_stmt != stmt:
+                LOG('error', f'src_stmt != stmt [[{src_stmt}]] != [[{stmt}]]')
+                continue
               line_content = line_content[0:column] + new_stmt + line_content[column + len(stmt):]
-              lines[replace_line_number] = line_content
+              new_line_parts = line_content.splitlines(keepends=True)
+              lines[replace_line_number:replace_line_number + len(new_line_parts)] = new_line_parts
+              # lines[replace_line_number] = line_content
               replace_diff = replace_diff + len(new_stmt) - len(stmt)
-              logging.info(f'replace {update_position.kind} {update_position.line}:{update_position.column} [[{stmt}]] -> [[{new_stmt}]] [[{line_content}]]')
-            elif update_position.type == 'header':
-              continue
+              LOG('info', f'replace {update_position.kind} {update_position.line}:{update_position.column} [[{stmt}]] -> [[{new_stmt}]] [[{line_content}]]')
+            # elif update_position.type == 'header':
+            #   continue
           os.makedirs(os.path.dirname(output_source_file), exist_ok=True)
           with open(output_source_file, 'w') as output_source:
             output_source.writelines(lines)
-
-  # def rename_header_files_in_directory(self, directory):
-  #   for dirpath, dirnames, filenames in os.walk(directory):
-  #     if self.ignore(dirpath):
-  #       continue
-  #     for filename in filenames:
-  #       if AMAP_STRING in filename and (filename.endswith('.h') or filename.endswith('.hpp')):
-  #         new_filename = filename.replace(AMAP_STRING, self.new_name)
-  #         logging.info(f'cd {dirpath} && mv {filename} {new_filename} && cd -')
-  #         result = os.system(f'cd {dirpath} && mv {filename} {new_filename} && cd -')
-  #         if result != 0:
-  #           print(f"错误: 移动文件时出错，返回值: {result} {filename} => {new_filename}", file=sys.stderr)
-  #           exit(1)
-  #         logging.info(f"rename header file: {filename} {new_filename}")
-  #         self.rename_file_list.append((filename, new_filename))
-
-  # def rename_sourcefile(self):
-  #   for dirpath, dirnames, filenames in os.walk(self.output_directory):
-  #     logging.info(f'Processing directory: {dirpath}')
-  #     if self.need_replace(dirpath):
-  #       self.rename_header_files_in_directory(dirpath)
-
-  # def replace_include_in_files(self, old_include, new_include):
-  #   for item in self.source_files:
-  #     file_path = os.path.join(self.output_directory, os.path.relpath(item[0], self.input_directory))
-  #     replaced = False
-  #     content = ''
-  #     with open(file_path, 'r') as file:
-  #       content = file.read()
-  #       includes = re.findall(r'#\s*include\s*["<](.*?)[">]', content, re.DOTALL)
-  #       for include in includes:
-  #         if old_include in include:
-  #           new_include_path = include.replace(old_include, new_include)
-  #           content = content.replace(include, new_include_path)
-  #           replaced = True
-  #       if not replaced:
-  #         continue
-  #     with open(file_path, 'w') as file:
-  #       file.write(content)
-
-  # def replace_sourcefile_include(self):
-  #   for old_name, new_name in self.rename_file_list:
-  #     self.replace_include_in_files(old_name, new_name)
 
   def copy_source_files(self):
     if os.path.exists(self.output_directory):
       print(f"错误: 输出目录 '{self.output_directory}' 已存在", file=sys.stderr)
       exit(1)
-    logging.info(f'cp -r {self.input_directory} {self.output_directory}')
+    LOG('info', f'cp -r {self.input_directory} {self.output_directory}')
     result = os.system(f'cp -r {self.input_directory} {self.output_directory}')
     if result != 0:
       print(f"错误: 复制目录时出错，返回值: {result} {self.input_directory} {self.output_directory}", file=sys.stderr)
       exit(1)
 
   def process_source_files(self):
-    self.copy_source_files()
-    self.analyze_source_files_MacroExpands()
-    self.analyze_source_files_NamespaceDecl()
-    self.analyze_source_files_TypeLoc()
-    self.analyze_source_files_DeclRefExpr()
-    self.analyze_source_files_FunctionDecl()
-    self.analyze_source_files_UsingDirectiveDecl()
-    self.replace_namespace_in_source_files()
-    # self.analyze_source_files_InclusionDirective()
-    # self.rename_sourcefile()
-    # self.replace_sourcefile_include()
+    skip_copy = False
+    # skip_copy = True
+    if not skip_copy:
+      self.copy_source_files()
+    if not os.path.exists(self.log_directory):
+      os.makedirs(self.log_directory, exist_ok=True)
+    # reuse_analyzed_result = False
+    reuse_analyzed_result = True
+    self.analyze_source_files('FunctionDecl', reuse_analyzed_result=reuse_analyzed_result)
+    self.analyze_source_files('NamedDecl', reuse_analyzed_result=reuse_analyzed_result)
+    self.analyze_source_files('CXXRecordDecl', reuse_analyzed_result=reuse_analyzed_result)
+    self.analyze_source_files('CallExpr', reuse_analyzed_result=reuse_analyzed_result)
+    self.analyze_source_files('TypeLoc', reuse_analyzed_result=False, append_type='+')
+    self.analyze_source_files('DeclRefExpr', reuse_analyzed_result=reuse_analyzed_result)
+    self.analyze_source_files('NamespaceDecl', reuse_analyzed_result=reuse_analyzed_result)
+    self.analyze_source_files('UsingDirectiveDecl', reuse_analyzed_result=reuse_analyzed_result)
+    self.analyze_source_files_MacroDefExp(reuse_analyzed_result)
+    self.replace_in_source_files()
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument('compile_commands_json', type=str, help='Path to compile_commands.json')
   parser.add_argument('input_directory', type=str, help='The directory of source code files')
   parser.add_argument('output_directory', type=str, help='The directory to save the updated source code files')
-  parser.add_argument('new_name', type=str, help='The new name to be replaced with')
+  parser.add_argument('log_directory', type=str, help='The directory to save source code analysis files')
   parser.add_argument('extra_cmd', type=str, help='The shell command to execute before updating source code files')
   if len(sys.argv) == 1:
     parser.print_help(sys.stderr)
     sys.exit(1)
-
   args = parser.parse_args()
-
   if not args.compile_commands_json:
     print("错误: 必须指定 compile_commands_json 参数", file=sys.stderr)
     exit(1)
@@ -431,16 +547,16 @@ if __name__ == "__main__":
   if not args.output_directory:
     print("错误: 必须指定 output_directory 参数", file=sys.stderr)
     exit(1)
-  if not args.new_name:
-    print("错误: 必须指定 new_name 参数", file=sys.stderr)
+  if not args.log_directory:
+    print("错误: 必须指定 log_directory 参数", file=sys.stderr)
     exit(1)
   if args.extra_cmd:
-    logging.info(f'{args.extra_cmd}')
+    LOG('info', f'{args.extra_cmd}')
     result = os.system(f'{args.extra_cmd}')
     if result != 0:
       print(f"错误: 执行命令时出错，返回值: {result} {args.extra_cmd}", file=sys.stderr)
       exit(1)
 
-  updater = SourceCodeUpdater(args.compile_commands_json, args.input_directory, args.output_directory, args.new_name)
+  updater = SourceCodeUpdater(args.compile_commands_json, args.input_directory, args.output_directory, args.log_directory)
   updater.process_source_files()
   print("完成")

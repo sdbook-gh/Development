@@ -27,7 +27,7 @@ class MySubject : public NM::nm_factory::NSDEFSubject {
 public:
   void ns_notify() { printf("MySubject::ns_notify\n"); }
 };
-std::map<NM::nm_values::NMOpenEnum, std::vector<NM::NMClass*>*> nm_map;
+std::map<NM::nm_values::NS_PREFIX(OpenEnum), std::vector<NM::NMClass*>*> nm_map;
 
 class MyStackTracker : public open::nmutils::nmtrace::NMStackTrace {
 public:
@@ -38,6 +38,9 @@ public:
     }
   }
 };
+
+open::managed_ptr<open::nmutils::nmtrace::NMStackTrace> ptr1;
+open::managed_ptr<NM::NMClass> ptr2;
 
 int main() {
   using namespace NM;
@@ -57,7 +60,7 @@ int main() {
   nm_values::NS_PREFIX(TestEnum1) e1 = nm_values::NS_PREFIX(ENUM_1);
   nm_values::NMTestEnum2 e2 = nm_values::NMTestEnum2::NM_ENUM_4;
   using namespace nm_values;
-  NMOpenEnum e3 = NMOpenEnum::ALL;
+  NS_PREFIX(OpenEnum) e3 = NS_PREFIX(OpenEnum)::ALL;
   using MT = nm_values::NMTestEnum2;
   return 0;
 }

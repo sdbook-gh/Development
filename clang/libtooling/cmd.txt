@@ -1,2 +1,6 @@
 clear && ANALYZE_CMD="FunctionDecl|" ./build/analyzer -p build/ src/test.cpp
 clear && ANALYZE_CMD="FunctionDecl|" ./build/analyzer src/test.cpp -- -Iinclude -I/usr/include/c++/11 -I/usr/include/x86_64-linux-gnu/c++/11 -I/usr/lib/gcc/x86_64-linux-gnu/11/include
+
+export C_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
+export CPLUS_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
+clear && ANALYZE_CMD="FunctionDecl|" ./build/analyzer -p /share/personal/github/Development/clang/libtooling/test_code_update_project/build /share/personal/github/Development/clang/libtooling/test_code_update_project/src/test.cpp

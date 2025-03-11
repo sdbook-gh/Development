@@ -8,3 +8,12 @@ void NM::NMClass::set_NM_value(int value) {
 namespace NM {
 void NMClass::increment_NM_value() const { _NM_value++; }
 } // namespace NM
+
+std::shared_ptr<open::nmutils::nmlog::NMAsyncLog> NM::NMClass::adjust_NM_log(std::shared_ptr<open::nmutils::nmlog::NMAsyncLog> log, std::shared_ptr<NM::NMAnotherClass> another) {
+  NM::NMClass::Enum e1;
+  NM::NMClass::EnumClass e2;
+  std::vector<int> vec1;
+  std::vector<open::managed_ptr<int>> vec2;
+  auto ptr = another->get_instance<open::nmutils::nmlog::NMAsyncLog*>(log.get());
+  return std::make_shared<open::nmutils::nmlog::NMAsyncLog>();
+}

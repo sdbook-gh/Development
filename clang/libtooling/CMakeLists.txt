@@ -10,7 +10,5 @@ link_directories(${CLANG_LIBRARY_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 add_executable(analyzer analyzer.cpp)
+target_compile_options(analyzer PRIVATE -fno-rtti)
 target_link_libraries(analyzer clangAST clangBasic clangFrontend clangIndex clangRewrite clangTooling ${LLVM_LIBRARIES} ${CLANG_LIBRARIES})
-
-add_executable(matcher matcher.cpp)
-target_link_libraries(matcher clangAST clangBasic clangFrontend clangIndex clangRewrite clangTooling ${LLVM_LIBRARIES} ${CLANG_LIBRARIES})
