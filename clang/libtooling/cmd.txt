@@ -3,4 +3,8 @@ clear && ANALYZE_CMD="FunctionDecl|" ./build/analyzer src/test.cpp -- -Iinclude 
 
 export C_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
 export CPLUS_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
+
 clear && ANALYZE_CMD="FunctionDecl|" ./build/analyzer -p /share/personal/github/Development/clang/libtooling/test_code_update_project/build /share/personal/github/Development/clang/libtooling/test_code_update_project/src/test.cpp
+
+python3 update_code.py "/home/shenda/dev/mapdev/MMShell_1500/build/compile_commands.json" "/home/shenda/dev/mapdev/MMShell_1500" "/home/shenda/dev/mapdev/MMShell_updated" BMap "clear"
+python3 update_code.py "/home/shenda/dev/mapdev/OfflineDemoQT/QtDemo/build/compile_commands.json" "/home/shenda/dev/mapdev/OfflineDemoQT/QtDemo" "/home/shenda/dev/mapdev/OfflineDemoQT/QtDemo_updated" Demo "clear"
