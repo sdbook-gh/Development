@@ -2,6 +2,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclAccessPair.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/Type.h"
@@ -49,6 +50,12 @@ static bool skipPath(const std::string &realPath) {
     return true;
   }
   if (realPath.find("/open/") != std::string::npos) {
+    return true;
+  }
+  if (realPath.find("/build/") != std::string::npos) {
+    return true;
+  }
+  if (realPath.find("/Qt/") != std::string::npos) {
     return true;
   }
   if (realPath.find("<") == 0) {
@@ -109,21 +116,20 @@ public:
     const MacroInfo *MI = MD->getMacroInfo();
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = MacroNameTok.getLocation();
-    if (SM.isInSystemHeader(Loc))
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
       return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     auto filePath = getPath(PLoc.getFilename());
     if (skipPath(filePath))
       return;
-    SourceLocation BeginLoc =
-        Lexer::GetBeginningOfToken(MI->getDefinitionLoc(), SM, LangOptions());
-    SourceLocation EndLoc = Lexer::getLocForEndOfToken(
-        MI->getDefinitionEndLoc(), 0, SM, LangOptions());
-    CharSourceRange FullRange = CharSourceRange::getCharRange(BeginLoc, EndLoc);
+    CharSourceRange CSR = CharSourceRange::getCharRange(
+        MI->getDefinitionLoc(),
+        Lexer::getLocForEndOfToken(MI->getDefinitionEndLoc(), 0, SM,
+                                   PP.getLangOpts()));
+    std::string stmt =
+        escapeJsonString(Lexer::getSourceText(CSR, SM, PP.getLangOpts()).str());
     std::string name =
         escapeJsonString(MacroNameTok.getIdentifierInfo()->getName().str());
-    std::string stmt = escapeJsonString(
-        Lexer::getSourceText(FullRange, SM, LangOptions()).str());
     std::stringstream ss;
     ss << "{\"type\":\"MacroDefined\",\"file\":\"" << filePath
        << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
@@ -138,7 +144,7 @@ public:
       return;
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = MacroNameTok.getLocation();
-    if (SM.isInSystemHeader(Loc))
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
       return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
     auto filePath = getPath(PLoc.getFilename());
@@ -235,10 +241,10 @@ public:
       printf("%s\n", ss.str().c_str());
     } else if (const TypeLoc *TL =
                    Result.Nodes.getNodeAs<TypeLoc>("TypeLoc|")) {
-// #define LOG
-#ifdef LOG
+      // #define LOG
+      // #ifdef LOG
       // printf("++++++\n");
-#endif
+      // #endif
       std::string file, Dfile, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
@@ -260,33 +266,8 @@ public:
       QualType QT = TL->getType();
       std::string exptype = QT->getTypeClassName();
       if (ElaboratedTypeLoc ETL = TL->getAs<ElaboratedTypeLoc>()) {
-        NestedNameSpecifierLoc QL = ETL.getQualifierLoc();
-        if (QL.hasQualifier()) {
-          const NestedNameSpecifier *NNS = QL.getNestedNameSpecifier();
-          if (NNS) {
-            const Decl *D = nullptr;
-            if (const Type *T = NNS->getAsType()) {
-              if (const TagDecl *TD = T->getAsTagDecl()) {
-                D = TD;
-              }
-            } else {
-              D = NNS->getAsNamespace();
-            }
-            if (D) {
-              DLoc = D->getLocation();
-              // PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
-              // if (DPLoc.isInvalid() || SM.isInSystemHeader(DLoc))
-              //   return;
-              // Dfile = getPath(DPLoc.getFilename());
-              // Dline = DPLoc.getLine();
-              // Dcolumn = DPLoc.getColumn();
-              // // printf("++++++ %s\n", Dfile.c_str());
-              // if (!Dfile.empty() && skipPath(Dfile))
-              //   return;
-            }
-          }
-        }
       } else if (FunctionProtoTypeLoc FPT = TL->getAs<FunctionProtoTypeLoc>()) {
+        stored_record_vec.clear();
         return;
       } else if (RecordTypeLoc RTL = TL->getAs<RecordTypeLoc>()) {
         RecordDecl *D = RTL.getDecl();
@@ -297,38 +278,26 @@ public:
         DLoc = TND->getBeginLoc();
         stmt = escapeJsonString(TND->getNameAsString());
       } else if (EnumTypeLoc ETL = TL->getAs<EnumTypeLoc>()) {
-        // CharSourceRange FullRange =
-        //     CharSourceRange::getTokenRange(TL->getBeginLoc(), TL->getEndLoc());
-        // StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
-        // stmt = escapeJsonString(Text.str());
         EnumDecl *D = ETL.getDecl();
         DLoc = D->getBeginLoc();
         stmt = escapeJsonString(D->getNameAsString());
-        // stmt = escapeJsonString(D->getQualifiedNameAsString());
       } else if (PointerTypeLoc PTL = TL->getAs<PointerTypeLoc>()) {
+        stored_record_vec.clear();
         return;
-        // QualType QT = PTL.getType();
-        // const Type *T = QT.getTypePtr();
-        // QT = T->getPointeeType();
-        // const Type *TP = QT.getTypePtr();
-        // if (TagDecl *TD = TP->getAsTagDecl()) {
-        //   DLoc = TD->getLocation();
-        // }
       } else if (ReferenceTypeLoc RTL = TL->getAs<ReferenceTypeLoc>()) {
+        stored_record_vec.clear();
         return;
-        // QualType QT = RTL.getType();
-        // const Type *T = QT.getTypePtr();
-        // QT = T->getPointeeType();
-        // const Type *TP = QT.getTypePtr();
-        // if (TagDecl *TD = TP->getAsTagDecl()) {
-        //   DLoc = TD->getLocation();
-        // }
-      } else if (TemplateSpecializationTypeLoc TSTL = TL->getAs<TemplateSpecializationTypeLoc>()) {
-        if (auto *TST = TSTL.getTypePtr()->getAs<TemplateSpecializationType>()) {
-          if (auto *TD = TST->getTemplateName().getAsTemplateDecl()) {
+      } else if (TemplateSpecializationTypeLoc TSTL =
+                     TL->getAs<TemplateSpecializationTypeLoc>()) {
+        if (const TemplateSpecializationType *TST =
+                TSTL.getTypePtr()->getAs<TemplateSpecializationType>()) {
+          if (TemplateDecl *TD = TST->getTemplateName().getAsTemplateDecl()) {
             DLoc = TD->getLocation();
           }
         }
+      } else if (BuiltinTypeLoc BTL = TL->getAs<BuiltinTypeLoc>()) {
+        stored_record_vec.clear();
+        return;
       }
       PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
       if (DPLoc.isValid()) {
@@ -337,20 +306,15 @@ public:
         Dcolumn = DPLoc.getColumn();
       }
 #ifndef LOG
-      if (exptype != "Elaborated" && !Dfile.empty() && skipPath(Dfile)) {
-        stored_record_vec.clear();
+      if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc)) {
         return;
-      }/* else if (exptype == "TemplateSpecialization") {
-        stored_record_vec.clear();
-        return;
-      }*/ else if (exptype == "Builtin") {
+      } else if (exptype != "Elaborated" && !Dfile.empty() && skipPath(Dfile)) {
         stored_record_vec.clear();
         return;
       } else if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) {
         stored_record_vec.clear();
         return;
-      } else if (!file.empty() && skipPath(file)) {
-        stored_record_vec.clear();
+      } else if (stored_record_vec.empty() && skipPath(file)) {
         return;
       }
 #endif
@@ -384,12 +348,14 @@ public:
       SourceLocation Loc = SM.getSpellingLoc(DRE->getBeginLoc());
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
         return;
+      std::string exptype = DRE->getType()->getTypeClassName();
       {
         CharSourceRange FullRange =
             CharSourceRange::getCharRange(DRE->getBeginLoc(), DRE->getEndLoc());
         StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
         stmt = escapeJsonString(Text.str());
       }
+      if (stmt.empty()) return;
       const ValueDecl *D = DRE->getDecl();
       SourceLocation DLoc = SM.getSpellingLoc(D->getBeginLoc());
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
@@ -400,14 +366,15 @@ public:
       }
       if (skipPath(file))
         return;
+      if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc))
+        return;
       PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
       if (DPLoc.isValid()) {
         Dfile = getPath(DPLoc.getFilename());
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      // if (!Dfile.empty() && skipPath(Dfile))
-      //   return;
+      // if (!Dfile.empty() && skipPath(Dfile)) return;
       {
         CharSourceRange FullRange =
             CharSourceRange::getCharRange(D->getBeginLoc(), D->getEndLoc());
@@ -417,7 +384,7 @@ public:
       std::stringstream ss;
       ss << "{\"type\":\"DeclRefExpr\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
-         << stmt << "\",\"exptype\":\"" << DRE->getType()->getTypeClassName()
+         << stmt << "\",\"exptype\":\"" << exptype
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
@@ -490,8 +457,9 @@ public:
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
-    } else if (const auto *UDD = Result.Nodes.getNodeAs<UsingDirectiveDecl>(
-                   "UsingDirectiveDecl|")) {
+    } else if (const UsingDirectiveDecl *UDD =
+                   Result.Nodes.getNodeAs<UsingDirectiveDecl>(
+                       "UsingDirectiveDecl|")) {
       std::string file, Dfile, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
@@ -516,17 +484,19 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      if (skipPath(file))
-        return;
+      // if (skipPath(file))
+      //   return;
       SourceLocation DLoc = UDD->getNominatedNamespace()->getBeginLoc();
+      if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc))
+        return;
       PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
       if (DPLoc.isValid()) {
         Dfile = getPath(DPLoc.getFilename());
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      if (!Dfile.empty() && skipPath(Dfile))
-        return;
+      // if (!Dfile.empty() && skipPath(Dfile))
+      //   return;
       std::stringstream ss;
       ss << "{\"type\":\"UsingDirectiveDecl\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""

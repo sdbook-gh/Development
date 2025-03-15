@@ -44,7 +44,7 @@ private:
 
 namespace open {
 template <typename T>
-class managed_ptr {
+class NM_managed_ptr {
 private:
     T* ptr;           // 指向管理的对象
     std::size_t* count; // 引用计数指针
@@ -68,28 +68,28 @@ private:
     }
 public:
     // 默认构造函数：初始化为空指针
-    managed_ptr() noexcept : ptr(nullptr), count(nullptr) {}
+    NM_managed_ptr() noexcept : ptr(nullptr), count(nullptr) {}
     // 构造函数：接受一个原始指针
-    explicit managed_ptr(T* raw_ptr) noexcept : ptr(raw_ptr), count(new std::size_t(1)) {}
+    explicit NM_managed_ptr(T* raw_ptr) noexcept : ptr(raw_ptr), count(new std::size_t(1)) {}
     // 拷贝构造函数
-    managed_ptr(const managed_ptr& other) noexcept {
+    NM_managed_ptr(const NM_managed_ptr& other) noexcept {
         ptr = other.ptr;
         count = other.count;
         increment_count();
     }
     // 移动构造函数
-    managed_ptr(managed_ptr&& other) noexcept {
+    NM_managed_ptr(NM_managed_ptr&& other) noexcept {
         ptr = other.ptr;
         count = other.count;
         other.ptr = nullptr;
         other.count = nullptr;
     }
     // 析构函数
-    ~managed_ptr() {
+    ~NM_managed_ptr() {
         decrement_count();
     }
     // 赋值操作符：拷贝赋值
-    managed_ptr& operator=(const managed_ptr& other) noexcept {
+    NM_managed_ptr& operator=(const NM_managed_ptr& other) noexcept {
         if (this != &other) {
             decrement_count();
             ptr = other.ptr;
@@ -99,7 +99,7 @@ public:
         return *this;
     }
     // 赋值操作符：移动赋值
-    managed_ptr& operator=(managed_ptr&& other) noexcept {
+    NM_managed_ptr& operator=(NM_managed_ptr&& other) noexcept {
         if (this != &other) {
             decrement_count();
             ptr = other.ptr;

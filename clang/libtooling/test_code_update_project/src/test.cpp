@@ -1,3 +1,4 @@
+#include "common.h"
 #include "design_pattern.h"
 #include "lib.h"
 #include "log.h"
@@ -39,8 +40,8 @@ public:
   }
 };
 
-open::managed_ptr<open::nmutils::nmtrace::NMStackTrace> ptr1;
-open::managed_ptr<NM::NMClass> ptr2;
+open::NM_managed_ptr<open::nmutils::nmtrace::NMStackTrace> ptr1;
+open::NM_managed_ptr<NM::NMClass> ptr2;
 
 int main() {
   using namespace NM;
@@ -62,5 +63,6 @@ int main() {
   using namespace nm_values;
   NS_PREFIX(OpenEnum) e3 = NS_PREFIX(OpenEnum)::ALL;
   using MT = nm_values::NMTestEnum2;
+  auto string = NM::NM_to_string<open::nmutils::nmlog::NMAsyncLog>();
   return 0;
 }

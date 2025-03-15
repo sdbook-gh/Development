@@ -13,7 +13,7 @@ std::shared_ptr<open::nmutils::nmlog::NMAsyncLog> NM::NMClass::adjust_NM_log(std
   NM::NMClass::Enum e1;
   NM::NMClass::EnumClass e2;
   std::vector<int> vec1;
-  std::vector<open::managed_ptr<int>> vec2;
+  std::vector<open::NM_managed_ptr<int>> vec2;
   auto ptr = another->get_instance<open::nmutils::nmlog::NMAsyncLog*>(log.get());
   return std::make_shared<open::nmutils::nmlog::NMAsyncLog>();
 }

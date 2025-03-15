@@ -1,0 +1,22 @@
+{
+  // Use IntelliSense to learn about possible attributes.
+  // Hover to view descriptions of existing attributes.
+  // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python Debugger",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "update_code.py",
+      "console": "integratedTerminal",
+      "args": [
+        "/share/personal/github/Development/clang/libtooling/test_code_update_project/build/compile_commands.json",
+        "/share/personal/github/Development/clang/libtooling/test_code_update_project",
+        "/share/personal/github/Development/clang/libtooling/changed",
+        "log",
+        "clear && rm -fr changed"
+      ]
+    }
+  ]
+}
