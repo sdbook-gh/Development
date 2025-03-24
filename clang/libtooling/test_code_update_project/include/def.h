@@ -1,4 +1,5 @@
 #pragma once
+#include "common.h"
 
 #define BEGIN_NS namespace NM {
 #define END_NS }
@@ -36,3 +37,14 @@ enum NS_PREFIX(OpenEnum) {
 } // namespace nm_values
 
 END_NS
+
+enum NM_LOG_Enum {
+  NM_LOG_PREFIX = 1,
+};
+
+#define NM_LOG(fmt, ...)                                                       \
+  do {                                                                         \
+    printf("%d-%d-%d" #fmt, NM_LOG_COMMON_PREFIX,                              \
+           NM_LOG_Enum_Extra::NM_LOG_EXTRA_PREFIX, NM_LOG_PREFIX,              \
+           ##__VA_ARGS__);                                                     \
+  } while (0)

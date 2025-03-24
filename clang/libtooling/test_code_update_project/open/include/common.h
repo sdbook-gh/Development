@@ -11,8 +11,16 @@ enum NMOpenEnumOpen {
     TRACE = 5,
     NONE = 6,
     UNKNOWN = 7,
-    ALL = 8,
+    NM_LOG_ALL = 8,
 };
+
+enum NM_LOG_Enum_Common {
+    NM_LOG_COMMON_PREFIX = 1,
+};
+
+typedef enum {
+  NM_LOG_EXTRA_PREFIX = 1,
+} NM_LOG_Enum_Extra;
 
 namespace NM {
 template <typename T>
