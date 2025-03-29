@@ -4,8 +4,9 @@
 #include "log.h"
 #include "stack_trace.h"
 #include <cstdio>
-#include <vector>
 #include <map>
+#include <vector>
+
 
 bool check_NM_value(NM::NMClass const &nmc) {
   if (nmc.get_NM_value() == 0) {
@@ -14,7 +15,9 @@ bool check_NM_value(NM::NMClass const &nmc) {
   return false;
 }
 
-open::nmutils::nmtrace::NMStackTrace get_stack_trace(const open::nmutils::nmtrace::NMStackTrace &st,NM::nm_values::NMTestEnum2 e2) {
+open::nmutils::nmtrace::NMStackTrace
+get_stack_trace(const open::nmutils::nmtrace::NMStackTrace &st,
+                NM::nm_values::NmTestEnum2 e2) {
   return open::nmutils::nmtrace::NMStackTrace{};
 }
 
@@ -28,7 +31,8 @@ class MySubject : public NM::nm_factory::NSDEFSubject {
 public:
   void ns_notify() { printf("MySubject::ns_notify\n"); }
 };
-std::map<NM::nm_values::NS_PREFIX(OpenEnum), std::vector<NM::NMClass*>*> nm_map;
+std::map<NM::nm_values::NS_PREFIX(OpenEnum), std::vector<NM::NMClass *> *>
+    nm_map;
 
 class MyStackTracker : public open::nmutils::nmtrace::NMStackTrace {
 public:
@@ -59,10 +63,10 @@ int main() {
     auto stackTrace = nmst.GetNMStackTrace();
   });
   nm_values::NS_PREFIX(TestEnum1) e1 = nm_values::NS_PREFIX(ENUM_1);
-  nm_values::NMTestEnum2 e2 = nm_values::NMTestEnum2::NM_ENUM_4;
+  nm_values::NmTestEnum2 e2 = nm_values::NmTestEnum2::NM_ENUM_4;
   using namespace nm_values;
   NS_PREFIX(OpenEnum) e3 = NS_PREFIX(OpenEnum)::ALL;
-  using MT = nm_values::NMTestEnum2;
+  using MT = nm_values::NmTestEnum2;
   auto string = NM::NM_to_string<open::nmutils::nmlog::NMAsyncLog>();
   NM_LOG("Hello, %s\n", string.c_str());
   printf("%d\n", (int)NM_LOG_Enum_Common::NM_LOG_COMMON_PREFIX);
