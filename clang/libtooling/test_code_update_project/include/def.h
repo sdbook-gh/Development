@@ -16,6 +16,12 @@ typedef enum {
   NS_PREFIX(ENUM_3) = 3,
 } NS_PREFIX(TestEnum1);
 
+typedef enum {
+  ENUM_1 = 1,
+  ENUM_2 = 2,
+  ENUM_3 = 3,
+} TDTestEnum;
+
 enum class NmTestEnum2 {
   NM_ENUM_4 = 4,
   NM_ENUM_5 = 5,

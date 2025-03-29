@@ -72,5 +72,6 @@ int main() {
   printf("%d\n", (int)NM_LOG_Enum_Common::NM_LOG_COMMON_PREFIX);
   printf("%d\n", (int)NM_LOG_Enum::NM_LOG_PREFIX);
   printf("%d\n", (int)NM_LOG_PREFIX);
+  printf("%d\n", (int)nm_values::TDTestEnum::ENUM_1);
   return 0;
 }

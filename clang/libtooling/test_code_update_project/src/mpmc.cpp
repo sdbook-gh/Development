@@ -51,3 +51,8 @@ bool NMLockFreeMPMCQueue::dequeue(void *&result) {
     }
   }
 }
+
+static const int TDTestFunctionValue = 0;
+const static int TDTestFunction() {
+  return TDTestFunctionValue;
+}
