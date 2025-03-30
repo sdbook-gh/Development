@@ -67,7 +67,7 @@ int main() {
   using namespace nm_values;
   NS_PREFIX(OpenEnum) e3 = NS_PREFIX(OpenEnum)::ALL;
   using MT = nm_values::NmTestEnum2;
-  auto string = NM::NM_to_string<open::nmutils::nmlog::NMAsyncLog>();
+  auto string = OPEN_NM::NM_to_string<open::nmutils::nmlog::NMAsyncLog>();
   NM_LOG("Hello, %s\n", string.c_str());
   printf("%d\n", (int)NM_LOG_Enum_Common::NM_LOG_COMMON_PREFIX);
   printf("%d\n", (int)NM_LOG_Enum::NM_LOG_PREFIX);

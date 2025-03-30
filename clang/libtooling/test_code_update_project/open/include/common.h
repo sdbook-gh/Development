@@ -22,7 +22,7 @@ typedef enum {
   NM_LOG_EXTRA_PREFIX = 1,
 } NM_LOG_Enum_Extra;
 
-namespace NM {
+namespace OPEN_NM {
 template <typename T>
 std::string NM_to_string() {
     return typeid(T).name();
