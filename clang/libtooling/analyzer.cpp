@@ -20,12 +20,9 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 
-#include <cstddef>
 #include <cstdio>
-#include <cstdlib>
 #include <fstream>
 #include <iomanip>
-#include <map>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -145,35 +142,6 @@ static bool matchFileContent(const std::string &filePath, int startLine,
   return true;
 }
 
-struct MacroMatchInfo {
-  int line{0};
-  int column{0};
-  std::string name;
-  std::string stmt;
-};
-std::map<std::string, MacroMatchInfo> macroDefinition_map;
-std::string isInsideMacroDefinition(const std::string &file_path, int line,
-                                    int column) {
-  if (macroDefinition_map.count(file_path) > 0) {
-    auto &definition = macroDefinition_map[file_path];
-    std::stringstream iss(definition.stmt);
-    std::string textLine;
-    int match_line = definition.line, match_column = definition.column,
-        index = 0;
-    while (std::getline(iss, textLine, '\n')) {
-      if (line == match_line && column >= match_column &&
-          column < match_column + textLine.size()) {
-        return definition.name;
-      } else if (index == 0) {
-        match_column = 0;
-      }
-      match_line++;
-      index++;
-    }
-  }
-  return "";
-}
-
 static std::string option;
 
 class AnalysisPPCallback : public PPCallbacks {
@@ -192,7 +160,7 @@ public:
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
       return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-    auto filePath = getPath(PLoc.getFilename());
+    std::string file = getPath(PLoc.getFilename());
     int line = PLoc.getLine();
     int column = PLoc.getColumn();
     CharSourceRange CSR = CharSourceRange::getCharRange(
@@ -206,13 +174,13 @@ public:
         escapeJsonString(MacroNameTok.getIdentifierInfo()->getName().str());
     SourceRange expansionRange(MI->getDefinitionLoc(),
                                MI->getDefinitionEndLoc());
-    macroDefinition_map[filePath] =
-        MacroMatchInfo{line, column, name, raw_stmt};
     std::stringstream ss;
-    if (skipPath(filePath)) {
+    if (skipPath(file)) {
       ss << "##";
+    } else if (!matchFileContent(file, line, column, raw_stmt)) {
+      ss << "####";
     }
-    ss << "{\"type\":\"MacroDefined\",\"file\":\"" << filePath
+    ss << "{\"type\":\"MacroDefined\",\"file\":\"" << file
        << "\",\"line\":" << line << ",\"column\":" << column
        << ",\"macroname\":\"" << name << "\",\"macrostmt\":\"" << stmt << "\"}";
     printf("%s\n", ss.str().c_str());
@@ -228,16 +196,20 @@ public:
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
       return;
     PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-    auto filePath = getPath(PLoc.getFilename());
-    std::string name =
-        escapeJsonString(MacroNameTok.getIdentifierInfo()->getName().str());
+    std::string file = getPath(PLoc.getFilename());
+    int line = PLoc.getLine();
+    int column = PLoc.getColumn();
+    std::string raw_stmt = MacroNameTok.getIdentifierInfo()->getName().str();
+    std::string name = escapeJsonString(raw_stmt);
     std::string stmt = name;
     std::stringstream ss;
-    if (skipPath(filePath)) {
+    if (skipPath(file)) {
       ss << "##";
+    } else if (!matchFileContent(file, line, column, raw_stmt)) {
+      ss << "####";
     }
-    ss << "{\"type\":\"MacroExpands\",\"file\":\"" << filePath
-       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+    ss << "{\"type\":\"MacroExpands\",\"file\":\"" << file
+       << "\",\"line\":" << line << ",\"column\":" << column
        << ",\"macroname\":\"" << name << "\",\"macrostmt\":\"" << stmt << "\"}";
     printf("%s\n", ss.str().c_str());
   }
@@ -250,17 +222,21 @@ public:
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
       return;
     PresumedLoc PLoc = SM.getPresumedLoc(MacroNameTok.getLocation());
-    auto filePath = getPath(PLoc.getFilename());
-    std::string name =
-        escapeJsonString(MacroNameTok.getIdentifierInfo()->getName().str());
+    std::string file = getPath(PLoc.getFilename());
+    int line = PLoc.getLine();
+    int column = PLoc.getColumn();
+    std::string raw_stmt = MacroNameTok.getIdentifierInfo()->getName().str();
+    std::string name = escapeJsonString(raw_stmt);
     std::string stmt = name;
     std::stringstream ss;
-    if (skipPath(filePath)) {
+    if (skipPath(file)) {
       ss << "##";
+    } else if (!matchFileContent(file, line, column, raw_stmt)) {
+      ss << "####";
     }
-    ss << "{\"type\":\"Ifndef\",\"file\":\"" << filePath
-       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
-       << ",\"macroname\":\"" << name << "\",\"macrostmt\":\"" << stmt << "\"}";
+    ss << "{\"type\":\"Ifndef\",\"file\":\"" << file << "\",\"line\":" << line
+       << ",\"column\":" << column << ",\"macroname\":\"" << name
+       << "\",\"macrostmt\":\"" << stmt << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 
@@ -277,23 +253,29 @@ public:
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
       return;
     PresumedLoc PLoc = SM.getPresumedLoc(FilenameRange.getBegin());
-    auto filePath = getPath(PLoc.getFilename());
+    std::string file = getPath(PLoc.getFilename());
+    int line = PLoc.getLine();
+    int column = PLoc.getColumn();
     std::string includeFilePath{getPath(File->getName().str())};
     SourceLocation BeginLoc = FilenameRange.getBegin();
     SourceLocation EndLoc = Lexer::getLocForEndOfToken(FilenameRange.getEnd(),
                                                        0, SM, LangOptions());
     CharSourceRange FullRange = CharSourceRange::getCharRange(BeginLoc, EndLoc);
-    StringRef Text = Lexer::getSourceText(FullRange, SM, LangOptions());
+    std::string raw_stmt =
+        Lexer::getSourceText(FullRange, SM, LangOptions()).str();
+    std::string stmt = escapeJsonString(raw_stmt);
     std::stringstream ss;
-    if (skipPath(filePath)) {
+    if (skipPath(file)) {
       ss << "##";
     } else if (skipPath(includeFilePath)) {
       ss << "##";
+    } else if (!matchFileContent(file, line, column, raw_stmt)) {
+      ss << "####";
     }
-    ss << "{\"type\":\"InclusionDirective\",\"file\":\"" << filePath
-       << "\",\"line\":" << PLoc.getLine() << ",\"column\":" << PLoc.getColumn()
+    ss << "{\"type\":\"InclusionDirective\",\"file\":\"" << file
+       << "\",\"line\":" << line << ",\"column\":" << column
        << ",\"includefilepath\":\"" << includeFilePath << "\",\"stmt\":\""
-       << escapeJsonString(Text.str()) << "\"}";
+       << stmt << "\"}";
     printf("%s\n", ss.str().c_str());
   }
 };
@@ -334,9 +316,7 @@ public:
         stmt = escapeJsonString(raw_stmt);
       }
       std::stringstream ss;
-      if (skipPath(file)) {
-        ss << "##";
-      } else if (!matchFileContent(file, line, column, raw_stmt)) {
+      if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
       ss << "{\"type\":\"NamespaceDecl\",\"file\":\"" << file
@@ -346,113 +326,6 @@ public:
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
-    } else if (const TypeLoc *TL =
-                   Result.Nodes.getNodeAs<TypeLoc>("TypeLoc|")) {
-      // #define LOG
-      // #ifdef LOG
-      // printf("++++++\n");
-      // #endif
-      std::string file, Dfile, raw_stmt, stmt, Dstmt;
-      int line = 0, column = 0;
-      int Dline = 0, Dcolumn = 0;
-      static std::vector<std::string> stored_record_vec;
-      SourceLocation Loc = SM.getSpellingLoc(TL->getBeginLoc());
-      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-      if (PLoc.isValid()) {
-        file = getPath(PLoc.getFilename());
-        line = PLoc.getLine();
-        column = PLoc.getColumn();
-      }
-      {
-        CharSourceRange FullRange =
-            CharSourceRange::getCharRange(TL->getBeginLoc(), TL->getEndLoc());
-        raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
-        stmt = escapeJsonString(raw_stmt);
-      }
-      SourceLocation DLoc = Loc;
-      QualType QT = TL->getType();
-      std::string exptype = QT->getTypeClassName();
-      if (ElaboratedTypeLoc ETL = TL->getAs<ElaboratedTypeLoc>()) {
-      } else if (FunctionProtoTypeLoc FPT = TL->getAs<FunctionProtoTypeLoc>()) {
-        stored_record_vec.clear();
-        return;
-      } else if (RecordTypeLoc RTL = TL->getAs<RecordTypeLoc>()) {
-        RecordDecl *D = RTL.getDecl();
-        DLoc = D->getBeginLoc();
-        raw_stmt = D->getNameAsString();
-        stmt = escapeJsonString(raw_stmt);
-      } else if (TypedefTypeLoc TTL = TL->getAs<TypedefTypeLoc>()) {
-        TypedefNameDecl *TND = TTL.getTypedefNameDecl();
-        DLoc = TND->getBeginLoc();
-        raw_stmt = TND->getNameAsString();
-        stmt = escapeJsonString(raw_stmt);
-      } else if (EnumTypeLoc ETL = TL->getAs<EnumTypeLoc>()) {
-        EnumDecl *D = ETL.getDecl();
-        DLoc = D->getBeginLoc();
-        raw_stmt = D->getNameAsString();
-        stmt = escapeJsonString(raw_stmt);
-      } else if (PointerTypeLoc PTL = TL->getAs<PointerTypeLoc>()) {
-        stored_record_vec.clear();
-        return;
-      } else if (ReferenceTypeLoc RTL = TL->getAs<ReferenceTypeLoc>()) {
-        stored_record_vec.clear();
-        return;
-      } else if (TemplateSpecializationTypeLoc TSTL =
-                     TL->getAs<TemplateSpecializationTypeLoc>()) {
-        if (const TemplateSpecializationType *TST =
-                TSTL.getTypePtr()->getAs<TemplateSpecializationType>()) {
-          if (TemplateDecl *TD = TST->getTemplateName().getAsTemplateDecl()) {
-            DLoc = TD->getLocation();
-          }
-        }
-      } else if (BuiltinTypeLoc BTL = TL->getAs<BuiltinTypeLoc>()) {
-        stored_record_vec.clear();
-        return;
-      }
-      PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
-      if (DPLoc.isValid()) {
-        Dfile = getPath(DPLoc.getFilename());
-        Dline = DPLoc.getLine();
-        Dcolumn = DPLoc.getColumn();
-      }
-#ifndef LOG
-      if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc)) {
-        return;
-      } else if (exptype != "Elaborated" && !Dfile.empty() && skipPath(Dfile)) {
-        stored_record_vec.clear();
-        return;
-      } else if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) {
-        stored_record_vec.clear();
-        return;
-      } else if (stored_record_vec.empty() && skipPath(file)) {
-        return;
-      }
-#endif
-      std::stringstream ss;
-      if (!matchFileContent(file, line, column, raw_stmt)) {
-        ss << "####";
-      }
-      ss << "{\"type\":\"TypeLoc\",\"file\":\"" << file
-         << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
-         << stmt << "\",\"exptype\":\"" << exptype << "\",\"dfile\":\"" << Dfile
-         << "\",\"dline\":" << Dline << ",\"dcolumn\":" << Dcolumn
-         << ",\"dstmt\":\"" << Dstmt << "\"}";
-      auto content = ss.str();
-#ifndef LOG
-      if (exptype == "Elaborated") {
-        stored_record_vec.emplace_back(content);
-      } else {
-        for (const auto &it : stored_record_vec) {
-          printf("%s\n", it.c_str());
-        }
-        stored_record_vec.clear();
-        printf("%s\n", content.c_str());
-      }
-#else
-      printf("%s\n", content.c_str());
-#endif
-      // if (exptype == "Enum")
-      //   QT.dump();
     } else if (const DeclRefExpr *DRE =
                    Result.Nodes.getNodeAs<DeclRefExpr>("DeclRefExpr|")) {
       std::string file, Dfile, raw_stmt, stmt, raw_Dstmt, Dstmt;
@@ -462,14 +335,16 @@ public:
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
         return;
       std::string exptype = DRE->getType()->getTypeClassName();
-      if (exptype == "Enum") {
-        CharSourceRange FullRange = CharSourceRange::getTokenRange(
-            DRE->getBeginLoc(), DRE->getEndLoc());
-        raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
-        stmt = escapeJsonString(raw_stmt);
-      } else {
-        CharSourceRange FullRange =
-            CharSourceRange::getCharRange(DRE->getBeginLoc(), DRE->getEndLoc());
+      {
+        CharSourceRange FullRange;
+        if (DRE->getBeginLoc().isMacroID()) {
+          FullRange = CharSourceRange::getTokenRange(
+              SM.getSpellingLoc(DRE->getBeginLoc()),
+              SM.getSpellingLoc(DRE->getEndLoc()));
+        } else {
+          FullRange = CharSourceRange::getTokenRange(DRE->getBeginLoc(),
+                                                     DRE->getEndLoc());
+        }
         raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
         stmt = escapeJsonString(raw_stmt);
       }
@@ -489,70 +364,122 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      {
-        CharSourceRange FullRange =
-            CharSourceRange::getCharRange(D->getBeginLoc(), D->getEndLoc());
-        raw_Dstmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
-        Dstmt = escapeJsonString(raw_Dstmt);
-      }
-      std::string macro;
-      if (option.find("MacroDefExp|") != std::string::npos) {
-        macro = isInsideMacroDefinition(file, line, column);
-        if (macro.empty())
-          return;
-      }
+      Dstmt = escapeJsonString("DeclRefExpr");
       std::stringstream ss;
-      if (!macro.empty()) {
-        if (!Dfile.empty() && skipPath(Dfile)) {
-          CharSourceRange FullRange = CharSourceRange::getTokenRange(
-            SM.getSpellingLoc(DRE->getBeginLoc()), SM.getSpellingLoc(DRE->getEndLoc()));
-          raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
-          raw_stmt += ("%%" + macro);
-          stmt = escapeJsonString(raw_stmt);
-        } else
-          return;
-      } else if (skipPath(file)) {
+      if (skipPath(file)) {
         ss << "##";
       } else if (!Dfile.empty() && skipPath(Dfile)) {
         ss << "##";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
-      ss << "{\"type\":\"DeclRefExpr\",\"file\":\"" << file
+      ss << "{\"type\":\"DeclRefExprTypeLoc\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
          << stmt << "\",\"exptype\":\"" << exptype << "\",\"dfile\":\"" << Dfile
          << "\",\"dline\":" << Dline << ",\"dcolumn\":" << Dcolumn
          << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
-    } else if (const CXXRecordDecl *CRD =
-                   Result.Nodes.getNodeAs<CXXRecordDecl>("CXXRecordDecl|")) {
+    } else if (const TypeLoc *TL =
+                   Result.Nodes.getNodeAs<TypeLoc>("TypeLoc|")) {
       std::string file, Dfile, raw_stmt, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
-      SourceLocation Loc = SM.getSpellingLoc(CRD->getLocation());
-      if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      SourceLocation Loc = SM.getSpellingLoc(TL->getBeginLoc());
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) {
         return;
-      raw_stmt = CRD->getNameAsString();
-      stmt = escapeJsonString(raw_stmt);
+      }
       PresumedLoc PLoc = SM.getPresumedLoc(Loc);
       if (PLoc.isValid()) {
         file = getPath(PLoc.getFilename());
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
+      {
+        CharSourceRange FullRange;
+        if (TL->getBeginLoc().isMacroID()) {
+          FullRange = CharSourceRange::getCharRange(
+              SM.getSpellingLoc(TL->getBeginLoc()),
+              SM.getSpellingLoc(TL->getEndLoc()));
+        } else {
+          FullRange =
+              CharSourceRange::getCharRange(TL->getBeginLoc(), TL->getEndLoc());
+        }
+        raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
+        stmt = escapeJsonString(raw_stmt);
+      }
+      SourceLocation DLoc = Loc;
       std::stringstream ss;
-      if (skipPath(file)) {
+      switch (TL->getType()->getTypeClass()) {
+      case Type::TypeClass::Record:
+        if (RecordTypeLoc RTL = TL->getAs<RecordTypeLoc>()) {
+          RecordDecl *D = RTL.getDecl();
+          DLoc = D->getBeginLoc();
+          raw_stmt = D->getNameAsString();
+          stmt = escapeJsonString(raw_stmt);
+        }
+        break;
+      case Type::TypeClass::Typedef:
+        if (TypedefTypeLoc TTL = TL->getAs<TypedefTypeLoc>()) {
+          TypedefNameDecl *TND = TTL.getTypedefNameDecl();
+          DLoc = TND->getBeginLoc();
+          raw_stmt = TND->getNameAsString();
+          stmt = escapeJsonString(raw_stmt);
+        }
+        break;
+      case Type::TypeClass::Enum:
+        if (EnumTypeLoc ETL = TL->getAs<EnumTypeLoc>()) {
+          EnumDecl *D = ETL.getDecl();
+          DLoc = D->getBeginLoc();
+          raw_stmt = D->getNameAsString();
+          stmt = escapeJsonString(raw_stmt);
+        }
+        break;
+      case Type::TypeClass::TemplateSpecialization:
+        if (TemplateSpecializationTypeLoc TSTL =
+                TL->getAs<TemplateSpecializationTypeLoc>()) {
+          if (const TemplateSpecializationType *TST =
+                  TSTL.getTypePtr()->getAs<TemplateSpecializationType>()) {
+            if (TemplateDecl *TD = TST->getTemplateName().getAsTemplateDecl()) {
+              DLoc = TD->getLocation();
+            }
+          }
+        }
+        break;
+      case Type::TypeClass::Pointer:
+      case Type::TypeClass::LValueReference:
+      case Type::TypeClass::RValueReference:
+      case Type::TypeClass::Builtin:
+      case Type::TypeClass::FunctionProto:
         ss << "##";
+        break;
+      default:
+        break;
+      }
+      if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc))
+        return;
+      PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
+      if (DPLoc.isValid()) {
+        Dfile = getPath(DPLoc.getFilename());
+        Dline = DPLoc.getLine();
+        Dcolumn = DPLoc.getColumn();
+      }
+      Dstmt = escapeJsonString("TypeLoc");
+      QualType QT = TL->getType();
+      std::string exptype = QT->getTypeClassName();
+      if (skipPath(file)) {
+        ss << "####";
+      } else if (!Dfile.empty() && skipPath(Dfile)) {
+        ss << "####";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
-      ss << "{\"type\":\"CXXRecordDecl\",\"file\":\"" << file
+      ss << "{\"type\":\"DeclRefExprTypeLoc\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
-         << stmt << "\",\"exptype\":\""
-         << "CXXRecordDecl"
-         << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
-         << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
-      printf("%s\n", ss.str().c_str());
+         << stmt << "\",\"exptype\":\"" << exptype << "\",\"dfile\":\"" << Dfile
+         << "\",\"dline\":" << Dline << ",\"dcolumn\":" << Dcolumn
+         << ",\"dstmt\":\"" << Dstmt << "\"}";
+      auto content = ss.str();
+      printf("%s\n", content.c_str());
     } else if (const FunctionDecl *FD =
                    Result.Nodes.getNodeAs<FunctionDecl>("FunctionDecl|")) {
       std::string file, Dfile, raw_stmt, stmt, Dstmt;
@@ -668,26 +595,116 @@ public:
       }
       raw_stmt = ND->getNameAsString();
       stmt = escapeJsonString(raw_stmt);
+      Dstmt = ND->getDeclKindName();
       std::stringstream ss;
-      // switch (ND->getKind()) {
-      // case NamedDecl::Var:
-      // case NamedDecl::Field:
-      // case NamedDecl::EnumConstant:
-      // case NamedDecl::ParmVar:
-      // case NamedDecl::Namespace:
-      //   return;
-      // default:
-      //   break;
-      // }
+      switch (ND->getKind()) {
+      case NamedDecl::Namespace:
+      case NamedDecl::Using:
+      case NamedDecl::UsingDirective:
+      case NamedDecl::Function:
+      case NamedDecl::FunctionTemplate:
+      case NamedDecl::CXXMethod:
+        ss << "##";
+      default:
+        break;
+      }
       if (skipPath(file)) {
         ss << "##";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
-      ss << "{\"type\":\"NamedDecl\",\"file\":\"" << file
+      ss << "{\"type\":\"NamedDeclMemberExpr\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
          << stmt << "\",\"exptype\":\""
          << "NamedDecl"
+         << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
+         << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
+      printf("%s\n", ss.str().c_str());
+    } else if (const MemberExpr *ME =
+                   Result.Nodes.getNodeAs<MemberExpr>("MemberExpr|")) {
+      std::string file, Dfile, raw_stmt, stmt, Dstmt;
+      int line = 0, column = 0;
+      int Dline = 0, Dcolumn = 0;
+      SourceLocation Loc = SM.getSpellingLoc(ME->getBeginLoc());
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+        return;
+      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      if (PLoc.isValid()) {
+        file = getPath(PLoc.getFilename());
+        line = PLoc.getLine();
+        column = PLoc.getColumn();
+      }
+      if (ValueDecl *VD = ME->getMemberDecl()) {
+        SourceLocation DLoc = SM.getSpellingLoc(VD->getBeginLoc());
+        if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc))
+          return;
+        PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
+        if (DPLoc.isValid()) {
+          Dfile = getPath(DPLoc.getFilename());
+          Dline = DPLoc.getLine();
+          Dcolumn = DPLoc.getColumn();
+        }
+        DeclarationName DN = VD->getDeclName();
+        raw_stmt = DN.getAsString();
+        stmt = escapeJsonString(raw_stmt);
+      }
+      std::stringstream ss;
+      if (skipPath(file)) {
+        ss << "##";
+      } else if (!Dfile.empty() && skipPath(Dfile)) {
+        ss << "##";
+      } else if (!matchFileContent(file, line, column, raw_stmt)) {
+        ss << "####";
+      }
+      ss << "{\"type\":\"NamedDeclMemberExpr\",\"file\":\"" << file
+         << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
+         << stmt << "\",\"exptype\":\""
+         << "MemberExpr"
+         << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
+         << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
+      printf("%s\n", ss.str().c_str());
+    } else if (const CXXCtorInitializer *CI =
+                   Result.Nodes.getNodeAs<CXXCtorInitializer>(
+                       "CXXCtorInitializer|")) {
+      if (!CI->isMemberInitializer())
+        return;
+      std::string file, Dfile, raw_stmt, stmt, Dstmt;
+      int line = 0, column = 0;
+      int Dline = 0, Dcolumn = 0;
+      SourceLocation Loc = SM.getSpellingLoc(CI->getSourceLocation());
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+        return;
+      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      if (PLoc.isValid()) {
+        file = getPath(PLoc.getFilename());
+        line = PLoc.getLine();
+        column = PLoc.getColumn();
+      }
+      if (FieldDecl *F = CI->getMember()) {
+        SourceLocation DLoc = SM.getSpellingLoc(F->getBeginLoc());
+        if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc))
+          return;
+        PresumedLoc DPLoc = SM.getPresumedLoc(DLoc);
+        if (DPLoc.isValid()) {
+          Dfile = getPath(DPLoc.getFilename());
+          Dline = DPLoc.getLine();
+          Dcolumn = DPLoc.getColumn();
+        }
+        raw_stmt = F->getNameAsString();
+        stmt = escapeJsonString(raw_stmt);
+      }
+      std::stringstream ss;
+      if (skipPath(file)) {
+        ss << "##";
+      } else if (!Dfile.empty() && skipPath(Dfile)) {
+        ss << "##";
+      } else if (!matchFileContent(file, line, column, raw_stmt)) {
+        ss << "####";
+      }
+      ss << "{\"type\":\"NamedDeclMemberExpr\",\"file\":\"" << file
+         << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
+         << stmt << "\",\"exptype\":\""
+         << "CXXCtorInitializer"
          << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
          << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
@@ -766,23 +783,15 @@ public:
     MatchFinder Finder;
     auto *Callback{
         new AnalysisMatchCallback{CI.getASTContext(), CI.getSourceManager()}};
-    if (option.find("MacroDefExp|") != std::string::npos) {
-      Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("DeclRefExpr|"),
-                        Callback);
-    } else if (option.find("NamespaceDecl|") != std::string::npos) {
+    if (option.find("NamespaceDecl|") != std::string::npos) {
       Finder.addMatcher(
           clang::ast_matchers::namespaceDecl().bind("NamespaceDecl|"),
           Callback);
-    } else if (option.find("TypeLoc|") != std::string::npos) {
-      Finder.addMatcher(clang::ast_matchers::typeLoc().bind("TypeLoc|"),
-                        Callback);
-    } else if (option.find("DeclRefExpr|") != std::string::npos) {
+    } else if (option.find("DeclRefExprTypeLoc|") != std::string::npos) {
       Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("DeclRefExpr|"),
                         Callback);
-    } else if (option.find("CXXRecordDecl|") != std::string::npos) {
-      Finder.addMatcher(
-          clang::ast_matchers::cxxRecordDecl().bind("CXXRecordDecl|"),
-          Callback);
+      Finder.addMatcher(clang::ast_matchers::typeLoc().bind("TypeLoc|"),
+                        Callback);
     } else if (option.find("FunctionDecl|") != std::string::npos) {
       Finder.addMatcher(
           clang::ast_matchers::functionDecl().bind("FunctionDecl|"), Callback);
@@ -792,9 +801,14 @@ public:
           Callback);
     } else if (option.find("Stmt|") != std::string::npos) {
       Finder.addMatcher(clang::ast_matchers::stmt().bind("Stmt|"), Callback);
-    } else if (option.find("NamedDecl|") != std::string::npos) {
+    } else if (option.find("NamedDeclMemberExpr|") != std::string::npos) {
       Finder.addMatcher(clang::ast_matchers::namedDecl().bind("NamedDecl|"),
                         Callback);
+      Finder.addMatcher(clang::ast_matchers::memberExpr().bind("MemberExpr|"),
+                        Callback);
+      Finder.addMatcher(
+          clang::ast_matchers::cxxCtorInitializer().bind("CXXCtorInitializer|"),
+          Callback);
     } else if (option.find("CallExpr|") != std::string::npos) {
       Finder.addMatcher(clang::ast_matchers::callExpr().bind("CallExpr|"),
                         Callback);

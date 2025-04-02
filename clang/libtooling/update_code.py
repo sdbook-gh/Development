@@ -11,32 +11,28 @@ import threading
 
 # C_INCLUDE_PATH = '/home/shenda/dev/clang/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
 # CPLUS_INCLUDE_PATH = '/home/shenda/dev/clang/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
+# NS_STRING_DICT = {'LbsAmap':'LbsTJMap'}
+# NS_SKIP_STRING_LIST = ['AMapSDK_Common']
+# NS_SKIP_STRING_DICT = {}
+# CLS_STRING_DICT = {'AMap':'TJMap'}
+# CLS_SKIP_STRING_LIST = []
+# CLS_SKIP_STRING_DICT = {}
+# MC_STRING_DICT = {'LbsAmap':'LbsTJMap', 'AMAP':'TJMAP', 'AMap':'TJMap', 'Amap':'TJmap', 'amap':'tjmap'}
+# MC_SKIP_STRING_LIST = ['AMAP_LOG_LEVEL_', 'AMAPCOMMON_NAMESPACE', 'Amap_Malloc'] # macro search skip string list
+# MC_SKIP_STRING_DICT = {}
 
-# AMAP_NS_STRING_LIST = ['LbsAmap']
-# AMAP_NS_SKIP_STRING_LIST = ['AMapSDK_Common']
-# AMAP_NS_NEW_STRING = 'LbsTJ'
-# AMAP_CLS_STRING_LIST = ['AMap']
-# AMAP_CLS_SKIP_STRING_LIST = []
-# AMAP_CLS_NEW_STRING = 'TJ'
-# AMAP_MC_STRING_LIST = ['AMAP', 'AMap', 'Amap', 'amap'] # macro search string list
-# AMAP_MC_SKIP_STRING_LIST = ['AMAP_LOG_LEVEL_', 'AMAPCOMMON_NAMESPACE', 'Amap_Malloc'] # macro search skip string list
-# AMAP_MC_NEW_STRING = 'TJ' # macro replace string
 
-
-C_INCLUDE_PATH="/mnt/wsl/PhysicalDrive4p1/shenda/bin/clang-17.0.6/bin/clang/lib/clang/17/include:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/x86_64-linux-gnu:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/backward:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/include:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/include-fixed/x86_64-linux-gnu:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/include-fixed:/usr/local/include:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/../../include:/usr/include/x86_64-linux-gnu:/usr/include"
-CPLUS_INCLUDE_PATH="/mnt/wsl/PhysicalDrive4p1/shenda/bin/clang-17.0.6/bin/clang/lib/clang/17/include:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/x86_64-linux-gnu:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/../../../../include/c++/13/backward:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/include:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/include-fixed/x86_64-linux-gnu:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/x86_64-linux-gnu/13/include-fixed:/usr/local/include:/mnt/wsl/PhysicalDrive4p1/shenda/bin/gcc-13.2.0/bin/../lib/gcc/../../include:/usr/include/x86_64-linux-gnu:/usr/include"
-AMAP_NS_STRING_LIST = ['NM']
-AMAP_NS_SKIP_STRING_LIST = []
-AMAP_NS_NEW_STRING = 'ChangedNM'
-# AMAP_CLS_STRING_LIST = ['ns']
-# AMAP_CLS_SKIP_STRING_LIST = []
-# AMAP_CLS_NEW_STRING = 'ChangedNS'
-AMAP_CLS_STRING_LIST = ['NM_LOG']
-AMAP_CLS_SKIP_STRING_LIST = []
-AMAP_CLS_NEW_STRING = 'Changed_NM_LOG'
-AMAP_MC_STRING_LIST = ['NM_LOG']
-AMAP_MC_SKIP_STRING_DICT = {}
-AMAP_MC_NEW_STRING = 'Changed_NM_LOG'
+C_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
+CPLUS_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
+NS_STRING_DICT = {'NM':'NEW_NM'}
+NS_SKIP_STRING_LIST = []
+NS_SKIP_STRING_DICT = {}
+CLS_STRING_DICT = {}
+CLS_SKIP_STRING_LIST = []
+CLS_SKIP_STRING_DICT = {}
+MC_STRING_DICT = {}
+MC_SKIP_STRING_LIST = []
+MC_SKIP_STRING_DICT = {}
 
 
 def skip_replace_file(file_path):
@@ -50,66 +46,88 @@ logging_lock = threading.Lock()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='update_code.log', filemode='w')
 analyzer = './build/analyzer'
 
-def mark_string_pos(stmt, match_string_list, mark, prefix = '', suffix = '', pos_start = -1, pos_end = -1, skip_list = None):
-  new_stmt = stmt
-  found = False
-  for match_string in match_string_list:
-    if found:
-      break
-    pattern = f'{prefix}{match_string}{suffix}'
-    pos = 0
-    while pos != -1:
+class StringUtils:
+  def mark_string_skip_pos(self, stmt, skip_list, mark, pos_start = -1, pos_end = -1):
+    new_stmt = stmt
+    skip_idx = 0
+    for skip_string in skip_list:
+      pattern = f'{skip_string}'
+      pattern_length = len(pattern)
+      pos = 0
+      while pos != -1:
+        pos = new_stmt.find(pattern, pos)
+        if pos != -1:
+          if pos_start >= 0 and pos < pos_start:
+            pos += pattern_length
+            continue
+          if pos_end >= 0 and pos + pattern_length > pos_end:
+            break
+          skip_mark = f'!{mark}{skip_idx}'
+          new_stmt = new_stmt[:pos] + skip_mark + new_stmt[pos + pattern_length:]
+          pos += len(skip_mark)
+      skip_idx += 1
+    return new_stmt
+  def mark_string_pos(self, stmt, match_string_dict, skip_list, mark, prefix = '', suffix = '', pos_start = -1, pos_end = -1):
+    new_stmt = self.mark_string_skip_pos(stmt, skip_list, mark, pos_start, pos_end)
+    found = False
+    match_idx = 0
+    for match_string in match_string_dict.keys():
       if found:
         break
-      pos = new_stmt.find(pattern, pos)
-      if pos != -1:
-        if pos_start >= 0 and pos < pos_start:
-          pos += 1
-          continue
-        if pos_end >= 0 and pos > pos_end:
-          pos += 1
-          continue
-        if skip_list:
-          skip = False
-          for skip_string in skip_list:
-            if new_stmt[pos:].startswith(skip_string):
-              skip = True
-              break
-          if skip:
+      pattern = f'{prefix}{match_string}{suffix}'
+      pattern_length = len(pattern)
+      pos = 0
+      match_mark = f'{prefix}{mark}{match_idx}{suffix}'
+      match_mark_length = len(match_mark)
+      while pos != -1:
+        if found:
+          break
+        pos = new_stmt.find(pattern, pos)
+        if pos != -1:
+          if pos_start >= 0 and pos < pos_start:
             pos += 1
             continue
-        found = True
-        new_stmt = new_stmt[:pos] + mark + new_stmt[pos + len(pattern):]
-  return found, new_stmt
-def mark_all_string_pos(stmt, match_string_list, mark, prefix = '', suffix = '', pos_start = -1, pos_end = -1, skip_list = None):
-  new_stmt = stmt
-  found = False
-  for match_string in match_string_list:
-    pattern = f'{prefix}{match_string}{suffix}'
-    pos = 0
-    while pos != -1:
-      pos = new_stmt.find(pattern, pos)
-      if pos != -1:
-        if pos_start >= 0 and pos < pos_start:
-          pos += 1
-          continue
-        if pos_end >= 0 and pos > pos_end:
-          pos += 1
-          continue
-        if skip_list:
-          skip = False
-          skip_length = 0
-          for skip_string in skip_list:
-            if new_stmt[pos:].startswith(skip_string):
-              skip = True
-              skip_length = len(skip_string)
-              break
-          if skip:
-            pos += skip_length
+          if pos_end >= 0 and pos + len(pattern) > pos_end:
+            break
+          found = True
+          new_stmt = new_stmt[:pos] + match_mark + new_stmt[pos + pattern_length:]
+          pos += match_mark_length
+      match_idx += 1
+    return found, new_stmt
+  def mark_all_string_pos(self, stmt, match_string_dict, skip_list, mark, prefix = '', suffix = '', pos_start = -1, pos_end = -1):
+    new_stmt = self.mark_string_skip_pos(stmt, skip_list, mark, pos_start, pos_end)
+    found = False
+    match_idx = 0
+    for match_string in match_string_dict.keys():
+      pattern = f'{prefix}{match_string}{suffix}'
+      pattern_length = len(pattern)
+      pos = 0
+      match_mark = f'{prefix}{mark}{match_idx}{suffix}'
+      match_mark_length = len(match_mark)
+      while pos != -1:
+        pos = new_stmt.find(pattern, pos)
+        if pos != -1:
+          if pos_start >= 0 and pos < pos_start:
+            pos += 1
             continue
-        found = True
-        new_stmt = new_stmt[:pos] + mark + new_stmt[pos + len(pattern):]
-  return found, new_stmt
+          if pos_end >= 0 and pos + len(pattern) > pos_end:
+            break
+          found = True
+          new_stmt = new_stmt[:pos] + match_mark + new_stmt[pos + pattern_length:]
+          pos += match_mark_length
+      match_idx += 1
+    return found, new_stmt
+  def updat_string(self, stmt, match_string_dict, skip_list, mark):
+    new_stmt = stmt
+    skip_idx = 0
+    for value in skip_list:
+      new_stmt = new_stmt.replace(f'!{mark}{skip_idx}', value)
+      skip_idx += 1
+    match_idx = 0
+    for value in match_string_dict.values():
+      new_stmt = new_stmt.replace(f'{mark}{match_idx}', value)
+      match_idx += 1
+    return new_stmt
 
 def LOG(level, message):
   with logging_lock:
@@ -126,33 +144,50 @@ class SourceCodeUpdateInfo:
     self.update_position = {}
 
 class SourceCodeUpdatePosition:
-  def __init__(self, parent, line, column, log_entry_type, expression_type, stmt, tostmt=None):
-    self.line = line
+  def __init__(self, parent, file_path, file_line, file_line_column, log_entry_type, expression_type, stmt, tostmt=None):
     self.parent = parent
-    self.column = column
+    self.file_path = file_path
+    self.file_line = file_line
+    self.file_line_column = file_line_column
     self.log_entry_type = log_entry_type
     self.expression_type = expression_type
     self.stmt = stmt
     self.tostmt = tostmt
-  def match(self, line, column, stmt, expression_type):
-    if self.line == line:
-      current_start = self.column
-      current_end = self.column + len(self.stmt)
-      new_start = column
+  def match(self, file_path, file_line, file_line_column, stmt, expression_type, tostmt):
+    if self.file_line == file_line:
+      current_start = self.file_line_column
+      current_length = len(self.stmt)
+      current_end = self.file_line_column + current_length
+      new_start = file_line_column
       new_length = len(stmt)
-      new_end = column + new_length
+      new_end = file_line_column + new_length
       if new_start < current_end and new_end > current_start:
-        diff = current_end - new_start
-        if new_start > current_start and diff > 0 and new_length < len(self.stmt):
+        # return True
+        if new_start >= current_start and new_end <= current_end and new_length < current_length:
           pos_start = new_start - current_start
-          pos_end = pos_start + len(stmt)
-          if self.stmt[pos_start:pos_end] == stmt:
-            self.stmt = self.stmt[:len(self.stmt) - diff]
-            self.tostmt, _ = self.parent.match_expression(self.stmt, self.expression_type)
-            if len(self.tostmt) == 0:
-              self.stmt = ''
-            return False
-        return True
+          pos_end = pos_start + new_length
+          sub_stmt = self.stmt[pos_start:pos_end]
+          new_sub_stmt, _ = self.parent.match_expression(file_path, file_line, pos_start, sub_stmt, self.expression_type)
+          if len(new_sub_stmt) == 0:
+            new_sub_stmt, _ = self.parent.match_expression(file_path, file_line, pos_start, sub_stmt, expression_type)
+          if sub_stmt == stmt:
+            if new_sub_stmt == tostmt:
+              return True
+            return None
+        elif new_start <= current_start and new_end >= current_end and new_length > current_length:
+          pos_start = current_start - new_start
+          pos_end = pos_start + current_length
+          sub_stmt = stmt[pos_start:pos_end]
+          new_sub_stmt, _ = self.parent.match_expression(file_path, file_line, pos_start, sub_stmt, expression_type)
+          if len(new_sub_stmt) == 0:
+            new_sub_stmt, _ = self.parent.match_expression(file_path, file_line, pos_start, sub_stmt, self.expression_type)
+          if sub_stmt == self.stmt:
+            if new_sub_stmt == self.tostmt:
+              self.stmt = self.tostmt = ''
+            else:
+              return None
+        else:
+          return True
     return False
 
 class SourceCodeUpdater:
@@ -214,16 +249,16 @@ class SourceCodeUpdater:
       os.environ["C_INCLUDE_PATH"] = C_INCLUDE_PATH
       os.environ["CPLUS_INCLUDE_PATH"] = CPLUS_INCLUDE_PATH
       if compile_commands is None:
-        LOG('info', f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
+        # LOG('info', f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
         result = os.system(f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -p {os.path.dirname(self.compile_commands_json)} >> {analyzer_log_file}')
       else:
-        LOG('info', f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
+        # LOG('info', f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
         result = os.system(f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
       if result != 0:
         print(f"错误: 分析源文件时出错，返回值: {result} {file_path}", file=sys.stderr)
         exit(1)
 
-  def match_update_position(self, file_path, file_line, file_line_column, stmt, expression_type):
+  def match_update_position(self, file_path, file_line, file_line_column, expression_type, stmt, tostmt):
     with self.lock:
       if file_path not in self.cantidate_replace_files:
         self.cantidate_replace_files[file_path] = SourceCodeUpdateInfo(file_path)
@@ -256,35 +291,37 @@ class SourceCodeUpdater:
       return True
     with self.lock:
       for pos in self.cantidate_replace_files[file_path].update_position.values():
-        if pos.match(file_line, file_line_column, stmt, expression_type):
+        result = pos.match(file_path, file_line, file_line_column, stmt, expression_type, tostmt)
+        if result is None:
+          LOG('error', f'错误替换 {expression_type} {file_path}:{file_line}:{file_line_column} [[{stmt}]] -> [[{tostmt}]]')
+          LOG('error', f'已存在替换 {pos.log_entry_type} {pos.expression_type} {pos.line}:{pos.column} [[{pos.stmt}]] -> [[{pos.tostmt}]]')
+          return True
+        elif result:
           return True
     return False
 
-  def match_macro(self, macroname, macrotype, macrostmt):
+  def match_macro(self, file_path, file_line, file_line_column, macroname, macrotype, macrostmt):
+    str_utils = StringUtils()
     if macrotype == 'Ifndef':
       new_stmt = macrostmt
-      found_mc, new_stmt = mark_all_string_pos(new_stmt, AMAP_MC_STRING_LIST, '|*|')
+      found_mc, new_stmt = str_utils.mark_all_string_pos(new_stmt, MC_STRING_DICT, [], '_MC_')
       if found_mc:
-        new_stmt = new_stmt.replace('|*|', AMAP_MC_NEW_STRING)
+        new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, [], '_MC_')
         return new_stmt
     elif macrotype == 'MacroExpands':
       new_stmt = macrostmt
       pos = new_stmt.find('(')
-      skip_list = []
-      if macroname in AMAP_MC_SKIP_STRING_DICT:
-        skip_list = AMAP_MC_SKIP_STRING_DICT[macroname]
-      found_mc, new_stmt = mark_all_string_pos(new_stmt, AMAP_MC_STRING_LIST, '|*|', '', '', -1, pos, skip_list)
+      skip_list = MC_SKIP_STRING_LIST
+      found_mc, new_stmt = str_utils.mark_all_string_pos(new_stmt, MC_STRING_DICT, skip_list, '_MC_', '', '', -1, pos)
       if found_mc:
-        new_stmt = new_stmt.replace('|*|', AMAP_MC_NEW_STRING)
+        new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, skip_list, '_MC_')
         return new_stmt
     elif macrotype == 'MacroDefined':
       new_stmt = macrostmt
-      skip_list = []
-      if macroname in AMAP_MC_SKIP_STRING_DICT:
-        skip_list = AMAP_MC_SKIP_STRING_DICT[macroname]
-      found_mc, new_stmt = mark_all_string_pos(new_stmt, AMAP_MC_STRING_LIST, '|*|', '', '', -1, -1, skip_list)
+      skip_list = MC_SKIP_STRING_LIST
+      found_mc, new_stmt = str_utils.mark_all_string_pos(new_stmt, MC_STRING_DICT, skip_list, '_MC_')
       if found_mc:
-        new_stmt = new_stmt.replace('|*|', AMAP_MC_NEW_STRING)
+        new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, skip_list, '_MC_')
         return new_stmt
     return None
 
@@ -292,17 +329,18 @@ class SourceCodeUpdater:
     # return None
     if skip_replace_file(file_path):
       return None
+    str_utils = StringUtils()
     new_stmt = macrostmt
     pos = macrostmt.rfind('/')
-    found_mc, new_stmt = mark_all_string_pos(new_stmt, AMAP_MC_STRING_LIST, '|*|', '', '', pos)
+    found_mc, new_stmt = str_utils.mark_all_string_pos(new_stmt, MC_STRING_DICT, [], '_INC_', '', '', pos)
     if found_mc:
-      new_stmt = new_stmt.replace('|*|', AMAP_MC_NEW_STRING)
+      new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, [], '_INC_')
       real_file_path = os.path.join(self.output_directory, os.path.relpath(file_path, self.input_directory))
       if real_file_path not in self.cantidate_rename_files:
         dir_name = os.path.dirname(real_file_path)
         file_name = os.path.basename(real_file_path)
-        _, file_name = mark_all_string_pos(file_name, AMAP_MC_STRING_LIST, '|*|')
-        file_name = file_name.replace('|*|', AMAP_MC_NEW_STRING)
+        _, file_name = str_utils.mark_all_string_pos(file_name, MC_STRING_DICT, [], '_INC_')
+        file_name = str_utils.updat_string(file_name, MC_STRING_DICT, [], '_INC_')
         self.cantidate_rename_files[real_file_path] = os.path.join(dir_name, file_name)
       return new_stmt
     return None
@@ -317,94 +355,63 @@ class SourceCodeUpdater:
         try:
           log_entry = json.loads(line)
           macrotype = log_entry['type']
-          if macrotype == 'DeclRefExpr':
-            stmt = log_entry['stmt']
-            skip_list = stmt.split('%%')
-            if len(skip_list) != 2:
-              continue
-            if skip_list[1] not in AMAP_MC_SKIP_STRING_DICT:
-              AMAP_MC_SKIP_STRING_DICT[skip_list[1]] = []
-            AMAP_MC_SKIP_STRING_DICT[skip_list[1]].append(skip_list[0])
-        except json.JSONDecodeError as e:
-          print(f"错误: 解析宏分析日志时出错: {e} {line}", file=sys.stderr)
-          exit(1)
-    with open(analyze_log_file, 'r') as analyze_log_file_content:
-      for line in analyze_log_file_content:
-        if line.startswith('#'):
-          continue
-        try:
-          log_entry = json.loads(line)
-          macrotype = log_entry['type']
           if macrotype == 'MacroExpands' or macrotype == 'MacroDefined' or macrotype == 'Ifndef':
             file_path = log_entry['file']
             file_line = log_entry['line']
             file_line_column = log_entry['column']
             macroname = log_entry['macroname']
             macrostmt = log_entry['macrostmt']
-            matchupdate = self.match_macro(macroname, macrotype, macrostmt)
-            if matchupdate is not None:
-              if not self.match_update_position(file_path, file_line, file_line_column, macrostmt, macrotype):
+            new_macrostmt = self.match_macro(file_path, file_line, file_line_column, macroname, macrotype, macrostmt)
+            if new_macrostmt is not None:
+              if not self.match_update_position(file_path, file_line, file_line_column, macrotype, macrostmt, new_macrostmt):
                 with self.lock:
-                  self.cantidate_replace_files[file_path].update_position[(file_line, file_line_column)] = SourceCodeUpdatePosition(self, file_line, file_line_column, 'macro', macrotype, macrostmt, matchupdate)
+                  self.cantidate_replace_files[file_path].update_position[(file_line, file_line_column)] = SourceCodeUpdatePosition(self, file_path, file_line, file_line_column, 'macro', macrotype, macrostmt, new_macrostmt)
           elif macrotype == 'InclusionDirective':
             file_path = log_entry['file']
             file_line = log_entry['line']
             file_column = log_entry['column']
             include_file_path = log_entry['includefilepath']
             stmt = log_entry['stmt']
-            matchupdate = self.match_inclusion(include_file_path, stmt)
-            if matchupdate is not None:
-              if not self.match_update_position(file_path, file_line, file_column, stmt, macrotype):
+            new_stmt = self.match_inclusion(include_file_path, stmt)
+            if new_stmt is not None:
+              if not self.match_update_position(file_path, file_line, file_column, macrotype, stmt, new_stmt):
                 with self.lock:
-                  self.cantidate_replace_files[file_path].update_position[(file_line, file_column)] = SourceCodeUpdatePosition(self, file_line, file_column, 'macro', macrotype, stmt, matchupdate)
+                  self.cantidate_replace_files[file_path].update_position[(file_line, file_column)] = SourceCodeUpdatePosition(self, file_path, file_line, file_column, 'macro', macrotype, stmt, new_stmt)
         except json.JSONDecodeError as e:
           print(f"错误: 解析宏分析日志时出错: {e} {line}", file=sys.stderr)
           exit(1)
 
-  def match_expression(self, stmt, expression_type, dfile_path = None):
+  def match_expression(self, file_path, file_line, file_line_column, stmt, expression_type, dfile_path = None):
     if len(stmt) == 0:
       return '', ''
+    str_utils = StringUtils()
+    NS_SKIP = NS_SKIP_STRING_LIST + list(NS_SKIP_STRING_DICT.keys())
+    CLS_SKIP = CLS_SKIP_STRING_LIST + list(CLS_SKIP_STRING_DICT.keys())
     if expression_type.endswith('+'):
-      if expression_type.startswith('Template') and '<' in stmt:
+      pos = stmt.find('<')
+      if pos != -1:
         stmt = stmt[:stmt.find('<')]
       new_stmt = stmt
-      if expression_type == 'Elaborated+':
-        found_ns, new_stmt = mark_all_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::', -1, -1, AMAP_NS_SKIP_STRING_LIST)
-        found_cls, new_stmt = mark_all_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|', '', '', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
-        if found_ns or found_cls:
-          new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
-          new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
-          return new_stmt, stmt
-      else:
-        found_cls, new_stmt = mark_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|', '', '', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
-        if found_cls:
-          new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
-          return new_stmt, stmt
-    elif expression_type.endswith('='):
-      if expression_type == 'FunctionProto=':
-        if skip_replace_file(dfile_path):
-          return '', ''
-      new_stmt = stmt
-      found_ns, new_stmt = mark_all_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::', -1, -1, AMAP_NS_SKIP_STRING_LIST)
-      found_cls, new_stmt = mark_all_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|', '', '::', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
+      found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_', '', '::')
+      found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
       if found_ns or found_cls:
-        new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
-        new_stmt = new_stmt.replace('|-|', f'{AMAP_CLS_NEW_STRING}::')
+        new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
+        new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+        return new_stmt, stmt
+    elif expression_type.endswith('*'):
+      found, new_stmt = str_utils.mark_string_pos(stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+      if found:
+        new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
         return new_stmt, stmt
     elif expression_type == 'NamespaceDecl':
-      found, new_stmt = mark_string_pos(stmt, AMAP_NS_STRING_LIST, '|+|', '', '', -1, -1, AMAP_NS_SKIP_STRING_LIST)
+      found, new_stmt = str_utils.mark_string_pos(stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
       if found:
-        new_stmt = new_stmt.replace('|+|', AMAP_NS_NEW_STRING)
+        new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
         return new_stmt, stmt
-    elif expression_type == 'NamedDecl':
-      found, new_stmt = mark_string_pos(stmt, AMAP_CLS_STRING_LIST, '|-|', '', '', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
+    elif expression_type == 'NamedDecl' or expression_type == 'MemberExpr':
+      found, new_stmt = str_utils.mark_string_pos(stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
       if found:
-        new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
-        return new_stmt, stmt
-    elif expression_type == 'CXXRecordDecl':
-      found, new_stmt = mark_string_pos(stmt, AMAP_CLS_STRING_LIST, '|-|', '', '', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
-      if found:
-        new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+        new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
         return new_stmt, stmt
     elif expression_type == 'CallExpr':
       stmt_list = stmt.split('%%')
@@ -417,9 +424,9 @@ class SourceCodeUpdater:
         return '', ''
       func_pos_end = func_pos_start + len(stmt_list[1])
       stmt_list[0] = stmt_list[0][func_pos_start:func_pos_end]
-      found, new_stmt = mark_string_pos(stmt_list[0], AMAP_CLS_STRING_LIST, '|-|', '', '', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
+      found, new_stmt = str_utils.mark_string_pos(stmt_list[0], CLS_STRING_DICT, CLS_SKIP, '_CLS_')
       if found:
-        new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+        new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
         return new_stmt, stmt_list[0]
     elif expression_type == 'FunctionDecl' or expression_type == 'FunctionImpl':
       function_exp_list = stmt.split('%%')
@@ -433,11 +440,11 @@ class SourceCodeUpdater:
       if pos_call != -1:
         stmt = stmt[:pos_call]
       new_stmt = stmt
-      found_ns, new_stmt = mark_all_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::', -1, -1, AMAP_NS_SKIP_STRING_LIST)
-      found_cls, new_stmt = mark_all_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|', '', '', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
+      found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_', '', '::')
+      found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
       if found_ns or found_cls:
-        new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
-        new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+        new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
+        new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
         return new_stmt, stmt
     elif expression_type == 'UsingDirectiveDecl':
       namespace_pattern = r'using\s+namespace\s+'
@@ -446,16 +453,16 @@ class SourceCodeUpdater:
       found_cls = False
       if namespace_pos:
         new_stmt = stmt
-        found_ns, new_stmt = mark_all_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '', -1, -1, AMAP_NS_SKIP_STRING_LIST)
+        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
         if found_ns:
-          new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}')
+          new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
           return new_stmt, stmt
       else:
-        found_ns, new_stmt = mark_all_string_pos(new_stmt, AMAP_NS_STRING_LIST, '|+|', '', '::', -1, -1, AMAP_NS_SKIP_STRING_LIST)
-        found_cls, new_stmt = mark_all_string_pos(new_stmt, AMAP_CLS_STRING_LIST, '|-|', '', '', -1, -1, AMAP_CLS_SKIP_STRING_LIST)
+        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_', '', '::')
+        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
         if found_ns or found_cls:
-          new_stmt = new_stmt.replace('|+|', f'{AMAP_NS_NEW_STRING}::')
-          new_stmt = new_stmt.replace('|-|', AMAP_CLS_NEW_STRING)
+          new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
           return new_stmt, stmt
     else:
       LOG('error', f'unchecked expression type: {expression_type}')
@@ -474,12 +481,13 @@ class SourceCodeUpdater:
     stmt = log_entry['stmt']
     expression_type = log_entry['exptype']
     dfile_path = log_entry['dfile']
-    new_stmt, adj_stmt = self.match_expression(stmt, expression_type + append_type, dfile_path)
+    new_stmt, adj_stmt = self.match_expression(file_path, file_line, file_line_column, stmt, expression_type + append_type, dfile_path)
     if len(new_stmt) > 0:
       multi_lines = False
       while adj_stmt[0] in ['\n', '\r']:
         multi_lines = True
         adj_stmt = adj_stmt.lstrip('\r\n')
+        new_stmt = new_stmt.lstrip('\r\n')
         file_line += 1
         file_line_column = 1
       if not multi_lines:
@@ -489,9 +497,9 @@ class SourceCodeUpdater:
           return
         file_line_column += pos
       stmt = adj_stmt
-      if not self.match_update_position(file_path, file_line, file_line_column, stmt, expression_type + append_type):
+      if not self.match_update_position(file_path, file_line, file_line_column, expression_type + append_type, stmt, new_stmt):
         with self.lock:
-          self.cantidate_replace_files[file_path].update_position[(file_line, file_line_column)] = SourceCodeUpdatePosition(self, file_line, file_line_column, log_entry_type, expression_type + append_type, stmt, new_stmt)
+          self.cantidate_replace_files[file_path].update_position[(file_line, file_line_column)] = SourceCodeUpdatePosition(self, file_path, file_line, file_line_column, log_entry_type, expression_type + append_type, stmt, new_stmt)
 
   def analyze_source_files(self, analyze_type, append_type = '', reuse_analyzed_result = True):
     analyze_log_file = f'{self.log_directory}/analyze_{analyze_type}.log'
@@ -527,13 +535,13 @@ class SourceCodeUpdater:
           print(f"Error reading file {source_file}: {e}")
           continue
         if len(update_info.update_position) > 0:
-          sorted_positions = sorted(update_info.update_position.values(), key=lambda pos: (pos.line, pos.column))
+          sorted_positions = sorted(update_info.update_position.values(), key=lambda pos: (pos.file_line, pos.file_line_column))
           replace_line_number = -1
           replace_diff = 0
           line_content = ''
           for update_position in sorted_positions:
-            if replace_line_number != update_position.line - 1:
-              replace_line_number = update_position.line - 1
+            if replace_line_number != update_position.file_line - 1:
+              replace_line_number = update_position.file_line - 1
               line_content = lines[replace_line_number]
               replace_diff = 0
             stmt = update_position.stmt
@@ -544,12 +552,12 @@ class SourceCodeUpdater:
             if len(multi_lines) > 1:
               for index in range(1, len(multi_lines)):
                 line_content += lines[replace_line_number + index]
-            column = update_position.column + replace_diff - 1
+            column = update_position.file_line_column + replace_diff - 1
             line_content = line_content[:column] + new_stmt + line_content[column + len(stmt):]
             new_line_parts = line_content.splitlines(keepends=True)
             lines[replace_line_number:replace_line_number + len(new_line_parts)] = new_line_parts
             replace_diff = replace_diff + len(new_stmt) - len(stmt)
-            LOG('info', f'replace {update_position.log_entry_type}:{update_position.expression_type} {update_position.line}:{update_position.column} [[{stmt}]] -> [[{new_stmt}]] [[{line_content}]]')
+            LOG('info', f'replace {update_position.log_entry_type}:{update_position.expression_type} {update_position.file_line}:{update_position.file_line_column} [[{stmt}]] -> [[{new_stmt}]] [[{line_content}]]')
           os.makedirs(os.path.dirname(output_source_file), exist_ok=True)
           with open(output_source_file, 'w') as output_source:
             output_source.writelines(lines)
@@ -580,18 +588,16 @@ class SourceCodeUpdater:
     # reuse_analyzed_result = True
     threads = []
     analyze_types = [
-      ('FunctionDecl', ''),
-      ('CXXRecordDecl', ''),
-      ('NamedDecl', ''),
-      ('CallExpr', ''),
-      ('DeclRefExpr', '='),
-      ('TypeLoc', '+'),
       ('NamespaceDecl', ''),
-      ('UsingDirectiveDecl', '')
+      ('UsingDirectiveDecl', ''),
+      ('FunctionDecl', ''),
+      ('CallExpr', ''),
+      ('NamedDeclMemberExpr', '*'),
+      ('DeclRefExprTypeLoc', '+'),
     ]
-    if True:
+    if False:
       for analyze_type, append_type in analyze_types:
-        thread = threading.Thread(target=self.analyze_source_files, args=(analyze_type,), kwargs={'append_type': append_type, 'reuse_analyzed_result': reuse_analyzed_result})
+        thread = threading.Thread(target=self.analyze_source_files, args=(analyze_type,), kwargs={'append_type': append_type, 'reuse_analyzed_result': reuse_analyzed_result},)
         threads.append(thread)
         thread.start()
       thread = threading.Thread(target=self.analyze_source_files_MacroDefExp, args=(reuse_analyzed_result,))
@@ -600,19 +606,24 @@ class SourceCodeUpdater:
       for thread in threads:
         thread.join()
     else:
-      self.analyze_source_files('FunctionDecl', reuse_analyzed_result=reuse_analyzed_result)
-      self.analyze_source_files('NamedDecl', reuse_analyzed_result=reuse_analyzed_result)
-      self.analyze_source_files('CXXRecordDecl', reuse_analyzed_result=reuse_analyzed_result)
-      self.analyze_source_files('CallExpr', reuse_analyzed_result=reuse_analyzed_result)
-      self.analyze_source_files('DeclRefExpr', reuse_analyzed_result=reuse_analyzed_result, append_type='=')
-      self.analyze_source_files('TypeLoc', reuse_analyzed_result=reuse_analyzed_result, append_type='+')
       self.analyze_source_files('NamespaceDecl', reuse_analyzed_result=reuse_analyzed_result)
       self.analyze_source_files('UsingDirectiveDecl', reuse_analyzed_result=reuse_analyzed_result)
+      self.analyze_source_files('FunctionDecl', reuse_analyzed_result=reuse_analyzed_result)
+      self.analyze_source_files('CallExpr', reuse_analyzed_result=reuse_analyzed_result)
+      self.analyze_source_files('NamedDeclMemberExpr', reuse_analyzed_result=reuse_analyzed_result, append_type='*')
+      self.analyze_source_files('DeclRefExprTypeLoc', reuse_analyzed_result=reuse_analyzed_result, append_type='+')
       self.analyze_source_files_MacroDefExp(reuse_analyzed_result=reuse_analyzed_result)
     self.replace_in_source_files()
     self.rename_updated_files()
 
+# def clang_check():
+#   os.environ["C_INCLUDE_PATH"] = C_INCLUDE_PATH
+#   os.environ["CPLUS_INCLUDE_PATH"] = CPLUS_INCLUDE_PATH
+#   result = os.system(f'clang-check -p /home/shenda/dev/mapdev/MMShell_1500/build /home/shenda/dev/mapdev/MMShell_1500/NavigationSDK-Cpp/NavigationLibrary/Source/CarOverlay.cpp --ast-dump --ast-dump-filter=AMap')
+
 if __name__ == "__main__":
+  # clang_check()
+  # exit(0)
   parser = argparse.ArgumentParser()
   parser.add_argument('compile_commands_json', type=str, help='Path to compile_commands.json')
   parser.add_argument('input_directory', type=str, help='The directory of source code files')

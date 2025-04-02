@@ -73,5 +73,6 @@ int main() {
   printf("%d\n", (int)NM_LOG_Enum::NM_LOG_PREFIX);
   printf("%d\n", (int)NM_LOG_PREFIX);
   printf("%d\n", (int)nm_values::TDTestEnum::ENUM_1);
+  int val = NMCE::NM_CE_LOG_COMMON_PREFIX;
   return 0;
 }
