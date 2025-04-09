@@ -23,7 +23,9 @@
 #include <cstdio>
 #include <fstream>
 #include <iomanip>
+#include <map>
 #include <sstream>
+#include <stack>
 #include <string>
 #include <vector>
 
@@ -32,7 +34,7 @@ using namespace clang::tooling;
 using namespace clang::ast_matchers;
 
 static std::string getPath(const std::string &path) {
-  auto realPathPtr = realpath(path.c_str(), nullptr);
+  char *realPathPtr = realpath(path.c_str(), nullptr);
   if (realPathPtr == nullptr)
     return "";
   std::string realPath{realPathPtr};
@@ -40,35 +42,23 @@ static std::string getPath(const std::string &path) {
   return realPath;
 }
 
+static std::vector<std::string> skipPaths;
+
 static bool skipPath(const std::string &realPath) {
   if (realPath.empty())
     return true;
-  if (realPath.find("/usr/") != std::string::npos) {
-    return true;
-  }
-  if (realPath.find("/ThirdPartyLib/") != std::string::npos) {
-    return true;
-  }
-  if (realPath.find("/open/") != std::string::npos) {
-    return true;
-  }
-  if (realPath.find("/binaries/") != std::string::npos) {
-    return true;
-  }
-  if (realPath.find("/build/") != std::string::npos) {
-    return true;
-  }
-  if (realPath.find("/Qt/") != std::string::npos) {
-    return true;
-  }
   if (realPath.find("<") == 0) {
     return true;
+  }
+  for (const auto &skipPath : skipPaths) {
+    if (realPath.find(skipPath) != std::string::npos)
+      return true;
   }
   return false;
 }
 
 static std::string escapeJsonString(const std::string &input) {
-  auto input_string = input;
+  const std::string &input_string = input;
   std::ostringstream ss;
   for (char c : input_string) {
     switch (c) {
@@ -142,17 +132,102 @@ static bool matchFileContent(const std::string &filePath, int startLine,
   return true;
 }
 
+std::string getStmtBefore(const std::string &filePath, int startLine,
+                          int startColumn, const std::string &text) {
+  if (filePath.empty() || startLine < 1 || startColumn < 1)
+    return "";
+  if (text.empty())
+    return "";
+  std::fstream file(filePath);
+  if (!file)
+    return "";
+  std::vector<std::string> fileLines;
+  std::string line;
+  while (std::getline(file, line))
+    fileLines.emplace_back(line);
+  int startLineIndex = startLine - 1;
+  int startColIndex = startColumn - 1;
+  int foundLine = -1;
+  size_t foundCol = std::string::npos;
+  for (int i = startLineIndex; i >= 0; --i) {
+    const std::string &currentLine = fileLines[i];
+    if (i == startLineIndex) {
+      std::string prefix = currentLine.substr(0, startColIndex);
+      foundCol = prefix.rfind(text);
+      if (foundCol != std::string::npos) {
+        foundLine = i;
+        break;
+      }
+    } else {
+      foundCol = currentLine.rfind(text);
+      if (foundCol != std::string::npos) {
+        foundLine = i;
+        break;
+      }
+    }
+  }
+  if (foundLine < 0)
+    return "";
+  std::string result;
+  if (foundLine == startLineIndex) {
+    result = fileLines[foundLine].substr(foundCol, startColIndex - foundCol);
+  } else {
+    result = fileLines[foundLine].substr(foundCol);
+    for (int j = foundLine + 1; j < startLineIndex; ++j) {
+      result += "\n" + fileLines[j];
+    }
+    result += "\n" + fileLines[startLineIndex].substr(0, startColIndex);
+  }
+  return result;
+}
+
+struct MacroMatchInfo {
+  int line{0};
+  int column{0};
+  std::string name;
+  std::string stmt;
+};
+std::map<std::string, MacroMatchInfo> macroDefinition_map;
+std::string isInsideMacroDefinition(const std::string &file_path, int line,
+                                    int column) {
+  if (macroDefinition_map.count(file_path) > 0) {
+    const MacroMatchInfo &definition = macroDefinition_map[file_path];
+    std::stringstream iss(definition.stmt);
+    std::string textLine;
+    int match_line = definition.line, match_column = definition.column,
+        index = 0;
+    while (std::getline(iss, textLine, '\n')) {
+      if (line == match_line && column >= match_column &&
+          column < match_column + textLine.size()) {
+        return definition.name;
+      } else if (index == 0) {
+        match_column = 0;
+      }
+      match_line++;
+      index++;
+    }
+  }
+  return "";
+}
+
 static std::string option;
 
 class AnalysisPPCallback : public PPCallbacks {
+private:
   Preprocessor &PP;
+  struct MDInfo {
+    std::string file;
+    std::string stmt;
+  };
+  std::vector<MDInfo> MD_vec;
 
 public:
   AnalysisPPCallback(Preprocessor &PP) : PP(PP) {}
 
   void MacroDefined(const Token &MacroNameTok,
                     const MacroDirective *MD) override {
-    if (option.find("MacroDefExp|") == std::string::npos)
+    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") ==
+        std::string::npos)
       return;
     const MacroInfo *MI = MD->getMacroInfo();
     SourceManager &SM = PP.getSourceManager();
@@ -179,6 +254,12 @@ public:
       ss << "##";
     } else if (!matchFileContent(file, line, column, raw_stmt)) {
       ss << "####";
+    } else {
+      macroDefinition_map[file] = MacroMatchInfo{line, column, name, raw_stmt};
+      std::string new_stmt = getStmtBefore(file, line, column, "#");
+      if (!new_stmt.empty()) {
+        MD_vec.push_back({file, new_stmt + raw_stmt});
+      }
     }
     ss << "{\"type\":\"MacroDefined\",\"file\":\"" << file
        << "\",\"line\":" << line << ",\"column\":" << column
@@ -189,7 +270,8 @@ public:
   void MacroExpands(const Token &MacroNameTok,
                     const MacroDefinition &MacroDefinition, SourceRange Range,
                     const MacroArgs *Args) override {
-    if (option.find("MacroDefExp|") == std::string::npos)
+    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") ==
+        std::string::npos)
       return;
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = MacroNameTok.getLocation();
@@ -216,7 +298,8 @@ public:
 
   void Ifndef(SourceLocation Loc, const Token &MacroNameTok,
               const MacroDefinition &MD) override {
-    if (option.find("MacroDefExp|") == std::string::npos)
+    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") ==
+        std::string::npos)
       return;
     SourceManager &SM = PP.getSourceManager();
     if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
@@ -246,7 +329,8 @@ public:
                           OptionalFileEntryRef File, StringRef SearchPath,
                           StringRef RelativePath, const Module *Imported,
                           SrcMgr::CharacteristicKind FileType) override {
-    if (option.find("MacroDefExp|") == std::string::npos)
+    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") ==
+        std::string::npos)
       return;
     SourceManager &SM = PP.getSourceManager();
     SourceLocation Loc = SM.getSpellingLoc(IncludeTok.getLocation());
@@ -278,6 +362,73 @@ public:
        << stmt << "\"}";
     printf("%s\n", ss.str().c_str());
   }
+
+  void SourceRangeSkipped(SourceRange Range, SourceLocation EndifLoc) override {
+    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") ==
+        std::string::npos)
+      return;
+    SourceManager &SM = PP.getSourceManager();
+    SourceLocation Loc = SM.getSpellingLoc(Range.getBegin());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return;
+    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+    std::string file = getPath(PLoc.getFilename());
+    int line = PLoc.getLine();
+    int column = PLoc.getColumn();
+    CharSourceRange FullRange =
+        CharSourceRange::getCharRange(Range.getBegin(), Range.getEnd());
+    std::string raw_stmt =
+        Lexer::getSourceText(FullRange, SM, LangOptions()).str();
+    std::string stmt = escapeJsonString(raw_stmt);
+    for (const auto &MD : MD_vec) {
+      if (file == MD.file && raw_stmt.find(MD.stmt) != std::string::npos) {
+        return;
+      }
+    }
+    std::stringstream ss;
+    if (skipPath(file)) {
+      ss << "##";
+    } else if (!matchFileContent(file, line, column, raw_stmt)) {
+      ss << "####";
+    }
+    ss << "{\"type\":\"SourceRangeSkipped\",\"file\":\"" << file
+       << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
+       << stmt << "\"}";
+    printf("%s\n", ss.str().c_str());
+  }
+};
+
+class AnalysisComment : public CommentHandler {
+public:
+  bool HandleComment(Preprocessor &PP, SourceRange Comment) override {
+    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") ==
+        std::string::npos)
+      return false;
+    SourceManager &SM = PP.getSourceManager();
+    SourceLocation Loc = SM.getSpellingLoc(Comment.getBegin());
+    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+      return false;
+    PresumedLoc PLoc = SM.getPresumedLoc(Comment.getBegin());
+    std::string file = getPath(PLoc.getFilename());
+    int line = PLoc.getLine();
+    int column = PLoc.getColumn();
+    SourceLocation BeginLoc = Comment.getBegin();
+    SourceLocation EndLoc = Comment.getEnd();
+    CharSourceRange FullRange = CharSourceRange::getCharRange(BeginLoc, EndLoc);
+    std::string raw_stmt =
+        Lexer::getSourceText(FullRange, SM, LangOptions()).str();
+    std::string stmt = escapeJsonString(raw_stmt);
+    std::stringstream ss;
+    if (skipPath(file)) {
+      ss << "##";
+    } else if (!matchFileContent(file, line, column, raw_stmt)) {
+      ss << "####";
+    }
+    ss << "{\"type\":\"Comment\",\"file\":\"" << file << "\",\"line\":" << line
+       << ",\"column\":" << column << ",\"stmt\":\"" << stmt << "\"}";
+    printf("%s\n", ss.str().c_str());
+    return false;
+  }
 };
 
 class PPAnalysisAction : public PreprocessorFrontendAction {
@@ -285,6 +436,7 @@ protected:
   void ExecuteAction() override {
     Preprocessor &PP = getCompilerInstance().getPreprocessor();
     PP.addPPCallbacks(std::make_unique<AnalysisPPCallback>(PP));
+    PP.addCommentHandler(new AnalysisComment);
     PP.EnterMainSourceFile();
     Token Tok;
     do {
@@ -332,18 +484,37 @@ public:
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
       SourceLocation Loc = SM.getSpellingLoc(DRE->getBeginLoc());
+      bool checkLoc = SM.isWrittenInSameFile(Loc, DRE->getLocation());
+      if (!checkLoc) {
+        Loc = SM.getSpellingLoc(DRE->getLocation());
+      }
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
         return;
       std::string exptype = DRE->getType()->getTypeClassName();
       {
         CharSourceRange FullRange;
         if (DRE->getBeginLoc().isMacroID()) {
-          FullRange = CharSourceRange::getTokenRange(
-              SM.getSpellingLoc(DRE->getBeginLoc()),
-              SM.getSpellingLoc(DRE->getEndLoc()));
+          if (checkLoc)
+            FullRange = CharSourceRange::getTokenRange(
+                SM.getSpellingLoc(DRE->getBeginLoc()),
+                SM.getSpellingLoc(DRE->getEndLoc()));
+          else {
+            auto nextToken =
+                Lexer::findNextToken(DRE->getLocation(), SM, LangOptions());
+            FullRange = CharSourceRange::getCharRange(
+                SM.getSpellingLoc(DRE->getLocation()),
+                SM.getSpellingLoc(nextToken->getLocation()));
+          }
         } else {
-          FullRange = CharSourceRange::getTokenRange(DRE->getBeginLoc(),
-                                                     DRE->getEndLoc());
+          if (checkLoc)
+            FullRange = CharSourceRange::getTokenRange(DRE->getBeginLoc(),
+                                                       DRE->getEndLoc());
+          else {
+            auto nextToken =
+                Lexer::findNextToken(DRE->getLocation(), SM, LangOptions());
+            FullRange = CharSourceRange::getCharRange(DRE->getLocation(),
+                                                      nextToken->getLocation());
+          }
         }
         raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
         stmt = escapeJsonString(raw_stmt);
@@ -364,9 +535,28 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      Dstmt = escapeJsonString("DeclRefExpr");
+      Dstmt = "DeclRefExpr";
+      std::string macro;
+      if (option.find("MacroDefExpIfndefInclusionCommentSkip|") !=
+          std::string::npos) {
+        macro = isInsideMacroDefinition(file, line, column);
+        if (macro.empty())
+          return;
+      }
       std::stringstream ss;
-      if (skipPath(file)) {
+      if (!macro.empty()) {
+        CharSourceRange FullRange = CharSourceRange::getTokenRange(
+            SM.getSpellingLoc(DRE->getBeginLoc()),
+            SM.getSpellingLoc(DRE->getEndLoc()));
+        raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
+        stmt = escapeJsonString(raw_stmt);
+        if (!Dfile.empty() && skipPath(Dfile)) {
+          raw_stmt += ("%%!" + macro);
+        } else {
+          raw_stmt += ("%%" + macro);
+        }
+        stmt = escapeJsonString(raw_stmt);
+      } else if (skipPath(file)) {
         ss << "##";
       } else if (!Dfile.empty() && skipPath(Dfile)) {
         ss << "##";
@@ -463,7 +653,7 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      Dstmt = escapeJsonString("TypeLoc");
+      Dstmt = "TypeLoc";
       QualType QT = TL->getType();
       std::string exptype = QT->getTypeClassName();
       if (skipPath(file)) {
@@ -478,7 +668,7 @@ public:
          << stmt << "\",\"exptype\":\"" << exptype << "\",\"dfile\":\"" << Dfile
          << "\",\"dline\":" << Dline << ",\"dcolumn\":" << Dcolumn
          << ",\"dstmt\":\"" << Dstmt << "\"}";
-      auto content = ss.str();
+      std::string content = ss.str();
       printf("%s\n", content.c_str());
     } else if (const FunctionDecl *FD =
                    Result.Nodes.getNodeAs<FunctionDecl>("FunctionDecl|")) {
@@ -490,13 +680,13 @@ public:
         return;
       const CompoundStmt *Body = dyn_cast_or_null<CompoundStmt>(FD->getBody());
       if (Body != nullptr) {
-        CharSourceRange FullRange = CharSourceRange::getCharRange(
+        CharSourceRange FullRange = CharSourceRange::getTokenRange(
             FD->getBeginLoc(), FD->getBody()->getBeginLoc());
         raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
         stmt = escapeJsonString(raw_stmt);
       } else {
         CharSourceRange FullRange =
-            CharSourceRange::getCharRange(FD->getBeginLoc(), FD->getEndLoc());
+            CharSourceRange::getTokenRange(FD->getBeginLoc(), FD->getEndLoc());
         raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
         stmt = escapeJsonString(raw_stmt);
       }
@@ -538,14 +728,10 @@ public:
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
         return;
       {
-        SourceLocation End =
-            Lexer::findLocationAfterToken(UDD->getEndLoc(), clang::tok::semi,
-                                          SM, Context.getLangOpts(), false);
-        if (End.isInvalid()) {
-          End = Lexer::getLocForEndOfToken(UDD->getEndLoc(), 0, SM,
-                                           Context.getLangOpts());
-        }
-        auto FullRange = CharSourceRange::getCharRange(UDD->getBeginLoc(), End);
+        SourceLocation End = Lexer::findLocationAfterToken(
+            UDD->getEndLoc(), clang::tok::semi, SM, LangOptions(), false);
+        CharSourceRange FullRange =
+            CharSourceRange::getCharRange(UDD->getBeginLoc(), End);
         raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
         stmt = escapeJsonString(escapeJsonString(raw_stmt));
       }
@@ -555,8 +741,6 @@ public:
         line = PLoc.getLine();
         column = PLoc.getColumn();
       }
-      // if (skipPath(file))
-      //   return;
       SourceLocation DLoc = UDD->getNominatedNamespace()->getBeginLoc();
       if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc))
         return;
@@ -566,10 +750,12 @@ public:
         Dline = DPLoc.getLine();
         Dcolumn = DPLoc.getColumn();
       }
-      // if (!Dfile.empty() && skipPath(Dfile))
-      //   return;
       std::stringstream ss;
-      if (!matchFileContent(file, line, column, raw_stmt)) {
+      if (skipPath(file)) {
+        ss << "####";
+      } else if (!Dfile.empty() && skipPath(Dfile)) {
+        ss << "####";
+      } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
       ss << "{\"type\":\"UsingDirectiveDecl\",\"file\":\"" << file
@@ -718,7 +904,7 @@ public:
         return;
       {
         CharSourceRange FullRange =
-            CharSourceRange::getCharRange(CE->getBeginLoc(), CE->getEndLoc());
+            CharSourceRange::getTokenRange(CE->getBeginLoc(), CE->getEndLoc());
         raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
         stmt = escapeJsonString(raw_stmt);
       }
@@ -781,9 +967,13 @@ public:
   std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance &CI,
                                                  StringRef file) override {
     MatchFinder Finder;
-    auto *Callback{
+    AnalysisMatchCallback *Callback{
         new AnalysisMatchCallback{CI.getASTContext(), CI.getSourceManager()}};
-    if (option.find("NamespaceDecl|") != std::string::npos) {
+    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") !=
+        std::string::npos) {
+      Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("DeclRefExpr|"),
+                        Callback);
+    } else if (option.find("NamespaceDecl|") != std::string::npos) {
       Finder.addMatcher(
           clang::ast_matchers::namespaceDecl().bind("NamespaceDecl|"),
           Callback);
@@ -822,6 +1012,21 @@ int main(int argc, const char **argv) {
   if (getenv("ANALYZE_CMD") != nullptr) {
     option = getenv("ANALYZE_CMD");
   }
+  if (getenv("ANALYZE_SKIP_PATH")) {
+    std::string skipPath = getenv("ANALYZE_SKIP_PATH");
+    size_t start = 0;
+    size_t end = skipPath.find(':');
+    while (end != std::string::npos) {
+      std::string token = skipPath.substr(start, end - start);
+      if (!token.empty())
+        skipPaths.emplace_back(token);
+      start = end + 1;
+      end = skipPath.find(':', start);
+    }
+    std::string token = skipPath.substr(start);
+    if (!token.empty())
+      skipPaths.emplace_back(token);
+  }
   auto ExpectedParser = CommonOptionsParser::create(argc, argv, Category);
   if (!ExpectedParser) {
     llvm::errs() << llvm::toString(ExpectedParser.takeError());
@@ -833,3 +1038,55 @@ int main(int argc, const char **argv) {
   Tool.run(newFrontendActionFactory<AnalysisAction>().get());
   return 0;
 }
+
+/* extra code */
+// void analyzeQualifiers(FunctionDecl *FD) {
+//   // 获取所有限定符（命名空间或类）
+//   DeclContext *DC = FD->getDeclContext();
+//   std::vector<const DeclContext *> Contexts;
+  
+//   while (DC && isa<NamedDecl>(DC)) {
+//       Contexts.push_back(DC);
+//       DC = DC->getParent();
+//   }
+  
+//   // 逆序输出限定符（从外到内）
+//   llvm::outs() << "限定符层次结构:\n";
+//   for (auto it = Contexts.rbegin(); it != Contexts.rend(); ++it) {
+//       const DeclContext *Context = *it;
+//       if (const auto *ND = dyn_cast<NamedDecl>(Context)) {
+//           // 确定限定符类型（命名空间、类等）
+//           std::string ContextType;
+//           if (isa<NamespaceDecl>(Context))
+//               ContextType = "命名空间";
+//           else if (isa<CXXRecordDecl>(Context))
+//               ContextType = "类";
+//           else
+//               ContextType = "其他上下文";
+          
+//           llvm::outs() << "  " << ContextType << ": " 
+//                        << ND->getNameAsString() << "\n";
+//       }
+//   }
+// }
+// bool VisitFunctionDecl(FunctionDecl *FD) {
+//   if (FD->isThisDeclarationADefinition()) {
+//       std::string fullName = getFullName(FD);
+//       QualType returnType = FD->getReturnType();
+      
+//       llvm::outs() << "Function Name: " << fullName << "\n";
+//       llvm::outs() << "Return Type: " << returnType.getAsString() << "\n";
+      
+//       // 判断是否是成员函数
+//       if (const auto *Method = dyn_cast<CXXMethodDecl>(FD)) {
+//           if (Method->isInstance()) {
+//               llvm::outs() << "This is an instance method (non-static member function).\n";
+//           } else if (Method->isStatic()) {
+//               llvm::outs() << "This is a static member function.\n";
+//           }
+//       } else {
+//           llvm::outs() << "This is not a member function.\n";
+//       }
+//   }
+//   return true;
+// }
