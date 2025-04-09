@@ -1069,6 +1069,8 @@ int main(int argc, const char **argv) {
 //       }
 //   }
 // }
+
+
 // bool VisitFunctionDecl(FunctionDecl *FD) {
 //   if (FD->isThisDeclarationADefinition()) {
 //       std::string fullName = getFullName(FD);
@@ -1090,3 +1092,59 @@ int main(int argc, const char **argv) {
 //   }
 //   return true;
 // }
+
+
+// bool VisitDeclRefExpr(DeclRefExpr *DRE) {
+//   if (auto *ED = dyn_cast<EnumConstantDecl>(DRE->getDecl())) {
+//       processQualifiedName(DRE);
+//   }
+//   return true;
+// }
+
+// void processQualifiedName(DeclRefExpr *DRE) {
+//   // 获取限定名组成部分
+//   NestedNameSpecifierLoc NNSL = DRE->getQualifierLoc();
+//   printQualifierHierarchy(NNSL);
+// }
+
+// void printQualifierHierarchy(NestedNameSpecifierLoc NNSL) {
+//   while (NNSL) {
+//       const Type *T = NNSL.getType();
+//       if (T) {
+//           printTypeInfo(T);
+//       } else if (NNSL.getNestedNameSpecifier()->getKind() == 
+//                 NestedNameSpecifier::Identifier) {
+//           printIdentifierInfo(NNSL);
+//       }
+//       NNSL = NNSL.getPrefix();
+//   }
+// }
+
+// void printTypeInfo(const Type *T) {
+//   QualType QT(T, 0);
+//   string typeName = QT.getAsString(Context->getPrintingPolicy());
+//   llvm::outs() << "限定符类型: " << typeName << "\n";
+// }
+
+// void printIdentifierInfo(NestedNameSpecifierLoc NNSL) {
+//   IdentifierInfo *II = NNSL.getNestedNameSpecifier()->getAsIdentifier();
+//   if (II) {
+//       llvm::outs() << "限定符名称: " << II->getName() << "\n";
+//   }
+// }
+
+
+// if (auto *DeclRef = dyn_cast<DeclRefExpr>(BaseExpr)) {
+//   const NamedDecl *BaseDecl = DeclRef->getDecl();
+//   if (auto *RD = dyn_cast<CXXRecordDecl>(BaseDecl)) {
+//       llvm::outs() << "Class Name: " << RD->getNameAsString() << "\n";
+
+//       // 获取类型信息（NewClass的类型）
+//       QualType classType = RD->getTypeForDecl();
+//       llvm::outs() << "Class Type: " << classType.getAsString() << "\n";
+//   }
+// }
+
+
+// clang17 libtooling 分析C++源码，如何获得语句中用到的枚举直前面的 名字:: 及 名字::的类型，比如语句 int val = NewClass::VALUE_DEFAULT; 如何获得 名字NewClass及NewClass的类型
+// https://www.perplexity.ai/search/clang17-libtooling-fen-xi-c-yu-EM21vhK_Q8S2Q8Gk72JgpQ#1
