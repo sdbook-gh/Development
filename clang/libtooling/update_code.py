@@ -14,31 +14,34 @@ from concurrent.futures import ThreadPoolExecutor
 # C_INCLUDE_PATH = '/home/shenda/dev/clang/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
 # CPLUS_INCLUDE_PATH = '/home/shenda/dev/clang/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
 
-# NS_STRING_DICT = {'LbsAmap':'LbsTJMap'}
-# NS_SKIP_STRING_LIST = ['AMapSDK_Common::', 'amap::', 'amap_app::']
-# CLS_STRING_DICT = {'AMap':'TJMap', 'amap':'tjmap', 'Amap':'TJmap', 'AMAP':'TJMAP', 'aMap':'TJMap'}
+# UPDATE_DICT = {'AMap':'TJMap','amap':'tjmap','Amap':'TJmap','AMAP':'TJMAP','aMap':'TJMap'}
+# NS_STRING_DICT = {**UPDATE_DICT}
+# NS_SKIP_STRING_LIST = []
+# CLS_STRING_DICT = {**UPDATE_DICT}
 # CLS_SKIP_STRING_LIST = []
 # MC_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT}
-# MC_SKIP_STRING_LIST = ['AMAPCOMMON_NAMESPACE', 'Amap_Malloc'] # macro search skip string list
+# MC_SKIP_STRING_LIST = ['AMAPCOMMON_NAMESPACE', 'Amap_Malloc']
 # CM_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT}
 # CM_SKIP_STRING_LIST = []
-# EXTRA_COMPILE_FLAGS = ' -DENABLE_LICENSE '
+# EXTRA_COMPILE_FLAGS = ''
 
 
-C_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
-CPLUS_INCLUDE_PATH="/share/dev/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include"
-NS_STRING_DICT = {'NM':'NEW_NM'}
+C_INCLUDE_PATH='/mnt/wsl/PhysicalDrive4p1/shenda/bin/clang-17.0.6/bin/clang/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/lib/gcc/x86_64-linux-gnu/11/include:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
+CPLUS_INCLUDE_PATH='/mnt/wsl/PhysicalDrive4p1/shenda/bin/clang-17.0.6/bin/clang/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/lib/gcc/x86_64-linux-gnu/11/include:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
+
+NS_STRING_DICT = {'NM':'NM_NEW'}
 NS_SKIP_STRING_LIST = []
 CLS_STRING_DICT = {}
 CLS_SKIP_STRING_LIST = []
 MC_STRING_DICT = {}
 MC_SKIP_STRING_LIST = []
-CM_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT}
+CM_STRING_DICT = {}
 CM_SKIP_STRING_LIST = []
 EXTRA_COMPILE_FLAGS = ''
 
 
 SKIP_UPDATE_PATHS = ['/build', '/ThirdPartyLib', '/binaries', '/usr', '/Qt', '/open', '__autogen']
+
 
 logging_lock = threading.Lock()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='update_code.log', filemode='w')
@@ -55,29 +58,34 @@ def LOG(level, message):
 def skip_replace_file(file_path):
   for skip_string in SKIP_UPDATE_PATHS:
     if file_path.find(skip_string) != -1:
-      LOG('info', f'跳过文件: {file_path}')
+      # LOG('info', f'跳过文件: {file_path}')
       return True
   return False
 
 class StringUtils:
+  def get_skip_list(self, list, prefix = '(', suffix = ')'):
+    skip_list = [prefix + item + suffix for item in list]
+    return skip_list
   def mark_string_skip_pos(self, stmt, skip_list, mark, pos_start = -1, pos_end = -1):
     new_stmt = stmt
     skip_idx = 0
     for skip_string in skip_list:
-      pattern = f'{skip_string}'
-      pattern_length = len(pattern)
+      pattern = re.compile(f'{skip_string}')
       pos = 0
+      skip_mark = f'!{mark}{skip_idx}'
+      skip_mark_length = len(skip_mark)
       while pos != -1:
-        pos = new_stmt.find(pattern, pos)
-        if pos != -1:
-          if pos_start >= 0 and pos < pos_start:
-            pos += pattern_length
+        res = pattern.search(new_stmt, pos)
+        if res:
+          if pos_start >= 0 and res.start(1) < pos_start:
+            pos = res.end() + 1
             continue
-          if pos_end >= 0 and pos + pattern_length > pos_end:
+          if pos_end >= 0 and pos + res.end(1) - res.start(1) > pos_end:
             break
-          skip_mark = f'!{mark}{skip_idx}'
-          new_stmt = new_stmt[:pos] + skip_mark + new_stmt[pos + pattern_length:]
-          pos += len(skip_mark)
+          new_stmt = new_stmt[:res.start(1)] + skip_mark + new_stmt[res.end(1):]
+          pos = res.start(1) + skip_mark_length
+        else:
+          pos = -1
       skip_idx += 1
     return new_stmt
   def mark_string_pos(self, stmt, match_string_dict, skip_list, mark, prefix = '(', suffix = ')', pos_start = -1, pos_end = -1):
@@ -151,6 +159,16 @@ class SourceCodeMatcher:
     if len(stmt) == 0:
       return '', ''
     str_utils = StringUtils()
+    NS_UPDATE = self.parent.ns_inner
+    NS_SKIP = str_utils.get_skip_list(NS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.type_skip['ns_skip'].keys()), r'\b(', r')::')
+    NS_SKIP_STR = NS_SKIP_STRING_LIST + list(self.parent.type_skip['ns_skip'].keys())
+    CLS_UPDATE = self.parent.cls_inner
+    CLS_SKIP = str_utils.get_skip_list(CLS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.type_skip['cls_skip'].keys()))
+    CLS_SKIP_STR = CLS_SKIP_STRING_LIST + list(self.parent.type_skip['cls_skip'].keys())
+    MC_SKIP = str_utils.get_skip_list(MC_SKIP_STRING_LIST)
+    MC_SKIP_STR = MC_SKIP_STRING_LIST
+    CM_SKIP = str_utils.get_skip_list(CM_SKIP_STRING_LIST)
+    CM_SKIP_STR = CM_SKIP_STRING_LIST
     if expression_type[-2:] == '_M':
       expression_type = expression_type[:-2]
       if expression_type == 'Ifndef':
@@ -160,10 +178,9 @@ class SourceCodeMatcher:
           return new_stmt, stmt
       elif expression_type == 'MacroExpands':
         pos = stmt.find('(')
-        skip_list = MC_SKIP_STRING_LIST
-        found_mc, new_stmt = str_utils.mark_all_string_pos(stmt, MC_STRING_DICT, skip_list, '_MC_', r'(', r')', -1, pos)
+        found_mc, new_stmt = str_utils.mark_all_string_pos(stmt, MC_STRING_DICT, MC_SKIP, '_MC_', r'(', r')', -1, pos)
         if found_mc:
-          new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, skip_list, '_MC_')
+          new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, MC_SKIP_STR, '_MC_')
           return new_stmt, stmt
       elif expression_type == 'MacroDefined':
         macroname = extra_info['macroname']
@@ -171,19 +188,21 @@ class SourceCodeMatcher:
         if macroname in self.parent.mc_inner:
           for item in self.parent.mc_inner[macroname]:
             nscls_dict[item] = item
-        skip_list = MC_SKIP_STRING_LIST
+        skip_list = MC_SKIP
+        skip_list_str = MC_SKIP_STR
         if macroname in self.parent.mc_skip:
-          skip_list += self.parent.mc_skip[macroname]
+          skip_list += str_utils.get_skip_list(self.parent.mc_skip[macroname])
+          skip_list_str += self.parent.mc_skip[macroname]
         new_stmt = stmt
         _, new_stmt = str_utils.mark_all_string_pos(new_stmt, nscls_dict, skip_list, '_NSCLS_')
-        found_mc, new_stmt = str_utils.mark_all_string_pos(new_stmt, MC_STRING_DICT, skip_list, '_MC_')
-        new_stmt = str_utils.updat_string(new_stmt, nscls_dict, skip_list, '_NSCLS_')
-        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP_STRING_LIST, '_NS_', r'(', r').*\b::')
-        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP_STRING_LIST, '_CLS_')
+        found_mc, new_stmt = str_utils.mark_all_string_pos(new_stmt, MC_STRING_DICT, [], '_MC_')
+        new_stmt = str_utils.updat_string(new_stmt, nscls_dict, skip_list_str, '_NSCLS_')
+        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_UPDATE, NS_SKIP, '_NS_', r'(', r')\s*::')
+        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_UPDATE, CLS_SKIP, '_CLS_')
         if found_mc or found_ns or found_cls:
-          new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, skip_list, '_MC_')
-          new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP_STRING_LIST, '_NS_')
-          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP_STRING_LIST, '_CLS_')
+          new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, [], '_MC_')
+          new_stmt = str_utils.updat_string(new_stmt, NS_UPDATE, NS_SKIP_STR, '_NS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
           return new_stmt, stmt
       elif expression_type == 'InclusionDirective':
         include_file = extra_info['include_file']
@@ -202,49 +221,50 @@ class SourceCodeMatcher:
             self.parent.cantidate_rename_files[real_file_path] = os.path.join(dir_name, file_name)
           return new_stmt, stmt
       elif expression_type == 'Comment':
-        found_cm, new_stmt = str_utils.mark_all_string_pos(stmt, CM_STRING_DICT, CM_SKIP_STRING_LIST, '_CM_')
+        found_cm, new_stmt = str_utils.mark_all_string_pos(stmt, CM_STRING_DICT, CM_SKIP, '_CM_')
         if found_cm:
-          new_stmt = str_utils.updat_string(new_stmt, CM_STRING_DICT, CM_SKIP_STRING_LIST, '_CM_')
+          new_stmt = str_utils.updat_string(new_stmt, CM_STRING_DICT, CM_SKIP_STR, '_CM_')
           return new_stmt, stmt
       elif expression_type == 'SourceRangeSkipped':
         new_stmt = stmt
-        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP_STRING_LIST, '_NS_', r'(', r').*\b::')
-        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP_STRING_LIST, '_CLS_')
+        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_UPDATE, NS_SKIP, '_NS_', r'(', r')\s*::')
+        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_UPDATE, CLS_SKIP, '_CLS_')
         if found_ns or found_cls:
-          new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP_STRING_LIST, '_NS_')
-          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP_STRING_LIST, '_CLS_')
+          new_stmt = str_utils.updat_string(new_stmt, NS_UPDATE, NS_SKIP_STR, '_NS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
           return new_stmt, stmt
       else:
         LOG('error', f'未知宏类型: {expression_type}')
     elif expression_type[-2:] == '_E':
       expression_type = expression_type[:-2]
-      NS_SKIP = NS_SKIP_STRING_LIST + list(self.parent.ns_skip.keys())
-      CLS_SKIP = CLS_SKIP_STRING_LIST + list(self.parent.cls_skip.keys())
       if expression_type.endswith('+'):
         pos = stmt.find('<')
         if pos != -1:
           stmt = stmt[:stmt.find('<')]
         new_stmt = stmt
-        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_', r'(', r').*\b::')
-        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_UPDATE, NS_SKIP, '_NS_', r'(', r')\s*::')
+        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_UPDATE, CLS_SKIP, '_CLS_')
         if found_ns or found_cls:
-          new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
-          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+          new_stmt = str_utils.updat_string(new_stmt, NS_UPDATE, NS_SKIP_STR, '_NS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
           return new_stmt, stmt
       elif expression_type.endswith('*'):
-        found, new_stmt = str_utils.mark_string_pos(stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+        found, new_stmt = str_utils.mark_string_pos(stmt, CLS_UPDATE, CLS_SKIP, '_CLS_')
         if found:
-          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
           return new_stmt, stmt
       elif expression_type == 'NamespaceDecl':
-        found, new_stmt = str_utils.mark_string_pos(stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
+        update_dict = NS_STRING_DICT
+        skip_list = str_utils.get_skip_list(NS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.type_skip['ns_skip'].keys()), r'\b(', r')\b')
+        found, new_stmt = str_utils.mark_string_pos(stmt, update_dict, skip_list, '_NS_')
         if found:
-          new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
+          new_stmt = str_utils.updat_string(new_stmt, update_dict, skip_list, '_NS_')
+          self.parent.ns_inner[stmt] = new_stmt
           return new_stmt, stmt
       elif expression_type == 'NamedDecl' or expression_type == 'MemberExpr':
-        found, new_stmt = str_utils.mark_string_pos(stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+        found, new_stmt = str_utils.mark_string_pos(stmt, CLS_UPDATE, CLS_SKIP, '_CLS_')
         if found:
-          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
           return new_stmt, stmt
       elif expression_type == 'CallExpr':
         stmt_list = stmt.split('%%')
@@ -257,9 +277,9 @@ class SourceCodeMatcher:
           return '', ''
         func_pos_end = func_pos_start + len(stmt_list[1])
         stmt_list[0] = stmt_list[0][func_pos_start:func_pos_end]
-        found, new_stmt = str_utils.mark_string_pos(stmt_list[0], CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+        found, new_stmt = str_utils.mark_string_pos(stmt_list[0], CLS_UPDATE, CLS_SKIP, '_CLS_')
         if found:
-          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
           return new_stmt, stmt_list[0]
       elif expression_type == 'FunctionDecl' or expression_type == 'FunctionImpl':
         function_exp_list = stmt.split('%%')
@@ -273,11 +293,11 @@ class SourceCodeMatcher:
         if pos_call != -1:
           stmt = stmt[:pos_call]
         new_stmt = stmt
-        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_', r'(', r').*\b::')
-        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+        found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_UPDATE, NS_SKIP, '_NS_', r'(', r')\s*::')
+        found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_UPDATE, CLS_SKIP, '_CLS_')
         if found_ns or found_cls:
-          new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
-          new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+          new_stmt = str_utils.updat_string(new_stmt, NS_UPDATE, NS_SKIP_STR, '_NS_')
+          new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
           return new_stmt, stmt
       elif expression_type == 'UsingDirectiveDecl':
         namespace_pattern = r'using\s+namespace\s+'
@@ -286,16 +306,16 @@ class SourceCodeMatcher:
         found_cls = False
         if namespace_pos:
           new_stmt = stmt
-          found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
+          found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_UPDATE, NS_SKIP, '_NS_')
           if found_ns:
-            new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
+            new_stmt = str_utils.updat_string(new_stmt, NS_UPDATE, NS_SKIP_STR, '_NS_')
             return new_stmt, stmt
         else:
-          found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_', r'(', r').*\b::')
-          found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+          found_ns, new_stmt = str_utils.mark_all_string_pos(new_stmt, NS_UPDATE, NS_SKIP, '_NS_', r'(', r')\s*::')
+          found_cls, new_stmt = str_utils.mark_all_string_pos(new_stmt, CLS_UPDATE, CLS_SKIP, '_CLS_')
           if found_ns or found_cls:
-            new_stmt = str_utils.updat_string(new_stmt, NS_STRING_DICT, NS_SKIP, '_NS_')
-            new_stmt = str_utils.updat_string(new_stmt, CLS_STRING_DICT, CLS_SKIP, '_CLS_')
+            new_stmt = str_utils.updat_string(new_stmt, NS_UPDATE, NS_SKIP_STR, '_NS_')
+            new_stmt = str_utils.updat_string(new_stmt, CLS_UPDATE, CLS_SKIP_STR, '_CLS_')
             return new_stmt, stmt
       else:
         LOG('error', f'未知表达式类型: {expression_type}')
@@ -327,7 +347,6 @@ class SourceCodeUpdatePosition:
       new_length = len(stmt)
       new_end = file_line_column + new_length
       if new_start < current_end and new_end > current_start:
-        # return True
         if new_start >= current_start and new_end <= current_end and new_length < current_length:
           pos_start = new_start - current_start
           pos_end = pos_start + new_length
@@ -360,9 +379,11 @@ class SourceCodeUpdater:
     self.output_directory = os.path.realpath(output_directory)
     self.log_directory = os.path.realpath(log_directory)
     if not os.path.exists(self.compile_commands_json):
+      LOG('error', f"错误: 编译配置 '{self.compile_commands_json}' 不存在")
       print(f"错误: 编译配置 '{self.compile_commands_json}' 不存在", file=sys.stderr)
       exit(1)
     if not os.path.exists(self.input_directory):
+      LOG('error', f"错误: 输入目录 '{self.input_directory}' 不存在")
       print(f"错误: 输入目录 '{self.input_directory}' 不存在", file=sys.stderr)
       exit(1)
     if os.path.exists(self.output_directory):
@@ -372,8 +393,9 @@ class SourceCodeUpdater:
     self.cantidate_replace_files = {}
     self.cantidate_rename_files = {}
     self.lock = threading.Lock()
-    self.ns_skip = {}
-    self.cls_skip = {}
+    self.ns_inner = {}
+    self.cls_inner = {**CLS_STRING_DICT}
+    self.type_skip = {'ns_skip': {}, 'cls_skip': {}}
     self.mc_inner = {}
     self.mc_skip = {}
   
@@ -391,6 +413,7 @@ class SourceCodeUpdater:
       #   continue
       self.source_files[source_file] = compile_commands
     if len(self.source_files) == 0:
+      LOG('error', f"错误: 没有从{self.compile_commands_json}找到任何编译配置")
       print(f"错误: 没有从{self.compile_commands_json}找到任何编译配置", file=sys.stderr)
       exit(1)
 
@@ -400,6 +423,7 @@ class SourceCodeUpdater:
       return
     result = os.system(f'rm -fr {analyzer_log_file_prefix}*log')
     if result != 0:
+      LOG('error', f"错误: 返回值: {result} 删除{analyzer_log_file_prefix}*log")
       print(f"错误: 返回值: {result} 删除{analyzer_log_file_prefix}*log", file=sys.stderr)
       exit(1)
     os.environ['C_INCLUDE_PATH'] = C_INCLUDE_PATH
@@ -412,6 +436,7 @@ class SourceCodeUpdater:
         # LOG('info', f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
         result = os.system(f'echo "#\n#\n# {file_path}\n#\n#" >> {analyzer_log_file} && ANALYZE_CMD="{cmd}|" {analyzer} {file_path} -- {compile_commands} -Wno-everything >> {analyzer_log_file}')
         if result != 0:
+          LOG('error', f"错误: 分析源文件时出错，返回值: {result} {file_path}")
           print(f"错误: 分析源文件时出错，返回值: {result} {file_path}", file=sys.stderr)
           exit(1)
       with ThreadPoolExecutor(max_workers=pool_size) as executor:
@@ -500,6 +525,7 @@ class SourceCodeUpdater:
                   self.mc_inner[macroname] = []
                 self.mc_inner[macroname].append(macro_list[0])
           except json.JSONDecodeError as e:
+            LOG('error', f"错误: 解析宏分析日志时出错: {analyze_log_file} {line_no} {e} {line}")
             print(f"错误: 解析宏分析日志时出错: {analyze_log_file} {line_no} {e} {line}", file=sys.stderr)
             exit(1)
     for analyze_log_file in log_files:
@@ -561,6 +587,7 @@ class SourceCodeUpdater:
                   with self.lock:
                     self.cantidate_replace_files[file_path].update_position[(file_line, file_line_column)] = SourceCodeUpdatePosition(file_path, file_line, file_line_column, macrotype, stmt, new_stmt)
           except json.JSONDecodeError as e:
+            LOG('error', f"错误: 解析宏分析日志时出错: {analyze_log_file} {line_no} {e} {line}")
             print(f"错误: 解析宏分析日志时出错: {analyze_log_file} {line_no} {e} {line}", file=sys.stderr)
             exit(1)
 
@@ -575,6 +602,8 @@ class SourceCodeUpdater:
     file_line = log_entry['line']
     file_line_column = log_entry['column']
     stmt = log_entry['stmt']
+    if len(stmt) == 0:
+      return
     expression_type = log_entry['exptype']
     expression_type += f'{append_type}_E'
     global g_matcher
@@ -598,6 +627,30 @@ class SourceCodeUpdater:
         with self.lock:
           self.cantidate_replace_files[file_path].update_position[(file_line, file_line_column)] = SourceCodeUpdatePosition(file_path, file_line, file_line_column, expression_type, stmt, new_stmt)
 
+  def analyze_source_files_skip(self, analyze_type, reuse_analyzed_result = True):
+    self.exec_analyzer(f'{analyze_type}', self.source_files.keys(), reuse_analyzed_result)
+    log_files = [os.path.join(self.log_directory, f) for f in os.listdir(self.log_directory) if os.path.isfile(os.path.join(self.log_directory, f))]
+    for analyze_log_file in log_files:
+      if not f'{analyze_type}' in analyze_log_file:
+        continue
+      with open(analyze_log_file, 'r') as analyze_log_file_content:
+        line_no = 0
+        for line in analyze_log_file_content:
+          line_no += 1
+          if len(line) == 0 or line.startswith('#'):
+            continue
+          try:
+            log_entry = json.loads(line)
+            stmt = log_entry['stmt']
+            if len(stmt) > 0 and analyze_type == 'SkipNamespaceDecl':
+              self.type_skip['ns_skip'][stmt] = stmt
+          except json.JSONDecodeError as e:
+            LOG('error', f'错误: 解析{analyze_log_file} {line_no}行出错: {e} {line}')
+            print(f'错误: 解析{analyze_log_file} {line_no}行出错: {e} {line}', file=sys.stderr)
+            exit(1)
+    if analyze_type == 'SkipNamespaceDecl':
+      LOG('info', f"ns_skip: {self.type_skip['ns_skip']}")
+
   def analyze_source_files(self, analyze_type, append_type = '', reuse_analyzed_result = True):
     global g_matcher
     self.exec_analyzer(f'{analyze_type}', self.source_files.keys(), reuse_analyzed_result)
@@ -609,12 +662,14 @@ class SourceCodeUpdater:
         line_no = 0
         for line in analyze_log_file_content:
           line_no += 1
-          if line.startswith('#'):
+          type_skip = False
+          if len(line) == 0 or line.startswith('#'):
             continue
           try:
             log_entry = json.loads(line)
             self.check_expression_log_entry(log_entry, analyze_type, append_type)
           except json.JSONDecodeError as e:
+            LOG('error', f'错误: 解析{analyze_log_file} {line_no}行出错: {e} {line}')
             print(f'错误: 解析{analyze_log_file} {line_no}行出错: {e} {line}', file=sys.stderr)
             exit(1)
 
@@ -663,11 +718,13 @@ class SourceCodeUpdater:
 
   def copy_source_files(self):
     if os.path.exists(self.output_directory):
+      LOG('error', f"错误: 输出目录 '{self.output_directory}' 已存在")
       print(f"错误: 输出目录 '{self.output_directory}' 已存在", file=sys.stderr)
       exit(1)
     LOG('info', f'cp -r {self.input_directory} {self.output_directory}')
     result = os.system(f'cp -r {self.input_directory} {self.output_directory}')
     if result != 0:
+      LOG('error', f"错误: 复制目录时出错，返回值: {result} {self.input_directory} {self.output_directory}")
       print(f"错误: 复制目录时出错，返回值: {result} {self.input_directory} {self.output_directory}", file=sys.stderr)
       exit(1)
 
@@ -685,6 +742,7 @@ class SourceCodeUpdater:
       os.makedirs(self.log_directory, exist_ok=True)
     reuse_analyzed_result = False
     # reuse_analyzed_result = True
+    self.analyze_source_files_skip('SkipNamespaceDecl', reuse_analyzed_result=reuse_analyzed_result)
     self.analyze_source_files('NamespaceDecl', reuse_analyzed_result=reuse_analyzed_result)
     self.analyze_source_files('UsingDirectiveDecl', reuse_analyzed_result=reuse_analyzed_result)
     self.analyze_source_files('FunctionDecl', reuse_analyzed_result=reuse_analyzed_result)

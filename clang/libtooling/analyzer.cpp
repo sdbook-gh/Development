@@ -24,6 +24,7 @@
 #include <fstream>
 #include <iomanip>
 #include <map>
+#include <regex>
 #include <sstream>
 #include <stack>
 #include <string>
@@ -133,7 +134,20 @@ static bool matchFileContent(const std::string &filePath, int startLine,
 }
 
 std::string getStmtBefore(const std::string &filePath, int startLine,
-                          int startColumn, const std::string &text) {
+                          int startColumn, const std::string &text,
+                          int *searchLine = nullptr,
+                          int *searchColumn = nullptr) {
+  auto regex_rfind = [](const std::string &input,
+                        const std::string &pattern) -> std::size_t {
+    std::regex re(pattern);
+    std::sregex_iterator iter(input.begin(), input.end(), re);
+    std::sregex_iterator end;
+    std::size_t lastPos = std::string::npos;
+    for (; iter != end; ++iter) {
+      lastPos = iter->position();
+    }
+    return lastPos;
+  };
   if (filePath.empty() || startLine < 1 || startColumn < 1)
     return "";
   if (text.empty())
@@ -149,18 +163,27 @@ std::string getStmtBefore(const std::string &filePath, int startLine,
   int startColIndex = startColumn - 1;
   int foundLine = -1;
   size_t foundCol = std::string::npos;
+  size_t foundStop = std::string::npos;
   for (int i = startLineIndex; i >= 0; --i) {
     const std::string &currentLine = fileLines[i];
     if (i == startLineIndex) {
       std::string prefix = currentLine.substr(0, startColIndex);
-      foundCol = prefix.rfind(text);
+      foundCol = regex_rfind(prefix, text);
+      foundStop = prefix.rfind(";");
       if (foundCol != std::string::npos) {
+        if (foundStop != std::string::npos && foundStop >= foundCol) {
+          return "";
+        }
         foundLine = i;
         break;
       }
     } else {
-      foundCol = currentLine.rfind(text);
+      foundCol = regex_rfind(currentLine, text);
+      foundStop = currentLine.rfind(";");
       if (foundCol != std::string::npos) {
+        if (foundStop != std::string::npos && foundStop >= foundCol) {
+          return "";
+        }
         foundLine = i;
         break;
       }
@@ -177,6 +200,10 @@ std::string getStmtBefore(const std::string &filePath, int startLine,
       result += "\n" + fileLines[j];
     }
     result += "\n" + fileLines[startLineIndex].substr(0, startColIndex);
+  }
+  if (searchLine != nullptr && searchColumn != nullptr) {
+    *searchLine = foundLine + 1;
+    *searchColumn = foundCol + 1;
   }
   return result;
 }
@@ -452,7 +479,7 @@ public:
 
   virtual void run(const MatchFinder::MatchResult &Result) {
     if (const NamespaceDecl *ND =
-            Result.Nodes.getNodeAs<NamespaceDecl>("NamespaceDecl|")) {
+            Result.Nodes.getNodeAs<NamespaceDecl>("SkipNamespaceDecl|")) {
       std::string file, Dfile, raw_stmt, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
@@ -468,7 +495,35 @@ public:
         stmt = escapeJsonString(raw_stmt);
       }
       std::stringstream ss;
-      if (!matchFileContent(file, line, column, raw_stmt)) {
+      if (skipPath(file)) {
+        ss << "{\"type\":\"SkipNamespaceDecl\",\"file\":\"" << file
+           << "\",\"line\":" << line << ",\"column\":" << column
+           << ",\"stmt\":\"" << stmt << "\",\"exptype\":\""
+           << "NamespaceDecl"
+           << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
+           << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
+        printf("%s\n", ss.str().c_str());
+      }
+    } else if (const NamespaceDecl *ND =
+                   Result.Nodes.getNodeAs<NamespaceDecl>("NamespaceDecl|")) {
+      std::string file, Dfile, raw_stmt, stmt, Dstmt;
+      int line = 0, column = 0;
+      int Dline = 0, Dcolumn = 0;
+      SourceLocation Loc = SM.getSpellingLoc(ND->getLocation());
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+        return;
+      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      if (PLoc.isValid()) {
+        file = getPath(PLoc.getFilename());
+        line = PLoc.getLine();
+        column = PLoc.getColumn();
+        raw_stmt = ND->getNameAsString();
+        stmt = escapeJsonString(raw_stmt);
+      }
+      std::stringstream ss;
+      if (skipPath(file)) {
+        return;
+      } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
       ss << "{\"type\":\"NamespaceDecl\",\"file\":\"" << file
@@ -559,7 +614,7 @@ public:
       } else if (skipPath(file)) {
         ss << "##";
       } else if (!Dfile.empty() && skipPath(Dfile)) {
-        ss << "##";
+        ss << "##-";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
@@ -574,6 +629,7 @@ public:
       std::string file, Dfile, raw_stmt, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
+      static int prev_line = 0, prev_column = 0;
       SourceLocation Loc = SM.getSpellingLoc(TL->getBeginLoc());
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc)) {
         return;
@@ -605,6 +661,30 @@ public:
           RecordDecl *D = RTL.getDecl();
           DLoc = D->getBeginLoc();
           raw_stmt = D->getNameAsString();
+          std::string Scope;
+          const DeclContext *DC = D->getDeclContext();
+          while (DC && isa<NamedDecl>(DC)) {
+            if (isa<NamespaceDecl>(DC))
+              Scope = dyn_cast<NamedDecl>(DC)->getNameAsString();
+            else if (isa<CXXRecordDecl>(DC))
+              Scope = dyn_cast<NamedDecl>(DC)->getNameAsString();
+            else
+              break;
+            DC = DC->getParent();
+          }
+          int Scope_line = 0, Scope_column = 0;
+          Scope = Scope.empty() ? ""
+                                : getStmtBefore(file, line, column,
+                                                Scope + "\\s*::", &Scope_line,
+                                                &Scope_column);
+          if (Scope_line > 0 && Scope_column > 0) {
+            if (Scope_line > prev_line ||
+                (Scope_line == prev_line && Scope_column >= prev_column)) {
+              line = Scope_line;
+              column = Scope_column;
+              raw_stmt = Scope + raw_stmt;
+            }
+          }
           stmt = escapeJsonString(raw_stmt);
         }
         break;
@@ -657,9 +737,9 @@ public:
       QualType QT = TL->getType();
       std::string exptype = QT->getTypeClassName();
       if (skipPath(file)) {
-        ss << "####";
+        ss << "##";
       } else if (!Dfile.empty() && skipPath(Dfile)) {
-        ss << "####";
+        ss << "##-";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
@@ -670,6 +750,11 @@ public:
          << ",\"dstmt\":\"" << Dstmt << "\"}";
       std::string content = ss.str();
       printf("%s\n", content.c_str());
+      {
+        PresumedLoc EPLoc = SM.getPresumedLoc(TL->getSourceRange().getEnd());
+        prev_line = EPLoc.getLine();
+        prev_column = EPLoc.getColumn();
+      }
     } else if (const FunctionDecl *FD =
                    Result.Nodes.getNodeAs<FunctionDecl>("FunctionDecl|")) {
       std::string file, Dfile, raw_stmt, stmt, Dstmt;
@@ -705,7 +790,7 @@ public:
         stmt = escapeJsonString(raw_stmt + "%%" + Rstmt);
       std::stringstream ss;
       if (skipPath(file)) {
-        ss << "##";
+        ss << "##-";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
@@ -752,9 +837,9 @@ public:
       }
       std::stringstream ss;
       if (skipPath(file)) {
-        ss << "####";
+        ss << "##";
       } else if (!Dfile.empty() && skipPath(Dfile)) {
-        ss << "####";
+        ss << "##";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
@@ -781,7 +866,8 @@ public:
       }
       raw_stmt = ND->getNameAsString();
       stmt = escapeJsonString(raw_stmt);
-      Dstmt = ND->getDeclKindName();
+      Dstmt = "NamedDecl";
+      std::string exptype = ND->getDeclKindName();
       std::stringstream ss;
       switch (ND->getKind()) {
       case NamedDecl::Namespace:
@@ -795,16 +881,15 @@ public:
         break;
       }
       if (skipPath(file)) {
-        ss << "##";
+        ss << "##-";
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
       ss << "{\"type\":\"NamedDeclMemberExpr\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
-         << stmt << "\",\"exptype\":\""
-         << "NamedDecl"
-         << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
-         << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
+         << stmt << "\",\"exptype\":\"" << exptype << "\",\"dfile\":\"" << Dfile
+         << "\",\"dline\":" << Dline << ",\"dcolumn\":" << Dcolumn
+         << ",\"dstmt\":\"" << Dstmt << "\"}";
       printf("%s\n", ss.str().c_str());
     } else if (const MemberExpr *ME =
                    Result.Nodes.getNodeAs<MemberExpr>("MemberExpr|")) {
@@ -969,14 +1054,18 @@ public:
     MatchFinder Finder;
     AnalysisMatchCallback *Callback{
         new AnalysisMatchCallback{CI.getASTContext(), CI.getSourceManager()}};
-    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") !=
-        std::string::npos) {
-      Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("DeclRefExpr|"),
-                        Callback);
+    if (option.find("SkipNamespaceDecl|") != std::string::npos) {
+      Finder.addMatcher(
+          clang::ast_matchers::namespaceDecl().bind("SkipNamespaceDecl|"),
+          Callback);
     } else if (option.find("NamespaceDecl|") != std::string::npos) {
       Finder.addMatcher(
           clang::ast_matchers::namespaceDecl().bind("NamespaceDecl|"),
           Callback);
+    } else if (option.find("MacroDefExpIfndefInclusionCommentSkip|") !=
+               std::string::npos) {
+      Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("DeclRefExpr|"),
+                        Callback);
     } else if (option.find("DeclRefExprTypeLoc|") != std::string::npos) {
       Finder.addMatcher(clang::ast_matchers::declRefExpr().bind("DeclRefExpr|"),
                         Callback);
@@ -1038,113 +1127,4 @@ int main(int argc, const char **argv) {
   Tool.run(newFrontendActionFactory<AnalysisAction>().get());
   return 0;
 }
-
 /* extra code */
-// void analyzeQualifiers(FunctionDecl *FD) {
-//   // 获取所有限定符（命名空间或类）
-//   DeclContext *DC = FD->getDeclContext();
-//   std::vector<const DeclContext *> Contexts;
-  
-//   while (DC && isa<NamedDecl>(DC)) {
-//       Contexts.push_back(DC);
-//       DC = DC->getParent();
-//   }
-  
-//   // 逆序输出限定符（从外到内）
-//   llvm::outs() << "限定符层次结构:\n";
-//   for (auto it = Contexts.rbegin(); it != Contexts.rend(); ++it) {
-//       const DeclContext *Context = *it;
-//       if (const auto *ND = dyn_cast<NamedDecl>(Context)) {
-//           // 确定限定符类型（命名空间、类等）
-//           std::string ContextType;
-//           if (isa<NamespaceDecl>(Context))
-//               ContextType = "命名空间";
-//           else if (isa<CXXRecordDecl>(Context))
-//               ContextType = "类";
-//           else
-//               ContextType = "其他上下文";
-          
-//           llvm::outs() << "  " << ContextType << ": " 
-//                        << ND->getNameAsString() << "\n";
-//       }
-//   }
-// }
-
-
-// bool VisitFunctionDecl(FunctionDecl *FD) {
-//   if (FD->isThisDeclarationADefinition()) {
-//       std::string fullName = getFullName(FD);
-//       QualType returnType = FD->getReturnType();
-      
-//       llvm::outs() << "Function Name: " << fullName << "\n";
-//       llvm::outs() << "Return Type: " << returnType.getAsString() << "\n";
-      
-//       // 判断是否是成员函数
-//       if (const auto *Method = dyn_cast<CXXMethodDecl>(FD)) {
-//           if (Method->isInstance()) {
-//               llvm::outs() << "This is an instance method (non-static member function).\n";
-//           } else if (Method->isStatic()) {
-//               llvm::outs() << "This is a static member function.\n";
-//           }
-//       } else {
-//           llvm::outs() << "This is not a member function.\n";
-//       }
-//   }
-//   return true;
-// }
-
-
-// bool VisitDeclRefExpr(DeclRefExpr *DRE) {
-//   if (auto *ED = dyn_cast<EnumConstantDecl>(DRE->getDecl())) {
-//       processQualifiedName(DRE);
-//   }
-//   return true;
-// }
-
-// void processQualifiedName(DeclRefExpr *DRE) {
-//   // 获取限定名组成部分
-//   NestedNameSpecifierLoc NNSL = DRE->getQualifierLoc();
-//   printQualifierHierarchy(NNSL);
-// }
-
-// void printQualifierHierarchy(NestedNameSpecifierLoc NNSL) {
-//   while (NNSL) {
-//       const Type *T = NNSL.getType();
-//       if (T) {
-//           printTypeInfo(T);
-//       } else if (NNSL.getNestedNameSpecifier()->getKind() == 
-//                 NestedNameSpecifier::Identifier) {
-//           printIdentifierInfo(NNSL);
-//       }
-//       NNSL = NNSL.getPrefix();
-//   }
-// }
-
-// void printTypeInfo(const Type *T) {
-//   QualType QT(T, 0);
-//   string typeName = QT.getAsString(Context->getPrintingPolicy());
-//   llvm::outs() << "限定符类型: " << typeName << "\n";
-// }
-
-// void printIdentifierInfo(NestedNameSpecifierLoc NNSL) {
-//   IdentifierInfo *II = NNSL.getNestedNameSpecifier()->getAsIdentifier();
-//   if (II) {
-//       llvm::outs() << "限定符名称: " << II->getName() << "\n";
-//   }
-// }
-
-
-// if (auto *DeclRef = dyn_cast<DeclRefExpr>(BaseExpr)) {
-//   const NamedDecl *BaseDecl = DeclRef->getDecl();
-//   if (auto *RD = dyn_cast<CXXRecordDecl>(BaseDecl)) {
-//       llvm::outs() << "Class Name: " << RD->getNameAsString() << "\n";
-
-//       // 获取类型信息（NewClass的类型）
-//       QualType classType = RD->getTypeForDecl();
-//       llvm::outs() << "Class Type: " << classType.getAsString() << "\n";
-//   }
-// }
-
-
-// clang17 libtooling 分析C++源码，如何获得语句中用到的枚举直前面的 名字:: 及 名字::的类型，比如语句 int val = NewClass::VALUE_DEFAULT; 如何获得 名字NewClass及NewClass的类型
-// https://www.perplexity.ai/search/clang17-libtooling-fen-xi-c-yu-EM21vhK_Q8S2Q8Gk72JgpQ#1
