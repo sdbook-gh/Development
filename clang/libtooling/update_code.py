@@ -11,41 +11,30 @@ from concurrent.futures import ThreadPoolExecutor
 '''
 
 
-# C_INCLUDE_PATH = '/home/shenda/dev/clang/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
-# CPLUS_INCLUDE_PATH = '/home/shenda/dev/clang/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
+CLANG_DIR = '/home/shenda/dev/clang/clang+llvm-17.0.6-x86_64-linux-gnu-ubuntu-22.04'
+CLANG_VERSION = '17' # clang main version
+GCC_VERSION = '11' # gcc main version
+C_INCLUDE_PATH = f'{CLANG_DIR}/lib/clang/{CLANG_VERSION}/include:/usr/include/c++/{GCC_VERSION}:/usr/include/x86_64-linux-gnu/c++/{GCC_VERSION}:/usr/include/c++/{GCC_VERSION}/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
+CPLUS_INCLUDE_PATH = f'{CLANG_DIR}/lib/clang/{CLANG_VERSION}/include:/usr/include/c++/{GCC_VERSION}:/usr/include/x86_64-linux-gnu/c++/{GCC_VERSION}:/usr/include/c++/{GCC_VERSION}/backward:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
 
-# UPDATE_DICT = {'AMap':'TJMap','amap':'tjmap','Amap':'TJmap','AMAP':'TJMAP','aMap':'TJMap'}
-# NS_STRING_DICT = {**UPDATE_DICT}
-# NS_SKIP_STRING_LIST = []
-# CLS_STRING_DICT = {**UPDATE_DICT}
-# CLS_SKIP_STRING_LIST = []
-# MC_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT}
-# MC_SKIP_STRING_LIST = ['AMAPCOMMON_NAMESPACE', 'Amap_Malloc']
-# CM_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT}
-# CM_SKIP_STRING_LIST = []
-# EXTRA_COMPILE_FLAGS = ''
-
-
-C_INCLUDE_PATH='/mnt/wsl/PhysicalDrive4p1/shenda/bin/clang-17.0.6/bin/clang/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/lib/gcc/x86_64-linux-gnu/11/include:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
-CPLUS_INCLUDE_PATH='/mnt/wsl/PhysicalDrive4p1/shenda/bin/clang-17.0.6/bin/clang/lib/clang/17/include:/usr/include/c++/11:/usr/include/x86_64-linux-gnu/c++/11:/usr/include/c++/11/backward:/usr/lib/gcc/x86_64-linux-gnu/11/include:/usr/local/include:/usr/include/x86_64-linux-gnu:/usr/include'
-
-NS_STRING_DICT = {'NM':'NM_NEW'}
-NS_SKIP_STRING_LIST = []
-CLS_STRING_DICT = {}
-CLS_SKIP_STRING_LIST = []
-MC_STRING_DICT = {}
-MC_SKIP_STRING_LIST = []
-CM_STRING_DICT = {}
-CM_SKIP_STRING_LIST = []
-EXTRA_COMPILE_FLAGS = ''
-
-
-SKIP_UPDATE_PATHS = ['/build', '/ThirdPartyLib', '/binaries', '/usr', '/Qt', '/open', '__autogen']
+UPDATE_DICT = {'AMap':'TJMap','amap':'tjmap','Amap':'TJmap','AMAP':'TJMAP','aMap':'TJMap'} # 替换字符串和新字符串的映射关系
+NS_STRING_DICT = {**UPDATE_DICT} # namespace替换字符串和新字符串的映射关系
+NS_SKIP_STRING_LIST = [] # namespace忽略替换字符串列表
+CLS_STRING_DICT = {**UPDATE_DICT} # 类型替换字符串和新字符串的映射关系
+CLS_SKIP_STRING_LIST = [] # 类型忽略替换字符串列表
+MC_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT} # 宏替换字符串和新字符串的映射关系
+MC_SKIP_STRING_LIST = ['AMAPCOMMON_NAMESPACE', 'Amap_Malloc'] # 宏忽略替换字符串列表
+CM_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT} # 注释替换字符串和新字符串的映射关系
+CM_SKIP_STRING_LIST = [] # 注释忽略替换字符串列表
+EXTRA_COMPILE_FLAGS = '' # 额外的编译选项
+SKIP_UPDATE_PATHS = ['/build', '/ThirdPartyLib', '/binaries', '/usr', '/Qt', '/open', '__autogen'] # C++源文件忽略路径
+RM_FILES = ['AMapLicenseListener.h'] # C++源文件需要删除的文件列表
 
 
 logging_lock = threading.Lock()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filename='update_code.log', filemode='w')
 analyzer = './build/analyzer'
+
 def LOG(level, message):
   with logging_lock:
     if level == 'info':
@@ -398,7 +387,7 @@ class SourceCodeUpdater:
     self.type_skip = {'ns_skip': {}, 'cls_skip': {}}
     self.mc_inner = {}
     self.mc_skip = {}
-  
+
   def parse_compile_commands(self):
     with open(self.compile_commands_json, 'r') as f:
       compile_commands = json.load(f)
@@ -735,13 +724,11 @@ class SourceCodeUpdater:
 
   def process_source_files(self):
     skip_copy = False
-    # skip_copy = True
     if not skip_copy:
       self.copy_source_files()
     if not os.path.exists(self.log_directory):
       os.makedirs(self.log_directory, exist_ok=True)
     reuse_analyzed_result = False
-    # reuse_analyzed_result = True
     self.analyze_source_files_skip('SkipNamespaceDecl', reuse_analyzed_result=reuse_analyzed_result)
     self.analyze_source_files('NamespaceDecl', reuse_analyzed_result=reuse_analyzed_result)
     self.analyze_source_files('UsingDirectiveDecl', reuse_analyzed_result=reuse_analyzed_result)
@@ -753,16 +740,24 @@ class SourceCodeUpdater:
     self.replace_in_source_files()
     self.rename_updated_files()
 
-def clang_check():
-  os.environ['C_INCLUDE_PATH'] = C_INCLUDE_PATH
-  os.environ['CPLUS_INCLUDE_PATH'] = CPLUS_INCLUDE_PATH
-  result = os.system(f'clang-check -p /home/shenda/dev/mapdev/MMShell_1500/build /home/shenda/dev/mapdev/MMShell_1500/OfflineNavigationSDK-Cpp/OfflineNavigationLibrary/Source/OfflineAMapNaviDelegate.cpp --ast-dump --extra-arg="-fno-color-diagnostics" --ast-dump-filter=angle')
+def setup(input_directory, output_directory):
+  cmd = f'rm -fr {input_directory}/code_update && mkdir -p {input_directory}/code_update && cd {input_directory}/code_update && cmake .. -DCMAKE_EXPORT_COMPILE_COMMANDS=ON'
+  result = os.system(cmd)
+  if result != 0:
+    print(f"错误: 返回值: {result} 执行 {cmd}", file=sys.stderr)
+    exit(1)
+  cmd = f'rm -fr {output_directory}'
+  result = os.system(cmd)
+  if result != 0:
+    print(f"错误: 返回值: {result} 执行 {cmd}", file=sys.stderr)
+    exit(1)
 
-if __name__ == '__main__':
-  # clang_check()
-  # exit(0)
+def complete(output_directory):
+  for rm_file in RM_FILES:
+    os.system(f'find {output_directory} -name {rm_file} -type f|xargs -i rm -fr {{}}')
+
+if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument('compile_commands_json', type=str, help='Path to compile_commands.json')
   parser.add_argument('input_directory', type=str, help='The directory of source code files')
   parser.add_argument('output_directory', type=str, help='The directory to save the updated source code files')
   parser.add_argument('log_directory', type=str, help='The directory to save source code analysis files')
@@ -771,9 +766,6 @@ if __name__ == '__main__':
     parser.print_help(sys.stderr)
     sys.exit(1)
   args = parser.parse_args()
-  if not args.compile_commands_json:
-    print("错误: 必须指定 compile_commands_json 参数", file=sys.stderr)
-    exit(1)
   if not args.input_directory:
     print("错误: 必须指定 input_directory 参数", file=sys.stderr)
     exit(1)
@@ -789,8 +781,12 @@ if __name__ == '__main__':
     if result != 0:
       print(f"错误: 执行命令时出错，返回值: {result} {args.extra_cmd}", file=sys.stderr)
       exit(1)
+  setup(args.input_directory, args.output_directory)
+  LOG('info', f'C_INCLUDE_PATH {C_INCLUDE_PATH}')
+  LOG('info', f'CPLUS_INCLUDE_PATH {CPLUS_INCLUDE_PATH}')
+  updater = SourceCodeUpdater(f'{args.input_directory}/code_update/compile_commands.json', args.input_directory, args.output_directory, args.log_directory)
   global g_matcher
-  updater = SourceCodeUpdater(args.compile_commands_json, args.input_directory, args.output_directory, args.log_directory)
   g_matcher = SourceCodeMatcher(updater)
   updater.process_source_files()
+  complete(args.output_directory)
   print("完成")

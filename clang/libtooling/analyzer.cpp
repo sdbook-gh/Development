@@ -25,6 +25,7 @@
 #include <iomanip>
 #include <map>
 #include <regex>
+#include <set>
 #include <sstream>
 #include <stack>
 #include <string>
@@ -483,6 +484,7 @@ public:
       std::string file, Dfile, raw_stmt, stmt, Dstmt;
       int line = 0, column = 0;
       int Dline = 0, Dcolumn = 0;
+      static std::set<std::string> skipNamespaceDeclSet;
       SourceLocation Loc = SM.getSpellingLoc(ND->getLocation());
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
         return;
@@ -495,7 +497,10 @@ public:
         stmt = escapeJsonString(raw_stmt);
       }
       std::stringstream ss;
-      if (skipPath(file)) {
+      if (stmt.size() == 0 || skipNamespaceDeclSet.count(stmt) > 0) {
+        return;
+      } else if (skipPath(file)) {
+        skipNamespaceDeclSet.insert(stmt);
         ss << "{\"type\":\"SkipNamespaceDecl\",\"file\":\"" << file
            << "\",\"line\":" << line << ",\"column\":" << column
            << ",\"stmt\":\"" << stmt << "\",\"exptype\":\""
@@ -1127,4 +1132,5 @@ int main(int argc, const char **argv) {
   Tool.run(newFrontendActionFactory<AnalysisAction>().get());
   return 0;
 }
+
 /* extra code */
