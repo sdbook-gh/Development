@@ -254,45 +254,69 @@ public:
 
   void MacroDefined(const Token &MacroNameTok,
                     const MacroDirective *MD) override {
-    if (option.find("MacroDefExpIfndefInclusionCommentSkip|") ==
-        std::string::npos)
-      return;
-    const MacroInfo *MI = MD->getMacroInfo();
-    SourceManager &SM = PP.getSourceManager();
-    SourceLocation Loc = MacroNameTok.getLocation();
-    if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
-      return;
-    PresumedLoc PLoc = SM.getPresumedLoc(Loc);
-    std::string file = getPath(PLoc.getFilename());
-    int line = PLoc.getLine();
-    int column = PLoc.getColumn();
-    CharSourceRange CSR = CharSourceRange::getCharRange(
-        MI->getDefinitionLoc(),
-        Lexer::getLocForEndOfToken(MI->getDefinitionEndLoc(), 0, SM,
-                                   PP.getLangOpts()));
-    std::string raw_stmt =
-        Lexer::getSourceText(CSR, SM, PP.getLangOpts()).str();
-    std::string stmt = escapeJsonString(raw_stmt);
-    std::string name =
-        escapeJsonString(MacroNameTok.getIdentifierInfo()->getName().str());
-    SourceRange expansionRange(MI->getDefinitionLoc(),
-                               MI->getDefinitionEndLoc());
-    std::stringstream ss;
-    if (skipPath(file)) {
-      ss << "##";
-    } else if (!matchFileContent(file, line, column, raw_stmt)) {
-      ss << "####";
-    } else {
-      macroDefinition_map[file] = MacroMatchInfo{line, column, name, raw_stmt};
-      std::string new_stmt = getStmtBefore(file, line, column, "#");
-      if (!new_stmt.empty()) {
-        MD_vec.push_back({file, new_stmt + raw_stmt});
+    if (option.find("SkipMacroDef|") != std::string::npos) {
+      const MacroInfo *MI = MD->getMacroInfo();
+      SourceManager &SM = PP.getSourceManager();
+      SourceLocation Loc = MacroNameTok.getLocation();
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+        return;
+      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      std::string file = getPath(PLoc.getFilename());
+      int line = PLoc.getLine();
+      int column = PLoc.getColumn();
+      std::string stmt =
+          escapeJsonString(MacroNameTok.getIdentifierInfo()->getName().str());
+      static std::set<std::string> skipMacroDefSet;
+      std::stringstream ss;
+      if (stmt.size() == 0 || skipMacroDefSet.count(stmt) > 0) {
+        return;
+      } else if (skipPath(file)) {
+        ss << "{\"type\":\"SkipMacroDef\",\"file\":\"" << file
+           << "\",\"line\":" << line << ",\"column\":" << column
+           << ",\"stmt\":\"" << stmt << "\"}";
+        printf("%s\n", ss.str().c_str());
       }
+    } else if (option.find("MacroDefExpIfndefInclusionCommentSkip|") !=
+               std::string::npos) {
+      const MacroInfo *MI = MD->getMacroInfo();
+      SourceManager &SM = PP.getSourceManager();
+      SourceLocation Loc = MacroNameTok.getLocation();
+      if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
+        return;
+      PresumedLoc PLoc = SM.getPresumedLoc(Loc);
+      std::string file = getPath(PLoc.getFilename());
+      int line = PLoc.getLine();
+      int column = PLoc.getColumn();
+      CharSourceRange CSR = CharSourceRange::getCharRange(
+          MI->getDefinitionLoc(),
+          Lexer::getLocForEndOfToken(MI->getDefinitionEndLoc(), 0, SM,
+                                     PP.getLangOpts()));
+      std::string raw_stmt =
+          Lexer::getSourceText(CSR, SM, PP.getLangOpts()).str();
+      std::string stmt = escapeJsonString(raw_stmt);
+      std::string name =
+          escapeJsonString(MacroNameTok.getIdentifierInfo()->getName().str());
+      SourceRange expansionRange(MI->getDefinitionLoc(),
+                                 MI->getDefinitionEndLoc());
+      std::stringstream ss;
+      if (skipPath(file)) {
+        ss << "##";
+      } else if (!matchFileContent(file, line, column, raw_stmt)) {
+        ss << "####";
+      } else {
+        macroDefinition_map[file] =
+            MacroMatchInfo{line, column, name, raw_stmt};
+        std::string new_stmt = getStmtBefore(file, line, column, "#");
+        if (!new_stmt.empty()) {
+          MD_vec.push_back({file, new_stmt + raw_stmt});
+        }
+      }
+      ss << "{\"type\":\"MacroDefined\",\"file\":\"" << file
+         << "\",\"line\":" << line << ",\"column\":" << column
+         << ",\"macroname\":\"" << name << "\",\"macrostmt\":\"" << stmt
+         << "\"}";
+      printf("%s\n", ss.str().c_str());
     }
-    ss << "{\"type\":\"MacroDefined\",\"file\":\"" << file
-       << "\",\"line\":" << line << ",\"column\":" << column
-       << ",\"macroname\":\"" << name << "\",\"macrostmt\":\"" << stmt << "\"}";
-    printf("%s\n", ss.str().c_str());
   }
 
   void MacroExpands(const Token &MacroNameTok,
@@ -503,10 +527,7 @@ public:
         skipNamespaceDeclSet.insert(stmt);
         ss << "{\"type\":\"SkipNamespaceDecl\",\"file\":\"" << file
            << "\",\"line\":" << line << ",\"column\":" << column
-           << ",\"stmt\":\"" << stmt << "\",\"exptype\":\""
-           << "NamespaceDecl"
-           << "\",\"dfile\":\"" << Dfile << "\",\"dline\":" << Dline
-           << ",\"dcolumn\":" << Dcolumn << ",\"dstmt\":\"" << Dstmt << "\"}";
+           << ",\"stmt\":\"" << stmt << "\"}";
         printf("%s\n", ss.str().c_str());
       }
     } else if (const NamespaceDecl *ND =
@@ -1083,8 +1104,6 @@ public:
       Finder.addMatcher(
           clang::ast_matchers::usingDirectiveDecl().bind("UsingDirectiveDecl|"),
           Callback);
-    } else if (option.find("Stmt|") != std::string::npos) {
-      Finder.addMatcher(clang::ast_matchers::stmt().bind("Stmt|"), Callback);
     } else if (option.find("NamedDeclMemberExpr|") != std::string::npos) {
       Finder.addMatcher(clang::ast_matchers::namedDecl().bind("NamedDecl|"),
                         Callback);
@@ -1132,5 +1151,3 @@ int main(int argc, const char **argv) {
   Tool.run(newFrontendActionFactory<AnalysisAction>().get());
   return 0;
 }
-
-/* extra code */

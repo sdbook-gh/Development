@@ -23,7 +23,7 @@ NS_SKIP_STRING_LIST = [] # namespace忽略替换字符串列表
 CLS_STRING_DICT = {**UPDATE_DICT} # 类型替换字符串和新字符串的映射关系
 CLS_SKIP_STRING_LIST = [] # 类型忽略替换字符串列表
 MC_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT} # 宏替换字符串和新字符串的映射关系
-MC_SKIP_STRING_LIST = ['AMAPCOMMON_NAMESPACE', 'Amap_Malloc'] # 宏忽略替换字符串列表
+MC_SKIP_STRING_LIST = [] # 宏忽略替换字符串列表
 CM_STRING_DICT = {**NS_STRING_DICT, **CLS_STRING_DICT} # 注释替换字符串和新字符串的映射关系
 CM_SKIP_STRING_LIST = [] # 注释忽略替换字符串列表
 EXTRA_COMPILE_FLAGS = '' # 额外的编译选项
@@ -149,11 +149,11 @@ class SourceCodeMatcher:
       return '', ''
     str_utils = StringUtils()
     NS_UPDATE = self.parent.ns_inner
-    NS_SKIP = str_utils.get_skip_list(NS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.type_skip['ns_skip'].keys()), r'\b(', r')::')
-    NS_SKIP_STR = NS_SKIP_STRING_LIST + list(self.parent.type_skip['ns_skip'].keys())
+    NS_SKIP = str_utils.get_skip_list(NS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.ns_skip.keys()), r'\b(', r')::')
+    NS_SKIP_STR = NS_SKIP_STRING_LIST + list(self.parent.ns_skip.keys())
     CLS_UPDATE = self.parent.cls_inner
-    CLS_SKIP = str_utils.get_skip_list(CLS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.type_skip['cls_skip'].keys()))
-    CLS_SKIP_STR = CLS_SKIP_STRING_LIST + list(self.parent.type_skip['cls_skip'].keys())
+    CLS_SKIP = str_utils.get_skip_list(CLS_SKIP_STRING_LIST)
+    CLS_SKIP_STR = CLS_SKIP_STRING_LIST
     MC_SKIP = str_utils.get_skip_list(MC_SKIP_STRING_LIST)
     MC_SKIP_STR = MC_SKIP_STRING_LIST
     CM_SKIP = str_utils.get_skip_list(CM_SKIP_STRING_LIST)
@@ -166,22 +166,24 @@ class SourceCodeMatcher:
           new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, [], '_MC_')
           return new_stmt, stmt
       elif expression_type == 'MacroExpands':
-        pos = stmt.find('(')
-        found_mc, new_stmt = str_utils.mark_all_string_pos(stmt, MC_STRING_DICT, MC_SKIP, '_MC_', r'(', r')', -1, pos)
-        if found_mc:
-          new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, MC_SKIP_STR, '_MC_')
-          return new_stmt, stmt
+        macroname = extra_info['macroname']
+        if len(macroname) > 0 and macroname not in self.parent.mc_exp_skip:
+          pos = stmt.find('(')
+          found_mc, new_stmt = str_utils.mark_all_string_pos(stmt, MC_STRING_DICT, MC_SKIP, '_MC_', r'(', r')', -1, pos)
+          if found_mc:
+            new_stmt = str_utils.updat_string(new_stmt, MC_STRING_DICT, MC_SKIP_STR, '_MC_')
+            return new_stmt, stmt
       elif expression_type == 'MacroDefined':
         macroname = extra_info['macroname']
         nscls_dict = {}
-        if macroname in self.parent.mc_inner:
-          for item in self.parent.mc_inner[macroname]:
+        if len(macroname) > 0 and macroname in self.parent.mc_def_type_update:
+          for item in self.parent.mc_def_type_update[macroname]:
             nscls_dict[item] = item
         skip_list = MC_SKIP
         skip_list_str = MC_SKIP_STR
-        if macroname in self.parent.mc_skip:
-          skip_list += str_utils.get_skip_list(self.parent.mc_skip[macroname])
-          skip_list_str += self.parent.mc_skip[macroname]
+        if macroname in self.parent.mc_def_type_skip:
+          skip_list += str_utils.get_skip_list(self.parent.mc_def_type_skip[macroname])
+          skip_list_str += self.parent.mc_def_type_skip[macroname]
         new_stmt = stmt
         _, new_stmt = str_utils.mark_all_string_pos(new_stmt, nscls_dict, skip_list, '_NSCLS_')
         found_mc, new_stmt = str_utils.mark_all_string_pos(new_stmt, MC_STRING_DICT, [], '_MC_')
@@ -244,7 +246,7 @@ class SourceCodeMatcher:
           return new_stmt, stmt
       elif expression_type == 'NamespaceDecl':
         update_dict = NS_STRING_DICT
-        skip_list = str_utils.get_skip_list(NS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.type_skip['ns_skip'].keys()), r'\b(', r')\b')
+        skip_list = str_utils.get_skip_list(NS_SKIP_STRING_LIST) + str_utils.get_skip_list(list(self.parent.ns_skip.keys()), r'\b(', r')\b')
         found, new_stmt = str_utils.mark_string_pos(stmt, update_dict, skip_list, '_NS_')
         if found:
           new_stmt = str_utils.updat_string(new_stmt, update_dict, skip_list, '_NS_')
@@ -384,9 +386,10 @@ class SourceCodeUpdater:
     self.lock = threading.Lock()
     self.ns_inner = {}
     self.cls_inner = {**CLS_STRING_DICT}
-    self.type_skip = {'ns_skip': {}, 'cls_skip': {}}
-    self.mc_inner = {}
-    self.mc_skip = {}
+    self.ns_skip = {}
+    self.mc_def_type_update = {}
+    self.mc_def_type_skip = {}
+    self.mc_exp_skip = {}
 
   def parse_compile_commands(self):
     with open(self.compile_commands_json, 'r') as f:
@@ -505,14 +508,14 @@ class SourceCodeUpdater:
                 continue
               if macro_list[1].startswith('!'):
                 macroname = macro_list[1][1:]
-                if macroname not in self.mc_skip:
-                  self.mc_skip[macroname] = []
-                self.mc_skip[macroname].append(macro_list[0])
+                if macroname not in self.mc_def_type_skip:
+                  self.mc_def_type_skip[macroname] = []
+                self.mc_def_type_skip[macroname].append(macro_list[0])
               else:
                 macroname = macro_list[1]
-                if macroname not in self.mc_inner:
-                  self.mc_inner[macroname] = []
-                self.mc_inner[macroname].append(macro_list[0])
+                if macroname not in self.mc_def_type_update:
+                  self.mc_def_type_update[macroname] = []
+                self.mc_def_type_update[macroname].append(macro_list[0])
           except json.JSONDecodeError as e:
             LOG('error', f"错误: 解析宏分析日志时出错: {analyze_log_file} {line_no} {e} {line}")
             print(f"错误: 解析宏分析日志时出错: {analyze_log_file} {line_no} {e} {line}", file=sys.stderr)
@@ -631,14 +634,17 @@ class SourceCodeUpdater:
           try:
             log_entry = json.loads(line)
             stmt = log_entry['stmt']
-            if len(stmt) > 0 and analyze_type == 'SkipNamespaceDecl':
-              self.type_skip['ns_skip'][stmt] = stmt
+            if len(stmt) > 0:
+              if analyze_type == 'SkipNamespaceDecl':
+                self.ns_skip[stmt] = stmt
+              elif analyze_type == 'SkipMacroDef':
+                self.mc_exp_skip[stmt] = stmt
           except json.JSONDecodeError as e:
             LOG('error', f'错误: 解析{analyze_log_file} {line_no}行出错: {e} {line}')
             print(f'错误: 解析{analyze_log_file} {line_no}行出错: {e} {line}', file=sys.stderr)
             exit(1)
     if analyze_type == 'SkipNamespaceDecl':
-      LOG('info', f"ns_skip: {self.type_skip['ns_skip']}")
+      LOG('info', f'ns_skip: {self.ns_skip}')
 
   def analyze_source_files(self, analyze_type, append_type = '', reuse_analyzed_result = True):
     global g_matcher
@@ -651,7 +657,6 @@ class SourceCodeUpdater:
         line_no = 0
         for line in analyze_log_file_content:
           line_no += 1
-          type_skip = False
           if len(line) == 0 or line.startswith('#'):
             continue
           try:
@@ -736,6 +741,7 @@ class SourceCodeUpdater:
     self.analyze_source_files('CallExpr', reuse_analyzed_result=reuse_analyzed_result)
     self.analyze_source_files('NamedDeclMemberExpr', reuse_analyzed_result=reuse_analyzed_result, append_type='*')
     self.analyze_source_files('DeclRefExprTypeLoc', reuse_analyzed_result=reuse_analyzed_result, append_type='+')
+    self.analyze_source_files_skip('SkipMacroDef', reuse_analyzed_result=reuse_analyzed_result)
     self.analyze_source_files_MacroDefExpIfndefInclusionCommentSkip(reuse_analyzed_result=reuse_analyzed_result)
     self.replace_in_source_files()
     self.rename_updated_files()
