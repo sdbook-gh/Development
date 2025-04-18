@@ -429,7 +429,14 @@ class SourceCodeMatcher:
                 nscls_dict = {}
                 if len(macroname) > 0 and macroname in self.parent.mc_def_type_update:
                     for item in self.parent.mc_def_type_update[macroname]:
-                        nscls_dict[item] = item
+                        found, new_item = str_utils.mark_string_pos(
+                            item, CLS_UPDATE, CLS_SKIP, "_CLS_"
+                        )
+                        if found:
+                            new_item = str_utils.updat_string(
+                                new_item, CLS_UPDATE, CLS_SKIP_STR, "_CLS_"
+                            )
+                            nscls_dict[item] = new_item
                 skip_list = MC_SKIP
                 skip_list_str = MC_SKIP_STR
                 if macroname in self.parent.mc_def_type_skip:
@@ -443,9 +450,6 @@ class SourceCodeMatcher:
                 )
                 found_mc, new_stmt = str_utils.mark_all_string_pos(
                     new_stmt, MC_STRING_DICT, [], "_MC_"
-                )
-                new_stmt = str_utils.updat_string(
-                    new_stmt, nscls_dict, skip_list_str, "_NSCLS_"
                 )
                 found_ns, new_stmt = str_utils.mark_all_string_pos(
                     new_stmt, NS_UPDATE, NS_SKIP, "_NS_", r"(", r")\s*::"
@@ -462,6 +466,9 @@ class SourceCodeMatcher:
                     )
                     new_stmt = str_utils.updat_string(
                         new_stmt, CLS_UPDATE, CLS_SKIP_STR, "_CLS_"
+                    )
+                    new_stmt = str_utils.updat_string(
+                        new_stmt, nscls_dict, skip_list_str, "_NSCLS_"
                     )
                     return new_stmt, stmt
             elif expression_type == "InclusionDirective":
