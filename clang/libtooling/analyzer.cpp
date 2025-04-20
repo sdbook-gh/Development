@@ -401,7 +401,7 @@ public:
       std::stringstream ss;
       if (stmt.size() == 0 || skipMacroDefSet.count(stmt) > 0) {
         return;
-      } else if (skipPath(file)) {
+      } else if (!file.empty() && skipPath(file)) {
         ss << "{\"type\":\"SkipMacroDef\",\"file\":\"" << file
            << "\",\"line\":" << line << ",\"column\":" << column
            << ",\"stmt\":\"" << stmt << "\"}";
@@ -835,6 +835,10 @@ public:
       }
       if (Loc.isInvalid() || SM.isInSystemHeader(Loc))
         return;
+      // std::string dumpStr;
+      // llvm::raw_string_ostream dumpStream(dumpStr);
+      // DRE->dump(dumpStream, Context);
+      // printf("# dump:%s\n", dumpStream.str().c_str());
       std::string exptype = DRE->getType()->getTypeClassName();
       {
         CharSourceRange FullRange;
@@ -871,6 +875,15 @@ public:
         file = getPath(PLoc.getFilename());
         line = PLoc.getLine();
         column = PLoc.getColumn();
+        if (file.empty()) {
+          file = getPath(SM.getFilename(DRE->getBeginLoc()).str());
+          line = SM.getSpellingLineNumber(DRE->getBeginLoc());
+          column = SM.getSpellingColumnNumber(DRE->getBeginLoc());
+          CharSourceRange FullRange = CharSourceRange::getTokenRange(
+              DRE->getBeginLoc(), DRE->getEndLoc());
+          raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
+          stmt = escapeJsonString(raw_stmt);
+        }
       }
       if (DLoc.isInvalid() || SM.isInSystemHeader(DLoc))
         return;
@@ -908,6 +921,9 @@ public:
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
+      // if (!checkLoc) {
+      //   printf("# checkLoc = false\n");
+      // }
       ss << "{\"type\":\"DeclRefExprTypeLoc\",\"file\":\"" << file
          << "\",\"line\":" << line << ",\"column\":" << column << ",\"stmt\":\""
          << stmt << "\",\"exptype\":\"" << exptype << "\",\"dfile\":\"" << Dfile

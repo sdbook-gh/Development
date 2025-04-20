@@ -1015,6 +1015,8 @@ class SourceCodeUpdater:
                 file_stmt += lines[file_line - 1 + index][: len(multi_lines[-1])]
             else:
                 file_stmt = line[col_index : col_index + len(multi_lines[-1])]
+            stmt = stmt.replace("\r", "")
+            file_stmt = file_stmt.replace("\r", "")
             if file_stmt != stmt:
                 return f"content not match {file_path}:{file_line}:{file_line_column} [[{stmt}]] != [[{file_stmt}]]"
             return None
