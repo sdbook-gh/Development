@@ -306,7 +306,7 @@ struct MacroMatchInfo {
   std::string name;
   std::string stmt;
 };
-std::map<std::string, MacroMatchInfo> macroDefinition_map;
+std::map<std::string, std::vector<MacroMatchInfo>> macroDefinition_map;
 /**
  * @brief 判断指定位置是否位于宏定义内部
  *
@@ -323,20 +323,21 @@ std::map<std::string, MacroMatchInfo> macroDefinition_map;
 std::string isInsideMacroDefinition(const std::string &file_path, int line,
                                     int column) {
   if (macroDefinition_map.count(file_path) > 0) {
-    const MacroMatchInfo &definition = macroDefinition_map[file_path];
-    std::stringstream iss(definition.stmt);
-    std::string textLine;
-    int match_line = definition.line, match_column = definition.column,
-        index = 0;
-    while (std::getline(iss, textLine, '\n')) {
-      if (line == match_line && column >= match_column &&
-          column < match_column + textLine.size()) {
-        return definition.name;
-      } else if (index == 0) {
-        match_column = 0;
+    for (const MacroMatchInfo &definition : macroDefinition_map[file_path]) {
+      std::stringstream iss(definition.stmt);
+      std::string textLine;
+      int match_line = definition.line, match_column = definition.column,
+          index = 0;
+      while (std::getline(iss, textLine, '\n')) {
+        if (line == match_line && column >= match_column &&
+            column < match_column + textLine.size()) {
+          return definition.name;
+        } else if (index == 0) {
+          match_column = 0;
+        }
+        match_line++;
+        index++;
       }
-      match_line++;
-      index++;
     }
   }
   return "";
@@ -435,8 +436,8 @@ public:
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       } else {
-        macroDefinition_map[file] =
-            MacroMatchInfo{line, column, name, raw_stmt};
+        macroDefinition_map[file].emplace_back(
+            MacroMatchInfo{line, column, name, raw_stmt});
         std::string new_stmt = getStmtBefore(file, line, column, "#");
         if (!new_stmt.empty()) {
           MD_vec.push_back({file, new_stmt + raw_stmt});
@@ -909,9 +910,9 @@ public:
         raw_stmt = Lexer::getSourceText(FullRange, SM, LangOptions()).str();
         stmt = escapeJsonString(raw_stmt);
         if (!Dfile.empty() && skipPath(Dfile)) {
-          raw_stmt += ("%%!" + macro);
-        } else {
           raw_stmt += ("%%" + macro);
+        } else {
+          return;
         }
         stmt = escapeJsonString(raw_stmt);
       } else if (skipPath(file)) {

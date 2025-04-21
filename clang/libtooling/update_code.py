@@ -25,6 +25,10 @@ UPDATE_DICT = {
     "AMAP": "TJMAP",
     "aMap": "TJMap",
 }  # 替换字符串和新字符串的映射关系
+# UPDATE_DICT = {
+#     "NM": "TJ",
+#     "nm": "tj",
+# }  # 替换字符串和新字符串的映射关系
 NS_STRING_DICT = {**UPDATE_DICT}  # namespace替换字符串和新字符串的映射关系
 NS_SKIP_STRING_LIST = []  # namespace忽略替换字符串列表
 CLS_STRING_DICT = {**UPDATE_DICT}  # 类型替换字符串和新字符串的映射关系
@@ -293,7 +297,6 @@ class SourceCodeMatcher:
             - cls_inner: 类名称的更新映射字典
             - ns_skip: 命名空间跳过字典
             - mc_exp_skip: 宏展开时需要跳过的名称字典
-            - mc_def_type_update: 用于宏定义更新的类型映射字典
             - mc_def_type_skip: 宏定义跳过类型的字典
             - output_directory: 输出目录的路径
             - input_directory: 输入目录的路径
@@ -426,17 +429,6 @@ class SourceCodeMatcher:
                         return new_stmt, stmt
             elif expression_type == "MacroDefined":
                 macroname = extra_info["macroname"]
-                nscls_dict = {}
-                if len(macroname) > 0 and macroname in self.parent.mc_def_type_update:
-                    for item in self.parent.mc_def_type_update[macroname]:
-                        found, new_item = str_utils.mark_string_pos(
-                            item, CLS_UPDATE, CLS_SKIP, "_CLS_"
-                        )
-                        if found:
-                            new_item = str_utils.updat_string(
-                                new_item, CLS_UPDATE, CLS_SKIP_STR, "_CLS_"
-                            )
-                            nscls_dict[item] = new_item
                 skip_list = MC_SKIP
                 skip_list_str = MC_SKIP_STR
                 if macroname in self.parent.mc_def_type_skip:
@@ -445,11 +437,8 @@ class SourceCodeMatcher:
                     )
                     skip_list_str += self.parent.mc_def_type_skip[macroname]
                 new_stmt = stmt
-                _, new_stmt = str_utils.mark_all_string_pos(
-                    new_stmt, nscls_dict, skip_list, "_NSCLS_"
-                )
                 found_mc, new_stmt = str_utils.mark_all_string_pos(
-                    new_stmt, MC_STRING_DICT, [], "_MC_"
+                    new_stmt, MC_STRING_DICT, skip_list, "_MC_"
                 )
                 found_ns, new_stmt = str_utils.mark_all_string_pos(
                     new_stmt, NS_UPDATE, NS_SKIP, "_NS_", r"(", r")\s*::"
@@ -459,16 +448,13 @@ class SourceCodeMatcher:
                 )
                 if found_mc or found_ns or found_cls:
                     new_stmt = str_utils.updat_string(
-                        new_stmt, MC_STRING_DICT, [], "_MC_"
+                        new_stmt, MC_STRING_DICT, skip_list_str, "_MC_"
                     )
                     new_stmt = str_utils.updat_string(
                         new_stmt, NS_UPDATE, NS_SKIP_STR, "_NS_"
                     )
                     new_stmt = str_utils.updat_string(
                         new_stmt, CLS_UPDATE, CLS_SKIP_STR, "_CLS_"
-                    )
-                    new_stmt = str_utils.updat_string(
-                        new_stmt, nscls_dict, skip_list_str, "_NSCLS_"
                     )
                     return new_stmt, stmt
             elif expression_type == "InclusionDirective":
@@ -855,7 +841,6 @@ class SourceCodeUpdater:
         self.ns_inner = {}
         self.cls_inner = {**CLS_STRING_DICT}
         self.ns_skip = {}
-        self.mc_def_type_update = {}
         self.mc_def_type_skip = {}
         self.mc_exp_skip = {}
 
@@ -1088,18 +1073,10 @@ class SourceCodeUpdater:
                             macro_list = stmt.split("%%")
                             if len(macro_list) != 2:
                                 continue
-                            # 如果宏名称以 '!' 开头，则该宏为跳过更新类型
-                            if macro_list[1].startswith("!"):
-                                macroname = macro_list[1][1:]
-                                if macroname not in self.mc_def_type_skip:
-                                    self.mc_def_type_skip[macroname] = []
-                                self.mc_def_type_skip[macroname].append(macro_list[0])
-                            else:
-                                # 否则，记录用于更新的宏定义
-                                macroname = macro_list[1]
-                                if macroname not in self.mc_def_type_update:
-                                    self.mc_def_type_update[macroname] = []
-                                self.mc_def_type_update[macroname].append(macro_list[0])
+                            macroname = macro_list[1]
+                            if macroname not in self.mc_def_type_skip:
+                                self.mc_def_type_skip[macroname] = []
+                            self.mc_def_type_skip[macroname].append(macro_list[0])
                     except json.JSONDecodeError as e:
                         LOG(
                             "error",
