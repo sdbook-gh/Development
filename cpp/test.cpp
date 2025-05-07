@@ -1,16 +1,17 @@
 #include <vector>
 #include <cstdio>
 #include <sstream>
+#include <cstdint>
 
 template<typename T>
 class MyQueue {
 private:
     std::vector<T> _buffer;
-    u_int32_t _head{0};
-    u_int32_t _tail{0};
-    u_int32_t _capacity;
+    uint32_t _head{0};
+    uint32_t _tail{0};
+    uint32_t _capacity;
 public:
-    explicit MyQueue(u_int32_t capacity): _buffer(capacity + 1), _capacity(capacity + 1) {}
+    explicit MyQueue(uint32_t capacity): _buffer(capacity + 1), _capacity(capacity + 1) {}
     bool empty() {
         return _head == _tail;
     }
@@ -47,7 +48,7 @@ public:
 };
 
 int test_myqueue() {
-    MyQueue<u_int32_t> myQueue(10);
+    MyQueue<uint32_t> myQueue(10);
     printf("1\n");
     printf("debug: %s\n", myQueue.debug().c_str());
     printf("empty: %d\n", myQueue.empty());
@@ -55,7 +56,7 @@ int test_myqueue() {
     printf("2\n");
     myQueue.push_back(1);
     printf("debug: %s\n", myQueue.debug().c_str());
-    u_int32_t val = 0;
+    uint32_t val = 0;
     myQueue.pop_front(val);
     printf("debug: %s\n", myQueue.debug().c_str());
     printf("empty: %d\n", myQueue.empty());
