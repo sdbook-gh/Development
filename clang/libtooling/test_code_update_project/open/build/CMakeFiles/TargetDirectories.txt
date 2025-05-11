@@ -1,0 +1,3 @@
+/share/shenda/cpp/project/open/build/CMakeFiles/dep_lib.dir
+/share/shenda/cpp/project/open/build/CMakeFiles/edit_cache.dir
+/share/shenda/cpp/project/open/build/CMakeFiles/rebuild_cache.dir

@@ -1,0 +1,1 @@
+/usr/bin/g++ -g -rdynamic CMakeFiles/app.dir/src/design_pattern.o CMakeFiles/app.dir/src/lib.o CMakeFiles/app.dir/src/mpmc.o CMakeFiles/app.dir/src/test.o -o app   -L/share/shenda/cpp/project/open/lib  -Wl,-rpath,/share/shenda/cpp/project/open/lib -lunwind -ldep_lib 

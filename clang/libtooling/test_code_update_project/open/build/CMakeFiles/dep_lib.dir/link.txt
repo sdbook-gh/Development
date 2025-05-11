@@ -1,0 +1,2 @@
+/usr/bin/ar qc /share/shenda/cpp/project/open/lib/libdep_lib.a CMakeFiles/dep_lib.dir/src/log.o CMakeFiles/dep_lib.dir/src/stack_trace.o
+/usr/bin/ranlib /share/shenda/cpp/project/open/lib/libdep_lib.a
