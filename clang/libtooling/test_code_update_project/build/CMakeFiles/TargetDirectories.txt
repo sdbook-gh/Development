@@ -1,3 +1,0 @@
-/share/shenda/cpp/project/build/CMakeFiles/app.dir
-/share/shenda/cpp/project/build/CMakeFiles/edit_cache.dir
-/share/shenda/cpp/project/build/CMakeFiles/rebuild_cache.dir
