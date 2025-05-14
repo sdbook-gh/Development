@@ -25,10 +25,6 @@ UPDATE_DICT = {
     "AMAP": "TJMAP",
     "aMap": "TJMap",
 }  # 替换字符串和新字符串的映射关系
-# UPDATE_DICT = {
-#     "NM": "TJ",
-#     "nm": "tj",
-# }  # 替换字符串和新字符串的映射关系
 NS_STRING_DICT = {**UPDATE_DICT}  # namespace替换字符串和新字符串的映射关系
 NS_SKIP_STRING_LIST = []  # namespace忽略替换字符串列表
 CLS_STRING_DICT = {**UPDATE_DICT}  # 类型替换字符串和新字符串的映射关系
@@ -437,6 +433,12 @@ class SourceCodeMatcher:
                     )
                     skip_list_str += self.parent.mc_def_type_skip[macroname]
                 new_stmt = stmt
+                macrocontnet = stmt[stmt.find(macroname) + len(macroname) :]
+                if len(macrocontnet) > 0:
+                    if re.match(r'\s*"[^"]*"\s*', macrocontnet):
+                        new_stmt = stmt[: stmt.find(macroname) + len(macroname)]
+                    else:
+                        macrocontnet = ""
                 found_mc, new_stmt = str_utils.mark_all_string_pos(
                     new_stmt, MC_STRING_DICT, skip_list, "_MC_"
                 )
@@ -456,7 +458,7 @@ class SourceCodeMatcher:
                     new_stmt = str_utils.updat_string(
                         new_stmt, CLS_UPDATE, CLS_SKIP_STR, "_CLS_"
                     )
-                    return new_stmt, stmt
+                    return new_stmt + macrocontnet, stmt
             elif expression_type == "InclusionDirective":
                 include_file = extra_info["include_file"]
                 if skip_replace_file(include_file):
