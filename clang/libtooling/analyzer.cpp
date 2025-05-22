@@ -922,6 +922,13 @@ public:
       } else if (!matchFileContent(file, line, column, raw_stmt)) {
         ss << "####";
       }
+      switch (DRE->getType()->getTypeClass()) {
+      case Type::TypeClass::FunctionProto:
+        ss << "##";
+        break;
+      default:
+        break;
+      }
       // if (!checkLoc) {
       //   printf("# checkLoc = false\n");
       // }
