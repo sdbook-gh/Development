@@ -13,4 +13,3 @@ target_link_libraries(
     test_ndk
     ${log-lib}
 )
-
