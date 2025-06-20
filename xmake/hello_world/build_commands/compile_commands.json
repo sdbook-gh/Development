@@ -1,0 +1,6 @@
+[
+{
+  "directory": "E:\\personal\\github\\Development\\xmake\\hello_world",
+  "arguments": ["e:\\dev\\win\\clang+llvm-19.1.7-x86_64-pc-windows-msvc\\bin\\clang++.exe", "-c", "-Qunused-arguments", "-fvisibility=hidden", "-fvisibility-inlines-hidden", "-O3", "-I3rd\\spdlog\\_install\\include", "-Ibuild\\.gens\\hello_world\\windows\\x64\\release\\platform\\windows\\idl", "-fexceptions", "-fcxx-exceptions", "-DNDEBUG", "-o", "build\\.objs\\hello_world\\windows\\x64\\release\\src\\main.cpp.obj", "src\\main.cpp"],
+  "file": "src\\main.cpp"
+}]
