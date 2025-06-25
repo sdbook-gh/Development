@@ -2,6 +2,8 @@
 set_project("MyAndroidApp")
 set_version("1.0")
 
+add_rules("plugin.compile_commands.autoupdate", {outputdir = "build"})
+
 -- 添加 Android NDK 构建规则
 add_rules("mode.debug", "mode.release")
 -- add_rules("platform.android.ndk")
