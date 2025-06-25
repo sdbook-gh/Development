@@ -4,6 +4,18 @@
 ---
 # 指定格式化语言为C++
 Language:        Cpp
+
+# 缩进宽度
+IndentWidth: 2
+# 构造函数初始化列表缩进宽度
+ConstructorInitializerIndentWidth: 2
+# 续行缩进宽度
+ContinuationIndentWidth: 2
+# Objective-C块缩进宽度
+ObjCBlockIndentWidth: 2
+# 制表符宽度（与UseTab配合使用）
+TabWidth: 2
+
 # 访问修饰符（如public、private）的缩进偏移量（负数表示向左缩进）
 AccessModifierOffset: -2
 # 在开括号（如函数参数列表）后对齐内容的方式
@@ -97,7 +109,7 @@ AlignOperands:   Align
 # 尾部注释对齐配置
 AlignTrailingComments:
   # 始终对齐尾部注释
-  Kind:            Always
+  Kind:            Never
   # 允许在空行上方对齐注释
   OverEmptyLines:  0
 # 允许函数调用的所有参数在下一行
@@ -107,7 +119,7 @@ AllowAllParametersOfDeclarationOnNextLine: true
 # 在noexcept说明符前是否换行（Never表示不换行）
 AllowBreakBeforeNoexceptSpecifier: Never
 # 短代码块是否允许单行显示（Never表示强制换行）
-AllowShortBlocksOnASingleLine: Never
+AllowShortBlocksOnASingleLine: true
 # 允许简短的case表达式单行显示
 AllowShortCaseExpressionOnASingleLine: true
 # 是否允许短case标签单行显示
@@ -129,7 +141,7 @@ AllowShortNamespacesOnASingleLine: false
 # 函数定义返回类型后是否强制换行（None表示不强制）
 AlwaysBreakAfterDefinitionReturnType: None
 # 多行字符串前是否强制换行
-AlwaysBreakBeforeMultilineStrings: true
+AlwaysBreakBeforeMultilineStrings: false
 # 需要特殊处理的属性宏列表
 AttributeMacros:
   - __capability
@@ -210,15 +222,11 @@ BreakStringLiterals: true
 # 模板声明换行规则（Yes表示允许换行）
 BreakTemplateDeclarations: Yes
 # 每行最大字符数限制
-ColumnLimit:     80
+ColumnLimit:     1000
 # 注释中需要特殊处理的编译指示正则表达式
 CommentPragmas:  '^ IWYU pragma:'
 # 是否压缩命名空间（false表示不压缩）
 CompactNamespaces: false
-# 构造函数初始化列表缩进宽度
-ConstructorInitializerIndentWidth: 2
-# 续行缩进宽度
-ContinuationIndentWidth: 2
 # 使用C++11风格的大括号初始化列表
 Cpp11BracedListStyle: true
 # 是否根据代码推导指针对齐方式
@@ -281,14 +289,12 @@ IndentGotoLabels: true
 IndentPPDirectives: None
 # requires子句是否缩进
 IndentRequiresClause: true
-# 缩进宽度（2空格）
-IndentWidth:     2
 # 换行函数名是否缩进
 IndentWrappedFunctionNames: false
 # 是否自动插入大括号（如单行if）
 InsertBraces:    false
 # 是否在文件末尾插入换行
-InsertNewlineAtEOF: false
+InsertNewlineAtEOF: true
 # 是否插入尾部逗号（None表示不插入）
 InsertTrailingCommas: None
 # 数值字面量分隔符配置
@@ -326,8 +332,6 @@ MaxEmptyLinesToKeep: 1
 NamespaceIndentation: None
 # Objective-C协议列表是否换行（Never表示不换行）
 ObjCBinPackProtocolList: Never
-# Objective-C块缩进宽度
-ObjCBlockIndentWidth: 2
 # Objective-C嵌套块参数前是否换行
 ObjCBreakBeforeNestedBlockParam: true
 # Objective-C属性后是否添加空格
@@ -337,7 +341,7 @@ ObjCSpaceBeforeProtocolList: true
 # 构造函数初始化列表打包规则（NextLine表示换行）
 PackConstructorInitializers: NextLine
 # 赋值语句换行惩罚值（值越高越避免换行）
-PenaltyBreakAssignment: 2
+PenaltyBreakAssignment: 200
 # 函数调用第一个参数前换行惩罚值
 PenaltyBreakBeforeFirstCallParameter: 1
 # 成员访问符（.或->）前换行惩罚值
@@ -466,7 +470,7 @@ SpaceBeforeSquareBrackets: false
 # 空代码块内是否加空格
 SpaceInEmptyBlock: false
 # 尾部注释前的空格数
-SpacesBeforeTrailingComments: 2
+SpacesBeforeTrailingComments: 1
 # 尖括号内是否加空格（Never表示不加）
 SpacesInAngles:  Never
 # 容器字面量内是否加空格（如std::array）
@@ -497,8 +501,6 @@ StatementMacros:
   - QT_REQUIRE_VERSION
 # TableGen DAG参数内部换行规则（DontBreak表示不换行）
 TableGenBreakInsideDAGArg: DontBreak
-# 制表符宽度（与UseTab配合使用）
-TabWidth:        2
 # 是否使用制表符（Never表示全用空格）
 UseTab:          Never
 # Verilog实例端口间是否换行
