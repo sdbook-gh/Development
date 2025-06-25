@@ -1,1 +1,10 @@
+export NDK=
 cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-27 -DCMAKE_ANDROID_NDK=$NDK -DCMAKE_SYSTEM_NAME=Android -DCMAKE_ANDROID_STL_TYPE=c++_shared ..
+
+set ANDROID_NDK_HOME=E:\dev\SDK\tools\AndroidSdk\ndk\25.2.9519653
+set ANDROID_SDK_CMAKE=E:\dev\SDK\tools\AndroidSdk\cmake\4.0.2\bin
+set ANDROID_BUILD_ABI=arm64-v8a
+set ANDROID_BUILD_PLATFORM=android-27
+%ANDROID_SDK_CMAKE%\cmake.exe -DCMAKE_TOOLCHAIN_FILE="%ANDROID_NDK_HOME%/build/cmake/android.toolchain.cmake" -DANDROID_ABI="%ANDROID_BUILD_ABI%" -DANDROID_NDK="%ANDROID_NDK_HOME%" -DANDROID_PLATFORM=%ANDROID_BUILD_PLATFORM% -DCMAKE_MAKE_PROGRAM="%ANDROID_SDK_CMAKE%/ninja.exe" -G "Ninja" -DCMAKE_INSTALL_PREFIX=../_install ..
+%ANDROID_SDK_CMAKE%\cmake.exe --build . --target all
+%ANDROID_SDK_CMAKE%\ninja.exe install

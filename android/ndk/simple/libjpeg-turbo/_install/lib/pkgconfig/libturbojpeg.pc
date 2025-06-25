@@ -1,0 +1,10 @@
+prefix=E:/personal/github/Development/android/ndk/simple/libjpeg-turbo-3.1.1/_install
+exec_prefix=E:/personal/github/Development/android/ndk/simple/libjpeg-turbo-3.1.1/_install
+libdir=E:/personal/github/Development/android/ndk/simple/libjpeg-turbo-3.1.1/_install/lib
+includedir=E:/personal/github/Development/android/ndk/simple/libjpeg-turbo-3.1.1/_install/include
+
+Name: libturbojpeg
+Description: A SIMD-accelerated JPEG codec that provides the TurboJPEG API
+Version: 3.1.1
+Libs: -L${libdir} -lturbojpeg
+Cflags: -I${includedir}
