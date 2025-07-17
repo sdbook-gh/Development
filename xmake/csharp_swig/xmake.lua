@@ -1,0 +1,17 @@
+add_rules("mode.debug", "mode.release")
+
+rule("csharp")
+	set_extensions(".csproj")
+	on_build_file(function (target, sourcefile)
+		os.execv("dotnet", {"build", sourcefile, "-o", target:targetdir()})
+	end)
+	on_clean(function (target, sourcefile)
+		os.execv("dotnet", {"clean", sourcefile, "-o", target:targetdir()})
+	end)
+	on_link(function () end)
+	rule_end()
+
+target("test_animal")
+	set_kind("binary")
+	add_rules("csharp")
+	add_files("test_animal.csproj")
