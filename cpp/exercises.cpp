@@ -1977,41 +1977,81 @@ int main() {
 // }
 
 //# 买卖股票的最佳时机
+// #include <cstdio>
+// #include <vector>
+
+// int get_stock_profit(const std::vector<int> &in_vec) {
+//   int ret_value{0};
+//   for (int i = 0; i < in_vec.size() - 1; ++i) {
+//     for (int j = i + 1; j < in_vec.size(); ++j) {
+//       int profit = in_vec[j] - in_vec[i];
+//       if (profit > ret_value) { ret_value = profit; }
+//     }
+//   }
+//   return ret_value;
+// }
+
+// int get_stock_profit2(const std::vector<int> &in_vec, int start) {
+//   int ret_value{0};
+//   for (int i = start; i < in_vec.size() - 1; ++i) {
+//     int max_profit{0};
+//     for (int j = i + 1; j < in_vec.size(); ++j) {
+//       int profit = in_vec[j] - in_vec[i];
+//       if (profit > 0) { profit += get_stock_profit2(in_vec, j + 1); }
+//       if (profit > max_profit) { max_profit = profit; }
+//     }
+//     if (max_profit > ret_value) { ret_value = max_profit; }
+//   }
+//   return ret_value;
+// }
+
+// int main() {
+//   printf("%d\n", get_stock_profit(std::vector<int>{7, 1, 5, 3, 6, 4}));
+//   printf("%d\n", get_stock_profit(std::vector<int>{1, 2, 3, 4, 5}));
+//   printf("%d\n", get_stock_profit(std::vector<int>{7, 6, 4, 3, 1}));
+
+//   printf("%d\n", get_stock_profit2(std::vector<int>{7, 1, 5, 3, 6, 4}, 0));
+//   printf("%d\n", get_stock_profit2(std::vector<int>{1, 2, 3, 4, 5}, 0));
+//   printf("%d\n", get_stock_profit2(std::vector<int>{7, 6, 4, 3, 1}, 0));
+//   return 0;
+// }
+
+//# 长度最小的子数组
 #include <cstdio>
 #include <vector>
 
-int get_stock_profit(const std::vector<int> &in_vec) {
-  int ret_value{0};
-  for (int i = 0; i < in_vec.size() - 1; ++i) {
-    for (int j = i + 1; j < in_vec.size(); ++j) {
-      int profit = in_vec[j] - in_vec[i];
-      if (profit > ret_value) { ret_value = profit; }
-    }
-  }
-  return ret_value;
-}
+using namespace std;
 
-int get_stock_profit2(const std::vector<int> &in_vec, int start) {
+int calc_sub(const vector<int> &in_vec, int target, int current, int count, int pos) {
   int ret_value{0};
-  for (int i = start; i < in_vec.size() - 1; ++i) {
-    int max_profit{0};
-    for (int j = i + 1; j < in_vec.size(); ++j) {
-      int profit = in_vec[j] - in_vec[i];
-      if (profit > 0) { profit += get_stock_profit2(in_vec, j + 1); }
-      if (profit > max_profit) { max_profit = profit; }
+  int i{pos};
+  while (i < in_vec.size()) {
+    if (in_vec[i] + current >= target) {
+      ret_value = count + 1;
+      break;
     }
-    if (max_profit > ret_value) { ret_value = max_profit; }
+    ++i;
+  }
+  if (i < in_vec.size()) {
+    for (int j = i + 1; j < in_vec.size(); ++j) {
+      int res = calc_sub(in_vec, target, 0, 0, j);
+      if (res > 0) {
+        if (ret_value == 0) {
+          ret_value = res;
+        } else if (res < ret_value) {
+          ret_value = res;
+        }
+      }
+    }
+  } else {
+    if (pos <= in_vec.size() - 1) { ret_value = calc_sub(in_vec, target, current + in_vec[pos], count + 1, pos + 1); }
   }
   return ret_value;
 }
 
 int main() {
-  printf("%d\n", get_stock_profit(std::vector<int>{7, 1, 5, 3, 6, 4}));
-  printf("%d\n", get_stock_profit(std::vector<int>{1, 2, 3, 4, 5}));
-  printf("%d\n", get_stock_profit(std::vector<int>{7, 6, 4, 3, 1}));
-
-  printf("%d\n", get_stock_profit2(std::vector<int>{7, 1, 5, 3, 6, 4}, 0));
-  printf("%d\n", get_stock_profit2(std::vector<int>{1, 2, 3, 4, 5}, 0));
-  printf("%d\n", get_stock_profit2(std::vector<int>{7, 6, 4, 3, 1}, 0));
+  printf("%d\n", calc_sub(vector<int>{2, 3, 1, 2, 4, 3}, 7, 0, 0, 0));
+  printf("%d\n", calc_sub(vector<int>{1, 4, 4}, 4, 0, 0, 0));
+  printf("%d\n", calc_sub(vector<int>{1, 1, 1, 1, 1, 1, 1, 1}, 11, 0, 0, 0));
   return 0;
 }
