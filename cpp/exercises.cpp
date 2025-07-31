@@ -2017,41 +2017,66 @@ int main() {
 // }
 
 //# 长度最小的子数组
-#include <cstdio>
-#include <vector>
+// #include <cstdio>
+// #include <vector>
 
-using namespace std;
+// using namespace std;
 
-int calc_sub(const vector<int> &in_vec, int target, int current, int count, int pos) {
-  int ret_value{0};
-  int i{pos};
-  while (i < in_vec.size()) {
-    if (in_vec[i] + current >= target) {
-      ret_value = count + 1;
-      break;
-    }
-    ++i;
-  }
-  if (i < in_vec.size()) {
-    for (int j = i + 1; j < in_vec.size(); ++j) {
-      int res = calc_sub(in_vec, target, 0, 0, j);
-      if (res > 0) {
-        if (ret_value == 0) {
-          ret_value = res;
-        } else if (res < ret_value) {
-          ret_value = res;
-        }
+// int calc_sub(const vector<int> &in_vec, int target, int current, int count, int pos) {
+//   int ret_value{0};
+//   int i{pos};
+//   while (i < in_vec.size()) {
+//     if (in_vec[i] + current >= target) {
+//       ret_value = count + 1;
+//       break;
+//     }
+//     ++i;
+//   }
+//   if (i < in_vec.size()) {
+//     for (int j = i + 1; j < in_vec.size(); ++j) {
+//       int res = calc_sub(in_vec, target, 0, 0, j);
+//       if (res > 0) {
+//         if (ret_value == 0) {
+//           ret_value = res;
+//         } else if (res < ret_value) {
+//           ret_value = res;
+//         }
+//       }
+//     }
+//   } else {
+//     if (pos <= in_vec.size() - 1) { ret_value = calc_sub(in_vec, target, current + in_vec[pos], count + 1, pos + 1); }
+//   }
+//   return ret_value;
+// }
+
+// int main() {
+//   printf("%d\n", calc_sub(vector<int>{2, 3, 1, 2, 4, 3}, 7, 0, 0, 0));
+//   printf("%d\n", calc_sub(vector<int>{1, 4, 4}, 4, 0, 0, 0));
+//   printf("%d\n", calc_sub(vector<int>{1, 1, 1, 1, 1, 1, 1, 1}, 11, 0, 0, 0));
+//   return 0;
+// }
+
+//# 判断子序列
+bool check_sub(const string &in_str, const string &sub_str) {
+  bool ret_value{false};
+  int pos_in{0}, pos_sub{0};
+  while (pos_in < in_str.size()) {
+    if (in_str[pos_in] == sub_str[pos_sub]) {
+      ++pos_in;
+      ++pos_sub;
+      if (pos_sub >= sub_str.size()) {
+        ret_value = true;
+        break;
       }
+    } else {
+      ++pos_in;
     }
-  } else {
-    if (pos <= in_vec.size() - 1) { ret_value = calc_sub(in_vec, target, current + in_vec[pos], count + 1, pos + 1); }
   }
   return ret_value;
 }
 
 int main() {
-  printf("%d\n", calc_sub(vector<int>{2, 3, 1, 2, 4, 3}, 7, 0, 0, 0));
-  printf("%d\n", calc_sub(vector<int>{1, 4, 4}, 4, 0, 0, 0));
-  printf("%d\n", calc_sub(vector<int>{1, 1, 1, 1, 1, 1, 1, 1}, 11, 0, 0, 0));
+  printf("%d\n", check_sub("ahbgdc", "abc"));
+  printf("%d\n", check_sub("ahbgdc", "axc"));
   return 0;
 }
