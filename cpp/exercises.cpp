@@ -1733,43 +1733,71 @@ int main() {
 // }
 
 //# 合并区间
-// #include <algorithm>
-// #include <cstdio>
-// #include <vector>
-
-// std::vector<std::vector<int>>
-// merge_range(const std::vector<std::vector<int>> &in_vec) {
-//   std::vector<std::vector<int>> ret_vec{in_vec};
-//   if (in_vec.empty())
-//     return ret_vec;
-//   std::sort(ret_vec.begin(), ret_vec.end(),
-//             [](const auto &e1, const auto &e2) { return e1[0] < e2[0]; });
-//   for (int i = 1; i < ret_vec.size();) {
-//     if (ret_vec[i][0] <= ret_vec[i - 1][1] &&
-//         ret_vec[i][1] >= ret_vec[i - 1][0]) {
-//       ret_vec[i - 1][0] = std::min(ret_vec[i - 1][0], ret_vec[i][0]);
-//       ret_vec[i - 1][1] = std::max(ret_vec[i - 1][1], ret_vec[i][1]);
-//       ret_vec.erase(ret_vec.begin() + i);
-//     } else {
-//       ++i;
+// typedef vector<vector<int>> intervals;
+// intervals merge_intervals(const intervals &i1, const intervals &i2) {
+//   if (i1.empty()) {
+//     return i2;
+//   } else if (i2.empty()) {
+//     return i1;
+//   }
+//   intervals ret_value{i1};
+//   {
+//     intervals &i1 = ret_value;
+//     int pos1{0}, pos2{0};
+//     while (pos1 < i1.size()) {
+//       {
+//         intervals &i2 = i1;
+//         int pos2 = pos1 + 1;
+//         if (pos2 < i2.size()) {
+//           int x = std::max(i1[pos1][0], i2[pos2][0]);
+//           int y = std::min(i1[pos1][1], i2[pos2][1]);
+//           if (x <= y) {
+//             i1[pos1][0] = std::min(i1[pos1][0], i2[pos2][0]);
+//             i1[pos1][1] = std::max(i1[pos1][1], i2[pos2][1]);
+//             i2.erase(i2.begin() + pos2);
+//             continue;
+//           }
+//         }
+//       }
+//       if (pos2 < i2.size()) {
+//         int x = std::max(i1[pos1][0], i2[pos2][0]);
+//         int y = std::min(i1[pos1][1], i2[pos2][1]);
+//         if (x <= y) {
+//           i1[pos1][0] = std::min(i1[pos1][0], i2[pos2][0]);
+//           i1[pos1][1] = std::max(i1[pos1][1], i2[pos2][1]);
+//           ++pos2;
+//         } else if (i2[pos2][1] < i1[pos1][0]) {
+//           i1.insert(i1.begin() + pos1, i2[pos2]);
+//           ++pos1;
+//           ++pos2;
+//         } else {
+//           ++pos1;
+//         }
+//         continue;
+//       }
+//       ++pos1;
+//     }
+//     while (pos2 < i2.size()) {
+//       i1.emplace_back(i2[pos2]);
+//       ++pos2;
 //     }
 //   }
-//   return ret_vec;
+//   return ret_value;
 // }
 
 // int main() {
 //   {
-//     std::vector<std::vector<int>> array{{1, 3}, {2, 6}, {8, 10}, {15, 18}};
-//     auto m_array = merge_range(array);
-//     std::for_each(m_array.begin(), m_array.end(),
-//                   [](const auto &e) { printf("[%d,%d]", e[0], e[1]); });
+//     intervals i1{{1, 3}, {6, 9}};
+//     intervals i2{{2, 5}, {10, 12}};
+//     auto merged = merge_intervals(i1, i2);
+//     for (const auto &interval : merged) { printf("[%d,%d] ", interval[0], interval[1]); }
 //     printf("\n");
 //   }
 //   {
-//     std::vector<std::vector<int>> array{{1, 4}, {4, 5}};
-//     auto m_array = merge_range(array);
-//     std::for_each(m_array.begin(), m_array.end(),
-//                   [](const auto &e) { printf("[%d,%d]", e[0], e[1]); });
+//     intervals i1{{1, 2}, {3, 5}, {6, 7}, {8, 10}, {12, 16}};
+//     intervals i2{{4, 8}};
+//     auto merged = merge_intervals(i1, i2);
+//     for (const auto &interval : merged) { printf("[%d,%d] ", interval[0], interval[1]); }
 //     printf("\n");
 //   }
 //   return 0;
