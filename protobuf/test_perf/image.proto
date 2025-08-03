@@ -1,0 +1,6 @@
+syntax = "proto3";
+
+message ImageData {
+  // bytes 类型字段底层即一段连续内存
+  bytes data = 1;
+}
