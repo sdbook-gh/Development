@@ -1,5 +1,6 @@
-set(CYBERRT_INSTALL /share/shenda/dev/cyberrt/CyberRT-10.0.0/install)
-include_directories(. ${CYBERRT_INSTALL}/include)
+cmake_minimum_required(VERSION 4.0.0)
+set(CYBERRT_INSTALL /mnt/e/personal/github/Development/CyberRT/CyberRT-10.0.0/install)
+include_directories(. ${CYBERRT_INSTALL}/include ./iguana-1.0.9)
 add_compile_options(-std=c++17 -O3)
 link_directories(${CYBERRT_INSTALL}/lib)
 link_libraries(protobuf)
