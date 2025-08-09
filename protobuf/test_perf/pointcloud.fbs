@@ -1,0 +1,27 @@
+include "header.fbs";
+
+namespace fbs.apollo.drivers;
+
+//==============================================================================
+//  单个点
+//==============================================================================
+table PointXYZIT {
+  x: float = nan;        // nan 由应用层解释
+  y: float = nan;
+  z: float = nan;
+  intensity: uint32 = 0;
+  timestamp: uint64 = 0;
+}
+
+//==============================================================================
+//  点云
+//==============================================================================
+table PointCloud {
+  header: fbs.apollo.common.Header;   // 来自 apollo_common.fbs
+  frame_id: string;
+  is_dense: bool = false;
+  point: [PointXYZIT];            // repeated -> vector
+  measurement_time: double;
+  width: uint32;
+  height: uint32;
+}

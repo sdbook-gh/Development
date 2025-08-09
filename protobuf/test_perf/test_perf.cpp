@@ -1,6 +1,9 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -9,6 +12,7 @@
 #include "iguana/pb_writer.hpp"
 #include "image.pb.h"
 #include "pointcloud.pb.h"
+#include "pointcloud_generated.h"
 
 struct SPBImageData {
   std::string data;
@@ -169,6 +173,8 @@ using apollo::drivers::PointCloud;
 using apollo::drivers::PointCloudOpt;
 using apollo::drivers::PointCloudRefine;
 using apollo::drivers::PointXYZITRefine;
+using fbs::apollo::drivers::PointCloudT;
+using fbs::apollo::drivers::PointXYZITT;
 using namespace std::chrono;
 
 #pragma push
@@ -304,6 +310,44 @@ PointCloudRefine MakePointCloudRefineFromData(const std::vector<PointCloudData> 
   return cloud;
 }
 
+class PreallocatedAllocator : public flatbuffers::Allocator {
+public:
+  char *buffer_{nullptr};
+  size_t size_{0};
+  uint8_t *allocate(size_t size) override {
+    if (size > size_) {
+      printf("PreallocatedAllocator::allocate size %ld > size_ %ld\n", size, size_);
+      return nullptr;
+    }
+    return (uint8_t *)buffer_;
+  }
+  void deallocate(uint8_t *p, size_t size) override {}
+};
+
+PointCloudT MakeFBSPointCloudFromData(const std::vector<PointCloudData> &point_data) {
+  using namespace fbs::apollo::drivers;
+  using namespace fbs::apollo::common;
+  auto fbb = std::make_shared<flatbuffers::FlatBufferBuilder>();
+  PointCloudT cloud;
+  cloud.header = std::make_unique<HeaderT>();
+  cloud.header->timestamp_sec = 1234567890.123;
+  cloud.frame_id = "velodyne64";
+  cloud.is_dense = true;
+  cloud.width = point_data.size();
+  cloud.height = 1;
+  cloud.measurement_time = 0.123;
+  cloud.point.resize(point_data.size());
+  for (int i = 0; i < point_data.size(); ++i) {
+    cloud.point[i] = std::make_unique<PointXYZITT>();
+    cloud.point[i]->x = point_data[i].x;
+    cloud.point[i]->y = point_data[i].y;
+    cloud.point[i]->z = point_data[i].z;
+    cloud.point[i]->intensity = point_data[i].intensity;
+    cloud.point[i]->timestamp = point_data[i].timestamp;
+  }
+  return cloud;
+}
+
 double BenchSerialize(const std::vector<PointCloudData> &point_data, std::vector<char> &buffer, int iterations = 100) {
   auto t0 = high_resolution_clock::now();
   for (int i = 0; i < iterations; ++i) {
@@ -334,6 +378,43 @@ double BenchRefineSerialize(const std::vector<PointCloudData> &point_data, std::
     PointCloudRefine cloud = MakePointCloudRefineFromData(point_data);
     buffer.resize(cloud.ByteSizeLong());
     cloud.SerializeToArray(buffer.data(), buffer.size());
+  }
+  auto t1 = high_resolution_clock::now();
+  double sec = duration_cast<duration<double>>(t1 - t0).count();
+  return sec;
+}
+
+double BenchFBSSerialize(const std::vector<PointCloudData> &point_data, std::vector<char> &buffer, size_t &offset, int iterations = 100) {
+  auto t0 = high_resolution_clock::now();
+  for (int i = 0; i < iterations; ++i) {
+    // 方式一
+    // {
+    //   PointCloudT cloud = MakeFBSPointCloudFromData(point_data);
+    //   flatbuffers::FlatBufferBuilder fbb(1024 * 1024);
+    //   auto offset = fbs::apollo::drivers::PointCloud::Pack(fbb, &cloud);
+    //   fbb.Finish(offset);
+    //   buffer.resize(fbb.GetSize());
+    //   memcpy(&buffer[0], fbb.GetBufferPointer(), buffer.size());
+    // }
+
+    // 方式二
+    {
+      buffer.resize(buffer.capacity());
+      PreallocatedAllocator allocator;
+      allocator.buffer_ = &buffer[0];
+      allocator.size_ = buffer.size();
+      flatbuffers::FlatBufferBuilder fbb(buffer.capacity(), &allocator);
+      auto header = fbs::apollo::common::CreateHeader(fbb, 1234567890.123);
+      std::vector<flatbuffers::Offset<fbs::apollo::drivers::PointXYZIT>> fbs_points;
+      fbs_points.reserve(point_data.size());
+      for (const auto &p : point_data) { fbs_points.push_back(fbs::apollo::drivers::CreatePointXYZIT(fbb, p.x, p.y, p.z, p.intensity, p.timestamp)); }
+      auto vec = fbb.CreateVector(fbs_points);
+      auto pc = fbs::apollo::drivers::CreatePointCloud(fbb, header, fbb.CreateString("velodyne64"), true, vec, 0.123, point_data.size(), 1);
+      fbb.Finish(pc);
+      offset = buffer.size() - fbb.GetSize();
+      // memmove(buffer.data(), fbb.GetBufferPointer(), fbb.GetSize());
+      // buffer.resize(fbb.GetSize());
+    }
   }
   auto t1 = high_resolution_clock::now();
   double sec = duration_cast<duration<double>>(t1 - t0).count();
@@ -401,13 +482,34 @@ double BenchRefineDeserialize(const std::vector<char> &buffer, PointCloudRefine 
   return sec;
 }
 
+double BenchFBSDeserialize(const std::vector<char> &buffer, size_t offset, PointCloudT &out, int iterations = 100) {
+  auto t0 = high_resolution_clock::now();
+  for (int i = 0; i < iterations; ++i) {
+    auto cloud = flatbuffers::GetRoot<fbs::apollo::drivers::PointCloud>(&buffer[offset]);
+    cloud->UnPackTo(&out);
+    // 计算 intensity 最大的点
+    uint32_t max_intensity = 0;
+    for (const auto &point : out.point) {
+      if (point->intensity > max_intensity) { max_intensity = point->intensity; }
+    }
+    static bool res = [max_intensity, i] {
+      std::cout << "Max intensity: " << max_intensity << std::endl;
+      return true;
+    }();
+  }
+  auto t1 = high_resolution_clock::now();
+  double sec = duration_cast<duration<double>>(t1 - t0).count();
+  return sec;
+}
+
 int main(int argc, char *argv[]) {
   size_t num_points = 100000;
   int iterations = 200;
-  // GOOGLE_PROTOBUF_VERIFY_VERSION;
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
   std::cout << "Generating cloud with " << num_points << " points...\n";
   auto point_data = GenerateRandomPointCloudDataVector(num_points);
   std::vector<char> buffer;
+  buffer.reserve(10 * 1024 * 1024);
   {
     std::cout << "\n=== Serialization ===\n";
     double ser_sec = BenchSerialize(point_data, buffer, iterations);
@@ -430,15 +532,27 @@ int main(int argc, char *argv[]) {
     double deser_sec = BenchOptDeserialize(buffer, dummy, iterations);
     std::cout << "  " << iterations << " ops in " << deser_sec * 1000 << " ms\n";
   }
+  // {
+  //   std::cout << "\n=== Refine Serialization ===\n";
+  //   double ser_sec = BenchRefineSerialize(point_data, buffer, iterations);
+  //   std::cout << "  " << iterations << " ops in " << ser_sec * 1000 << " ms\n";
+  // }
+  // {
+  //   std::cout << "\n=== Refine Deserialization ===\n";
+  //   PointCloudRefine dummy;
+  //   double deser_sec = BenchRefineDeserialize(buffer, dummy, iterations);
+  //   std::cout << "  " << iterations << " ops in " << deser_sec * 1000 << " ms\n";
+  // }
+  size_t offset = 0;
   {
-    std::cout << "\n=== Refine Serialization ===\n";
-    double ser_sec = BenchRefineSerialize(point_data, buffer, iterations);
+    std::cout << "\n=== FBS Serialization ===\n";
+    double ser_sec = BenchFBSSerialize(point_data, buffer, offset, iterations);
     std::cout << "  " << iterations << " ops in " << ser_sec * 1000 << " ms\n";
   }
   {
-    std::cout << "\n=== Refine Deserialization ===\n";
-    PointCloudRefine dummy;
-    double deser_sec = BenchRefineDeserialize(buffer, dummy, iterations);
+    std::cout << "\n=== FBS Deserialization ===\n";
+    PointCloudT dummy;
+    double deser_sec = BenchFBSDeserialize(buffer, offset, dummy, iterations);
     std::cout << "  " << iterations << " ops in " << deser_sec * 1000 << " ms\n";
   }
   google::protobuf::ShutdownProtobufLibrary();

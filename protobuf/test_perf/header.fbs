@@ -1,0 +1,33 @@
+include "error_code.fbs";
+
+namespace fbs.apollo.common;
+
+table Header {
+  /// Message publishing time in seconds.
+  timestamp_sec: double;
+
+  /// Module name.
+  module_name: string;
+
+  /// Sequence number for each message. Each module maintains its own counter
+  /// for sequence_num, always starting from 1 on boot.
+  sequence_num: uint32;
+
+  /// Lidar Sensor timestamp for nano-second.
+  lidar_timestamp: uint64;
+
+  /// Camera Sensor timestamp for nano-second.
+  camera_timestamp: uint64;
+
+  /// Radar Sensor timestamp for nano-second.
+  radar_timestamp: uint64;
+
+  /// data version
+  version: uint32 = 1;
+
+  status: StatusPb;
+
+  frame_id: string;
+}
+
+root_type Header;
