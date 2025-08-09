@@ -388,14 +388,16 @@ double BenchFBSSerialize(const std::vector<PointCloudData> &point_data, std::vec
   auto t0 = high_resolution_clock::now();
   for (int i = 0; i < iterations; ++i) {
     // 方式一
-    // {
-    //   PointCloudT cloud = MakeFBSPointCloudFromData(point_data);
-    //   flatbuffers::FlatBufferBuilder fbb(1024 * 1024);
-    //   auto offset = fbs::apollo::drivers::PointCloud::Pack(fbb, &cloud);
-    //   fbb.Finish(offset);
-    //   buffer.resize(fbb.GetSize());
-    //   memcpy(&buffer[0], fbb.GetBufferPointer(), buffer.size());
-    // }
+    {
+      // buffer.resize(buffer.capacity());
+      // PreallocatedAllocator allocator;
+      // allocator.buffer_ = &buffer[0];
+      // allocator.size_ = buffer.size();
+      // flatbuffers::FlatBufferBuilder fbb(buffer.capacity(), &allocator);
+      // PointCloudT cloud = MakeFBSPointCloudFromData(point_data);
+      // fbb.Finish(fbs::apollo::drivers::PointCloud::Pack(fbb, &cloud));
+      // offset = buffer.size() - fbb.GetSize();
+    }
 
     // 方式二
     {
