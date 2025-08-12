@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION ${CMAKE_VERSION})
 project(test_perf)
-set(CYBERRT_INSTALL /share/shenda/dev/cyberrt/CyberRT-10.0.0/install)
+# set(CYBERRT_INSTALL /share/shenda/dev/cyberrt/CyberRT-10.0.0/install)
+set(CYBERRT_INSTALL /mnt/e/personal/github/Development/CyberRT/CyberRT-10.0.0/install)
 include_directories(. ${CYBERRT_INSTALL}/include ${CMAKE_CURRENT_LIST_DIR}/iguana-1.0.9 ${CMAKE_CURRENT_LIST_DIR}/flatbuffers-25.2.10_install/include)
 add_compile_options(-std=c++17 -O3 -g)
 link_directories(${CYBERRT_INSTALL}/lib ${CMAKE_CURRENT_LIST_DIR}/flatbuffers-25.2.10_install/lib)

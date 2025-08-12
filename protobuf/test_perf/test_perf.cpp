@@ -13,6 +13,7 @@
 #include "image.pb.h"
 #include "pointcloud.pb.h"
 #include "pointcloud_generated.h"
+#include "sdproto.h"
 
 struct SPBImageData {
   std::string data;
@@ -348,6 +349,24 @@ PointCloudT MakeFBSPointCloudFromData(const std::vector<PointCloudData> &point_d
   return cloud;
 }
 
+sdproto::PointCloud MakeSDPointCloudFromData(const std::vector<PointCloudData> &point_data) {
+  sdproto::PointCloud cloud;
+  cloud.set_frame_id("velodyne64");
+  cloud.set_is_dense(true);
+  cloud.set_measurement_time(0.123);
+  cloud.set_width(point_data.size());
+  cloud.set_height(1);
+  for (int i = 0; i < point_data.size(); ++i) {
+    sdproto::PointXYZIT *point = cloud.add_point();
+    point->set_x(point_data[i].x);
+    point->set_y(point_data[i].y);
+    point->set_z(point_data[i].z);
+    point->set_intensity(point_data[i].intensity);
+    point->set_timestamp(point_data[i].timestamp);
+  }
+  return cloud;
+}
+
 double BenchSerialize(const std::vector<PointCloudData> &point_data, std::vector<char> &buffer, int iterations = 100) {
   auto t0 = high_resolution_clock::now();
   for (int i = 0; i < iterations; ++i) {
@@ -417,6 +436,17 @@ double BenchFBSSerialize(const std::vector<PointCloudData> &point_data, std::vec
       // memmove(buffer.data(), fbb.GetBufferPointer(), fbb.GetSize());
       // buffer.resize(fbb.GetSize());
     }
+  }
+  auto t1 = high_resolution_clock::now();
+  double sec = duration_cast<duration<double>>(t1 - t0).count();
+  return sec;
+}
+
+double BenchSDSerialize(const std::vector<PointCloudData> &point_data, std::vector<char> &buffer, int iterations = 100) {
+  auto t0 = high_resolution_clock::now();
+  for (int i = 0; i < iterations; ++i) {
+    sdproto::PointCloud cloud = MakeSDPointCloudFromData(point_data);
+    cloud.serializeTo(buffer);
   }
   auto t1 = high_resolution_clock::now();
   double sec = duration_cast<duration<double>>(t1 - t0).count();
@@ -504,6 +534,26 @@ double BenchFBSDeserialize(const std::vector<char> &buffer, size_t offset, Point
   return sec;
 }
 
+double BenchSDDeserialize(std::vector<char> &buffer, sdproto::PointCloud &out, int iterations = 100) {
+  auto t0 = high_resolution_clock::now();
+  for (int i = 0; i < iterations; ++i) {
+    out.deserializeFrom(buffer);
+
+    // 计算 intensity 最大的点
+    uint32_t max_intensity = 0;
+    for (const auto &point : out.points()) {
+      if (point.intensity() > max_intensity) { max_intensity = point.intensity(); }
+    }
+    static bool res = [max_intensity, i] {
+      std::cout << "Max intensity: " << max_intensity << std::endl;
+      return true;
+    }();
+  }
+  auto t1 = high_resolution_clock::now();
+  double sec = duration_cast<duration<double>>(t1 - t0).count();
+  return sec;
+}
+
 int main(int argc, char *argv[]) {
   size_t num_points = 100000;
   int iterations = 200;
@@ -557,7 +607,17 @@ int main(int argc, char *argv[]) {
     double deser_sec = BenchFBSDeserialize(buffer, offset, dummy, iterations);
     std::cout << "  " << iterations << " ops in " << deser_sec * 1000 << " ms\n";
   }
+  {
+    std::cout << "\n=== SD Serialization ===\n";
+    double ser_sec = BenchSDSerialize(point_data, buffer, iterations);
+    std::cout << "  " << iterations << " ops in " << ser_sec * 1000 << " ms\n";
+  }
+  {
+    std::cout << "\n=== SD Deserialization ===\n";
+    sdproto::PointCloud dummy;
+    double deser_sec = BenchSDDeserialize(buffer, dummy, iterations);
+    std::cout << "  " << iterations << " ops in " << deser_sec * 1000 << " ms\n";
+  }
   google::protobuf::ShutdownProtobufLibrary();
   return 0;
 }
-// https://claude.ai/chat/3f94f4c4-f43f-4adf-92fb-2b788ceb5b20
