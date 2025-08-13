@@ -1,2 +1,5 @@
+set(CMAKE_CXX_STANDARD 17)
 add_executable(test_glfw test_glfw.cpp)
 target_link_libraries(test_glfw PRIVATE GL GLEW glfw)
+add_executable(file_browser file_browser.cpp)
+target_link_libraries(file_browser PRIVATE GL GLEW glfw glut)
