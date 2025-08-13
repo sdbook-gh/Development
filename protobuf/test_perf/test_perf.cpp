@@ -367,6 +367,18 @@ sdproto::PointCloud MakeSDPointCloudFromData(const std::vector<PointCloudData> &
   return cloud;
 }
 
+sdproto_opt::PointCloud MakeSDOPTPointCloudFromData(const std::vector<PointCloudData> &point_data) {
+  sdproto_opt::PointCloud cloud;
+  cloud.frame_id = "velodyne64";
+  cloud.is_dense = true;
+  cloud.measurement_time = 0.123;
+  cloud.width = point_data.size();
+  cloud.height = 1;
+  cloud.point.resize(point_data.size());
+  std::memcpy(&cloud.point[0], point_data.data(), point_data.size() * sizeof(PointCloudData));
+  return cloud;
+}
+
 double BenchSerialize(const std::vector<PointCloudData> &point_data, std::vector<char> &buffer, int iterations = 100) {
   auto t0 = high_resolution_clock::now();
   for (int i = 0; i < iterations; ++i) {
@@ -447,6 +459,18 @@ double BenchSDSerialize(const std::vector<PointCloudData> &point_data, std::vect
   for (int i = 0; i < iterations; ++i) {
     sdproto::PointCloud cloud = MakeSDPointCloudFromData(point_data);
     cloud.serializeTo(buffer);
+  }
+  auto t1 = high_resolution_clock::now();
+  double sec = duration_cast<duration<double>>(t1 - t0).count();
+  return sec;
+}
+
+double BenchSDOPTSerialize(const std::vector<PointCloudData> &point_data, std::vector<char> &buffer, int iterations = 100) {
+  auto t0 = high_resolution_clock::now();
+  for (int i = 0; i < iterations; ++i) {
+    sdproto_opt::PointCloud cloud = MakeSDOPTPointCloudFromData(point_data);
+    buffer.resize(sdproto_opt::PointCloudSerializer::GetSerializedSize(cloud));
+    sdproto_opt::PointCloudSerializer::Serialize(cloud, &buffer[0], buffer.size());
   }
   auto t1 = high_resolution_clock::now();
   double sec = duration_cast<duration<double>>(t1 - t0).count();
@@ -554,6 +578,25 @@ double BenchSDDeserialize(std::vector<char> &buffer, sdproto::PointCloud &out, i
   return sec;
 }
 
+double BenchSDOPTDeserialize(std::vector<char> &buffer, sdproto_opt::PointCloud &out, int iterations = 100) {
+  auto t0 = high_resolution_clock::now();
+  for (int i = 0; i < iterations; ++i) {
+    sdproto_opt::PointCloudSerializer::Deserialize(out, &buffer[0], buffer.size());
+    // 计算 intensity 最大的点
+    uint32_t max_intensity = 0;
+    for (const auto &point : out.point) {
+      if (point.intensity > max_intensity) { max_intensity = point.intensity; }
+    }
+    static bool res = [max_intensity, i] {
+      std::cout << "Max intensity: " << max_intensity << std::endl;
+      return true;
+    }();
+  }
+  auto t1 = high_resolution_clock::now();
+  double sec = duration_cast<duration<double>>(t1 - t0).count();
+  return sec;
+}
+
 int main(int argc, char *argv[]) {
   size_t num_points = 100000;
   int iterations = 200;
@@ -616,6 +659,17 @@ int main(int argc, char *argv[]) {
     std::cout << "\n=== SD Deserialization ===\n";
     sdproto::PointCloud dummy;
     double deser_sec = BenchSDDeserialize(buffer, dummy, iterations);
+    std::cout << "  " << iterations << " ops in " << deser_sec * 1000 << " ms\n";
+  }
+  {
+    std::cout << "\n=== SDOPT Serialization ===\n";
+    double ser_sec = BenchSDOPTSerialize(point_data, buffer, iterations);
+    std::cout << "  " << iterations << " ops in " << ser_sec * 1000 << " ms\n";
+  }
+  {
+    std::cout << "\n=== SDOPT Deserialization ===\n";
+    sdproto_opt::PointCloud dummy;
+    double deser_sec = BenchSDOPTDeserialize(buffer, dummy, iterations);
     std::cout << "  " << iterations << " ops in " << deser_sec * 1000 << " ms\n";
   }
   google::protobuf::ShutdownProtobufLibrary();
