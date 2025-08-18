@@ -415,11 +415,8 @@ struct PointXYZIT {
   double x{std::numeric_limits<float>::quiet_NaN()}, y{std::numeric_limits<float>::quiet_NaN()}, z{std::numeric_limits<float>::quiet_NaN()};
   double intensity{0};
   uint64_t timestamp{0};
-  // 比较两个 PointXYZIT 对象是否相等（需要特殊处理 NaN）
-  // bool operator==(const PointXYZIT& other) const { return ((std::isnan(x) && std::isnan(other.x)) || x == other.x) && ((std::isnan(y) && std::isnan(other.y)) || y == other.y) && ((std::isnan(z) && std::isnan(other.z)) || z == other.z) && intensity == other.intensity && timestamp == other.timestamp; }
 };
 
-// PointCloud 中没有指定 default 值的 optional 字段，使用 std::optional 很合适
 struct PointCloud {
   std::optional<std::string> frame_id;
   std::optional<bool> is_dense;
@@ -427,7 +424,6 @@ struct PointCloud {
   std::optional<double> measurement_time;
   std::optional<uint32_t> width;
   std::optional<uint32_t> height;
-  // bool operator==(const PointCloud& other) const { return frame_id == other.frame_id && is_dense == other.is_dense && point == other.point && measurement_time == other.measurement_time && width == other.width && height == other.height; }
 };
 // Protobuf Wire Types
 enum class WireType : char {
@@ -732,3 +728,340 @@ bool Deserialize(PointCloud& cloud, const char* buffer, size_t size) {
 #pragma pop
 } // namespace PointCloudSerializer
 } // namespace sdproto_opt
+
+/*namespace sdproto_opt {
+struct PointXYZIT {
+  float x = std::numeric_limits<float>::quiet_NaN();
+  float y = std::numeric_limits<float>::quiet_NaN();
+  float z = std::numeric_limits<float>::quiet_NaN();
+  uint32_t intensity = 0;
+  uint64_t timestamp = 0;
+};
+struct PointCloud {
+  std::optional<std::string> frame_id;
+  std::optional<bool> is_dense;
+  std::vector<PointXYZIT> point;
+  std::optional<double> measurement_time;
+  std::optional<uint32_t> width;
+  std::optional<uint32_t> height;
+};
+// Protobuf Wire Types
+enum class WireType : char {
+  Varint = 0,
+  Bit64 = 1,
+  LengthDelimited = 2,
+  Bit32 = 5,
+};
+// --- Varint 编码 ---
+inline size_t SizeofVarint(uint64_t value) {
+  if (value < (1ULL << 7)) return 1;
+  if (value < (1ULL << 14)) return 2;
+  if (value < (1ULL << 21)) return 3;
+  if (value < (1ULL << 28)) return 4;
+  if (value < (1ULL << 35)) return 5;
+  if (value < (1ULL << 42)) return 6;
+  if (value < (1ULL << 49)) return 7;
+  if (value < (1ULL << 56)) return 8;
+  if (value < (1ULL << 63)) return 9;
+  return 10;
+}
+inline char* EncodeVarint(char* target, uint64_t value) {
+  while (value >= 0x80) {
+    *target++ = (static_cast<char>(value) & 0x7F) | 0x80;
+    value >>= 7;
+  }
+  *target++ = static_cast<char>(value);
+  return target;
+}
+inline bool DecodeVarint(const char*& data, const char* end, uint64_t& value) {
+  const char* ptr = data;
+  uint64_t result = 0;
+  int shift = 0;
+  while (ptr < end && shift <= 63) {
+    char byte = *ptr++;
+    result |= (static_cast<uint64_t>(byte & 0x7F)) << shift;
+    if ((byte & 0x80) == 0) {
+      data = ptr;
+      value = result;
+      return true;
+    }
+    shift += 7;
+  }
+  return false;
+}
+// --- Tag 生成 ---
+inline uint32_t MakeTag(uint32_t field_number, WireType type) { return (field_number << 3) | static_cast<char>(type); }
+// --- 基础类型序列化 ---
+// 固定32位 (float, fixed32, sfixed32)
+inline size_t SizeofFixed32(uint32_t field_number) { return SizeofVarint(MakeTag(field_number, WireType::Bit32)) + 4; }
+inline char* SerializeFixed32(char* target, uint32_t field_number, uint32_t value) {
+  target = EncodeVarint(target, MakeTag(field_number, WireType::Bit32));
+  std::memcpy(target, &value, 4);
+  return target + 4;
+}
+inline bool DecodeFixed32(const char*& data, const char* end, uint32_t& value) {
+  if (data + 4 > end) return false;
+  std::memcpy(&value, data, 4);
+  data += 4;
+  return true;
+}
+// 固定64位 (double, fixed64, sfixed64)
+inline size_t SizeofFixed64(uint32_t field_number) { return SizeofVarint(MakeTag(field_number, WireType::Bit64)) + 8; }
+inline char* SerializeFixed64(char* target, uint32_t field_number, uint64_t value) {
+  target = EncodeVarint(target, MakeTag(field_number, WireType::Bit64));
+  std::memcpy(target, &value, 8);
+  return target + 8;
+}
+inline bool DecodeFixed64(const char*& data, const char* end, uint64_t& value) {
+  if (data + 8 > end) return false;
+  std::memcpy(&value, data, 8);
+  data += 8;
+  return true;
+}
+// 变长 (string, bytes, sub-message)
+inline size_t SizeofLengthDelimited(uint32_t field_number, size_t len) { return SizeofVarint(MakeTag(field_number, WireType::LengthDelimited)) + SizeofVarint(len) + len; }
+inline bool DecodeLengthDelimited(const char*& data, const char* end, std::string_view& view) {
+  uint64_t length;
+  if (!DecodeVarint(data, end, length)) return false;
+  if (data + length > end) return false;
+  view = std::string_view(reinterpret_cast<const char*>(data), static_cast<size_t>(length));
+  data += length;
+  return true;
+}
+// 跳过未知字段
+inline bool SkipField(const char*& data, const char* end, WireType wire_type) {
+  switch (wire_type) {
+    case WireType::Varint: {
+      uint64_t dummy;
+      return DecodeVarint(data, end, dummy);
+    }
+    case WireType::Bit64: {
+      if (data + 8 > end) return false;
+      data += 8;
+      return true;
+    }
+    case WireType::Bit32: {
+      if (data + 4 > end) return false;
+      data += 4;
+      return true;
+    }
+    case WireType::LengthDelimited: {
+      uint64_t length;
+      if (!DecodeVarint(data, end, length)) return false;
+      if (data + length > end) return false;
+      data += length;
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+// --- PointXYZIT Serializer ---
+namespace PointXYZITSerializer {
+size_t GetSerializedSize(const PointXYZIT& point) {
+  size_t total_size = 0;
+  // 只有当值不等于默认值时，才计算其大小
+  if (!std::isnan(point.x)) total_size += SizeofFixed32(1);
+  if (!std::isnan(point.y)) total_size += SizeofFixed32(2);
+  if (!std::isnan(point.z)) total_size += SizeofFixed32(3);
+  if (point.intensity != 0) total_size += SizeofVarint(MakeTag(4, WireType::Varint)) + SizeofVarint(point.intensity);
+  if (point.timestamp != 0) total_size += SizeofVarint(MakeTag(5, WireType::Varint)) + SizeofVarint(point.timestamp);
+  return total_size;
+}
+// 注意：此函数不进行边界检查，调用者需保证buffer足够大
+char* Serialize(const PointXYZIT& point, char* target) {
+  uint32_t u32_val;
+  if (!std::isnan(point.x)) {
+    std::memcpy(&u32_val, &point.x, 4);
+    target = SerializeFixed32(target, 1, u32_val);
+  }
+  if (!std::isnan(point.y)) {
+    std::memcpy(&u32_val, &point.y, 4);
+    target = SerializeFixed32(target, 2, u32_val);
+  }
+  if (!std::isnan(point.z)) {
+    std::memcpy(&u32_val, &point.z, 4);
+    target = SerializeFixed32(target, 3, u32_val);
+  }
+  if (point.intensity != 0) {
+    target = EncodeVarint(target, MakeTag(4, WireType::Varint));
+    target = EncodeVarint(target, point.intensity);
+  }
+  if (point.timestamp != 0) {
+    target = EncodeVarint(target, MakeTag(5, WireType::Varint));
+    target = EncodeVarint(target, point.timestamp);
+  }
+  return target;
+}
+bool Deserialize(PointXYZIT& point, const char* buffer, size_t size) {
+  point = {}; // 重置为默认值
+  const char* data = buffer;
+  const char* end = buffer + size;
+  while (data < end) {
+    uint64_t tag_val;
+    if (!DecodeVarint(data, end, tag_val)) return false;
+    uint32_t field_number = static_cast<uint32_t>(tag_val >> 3);
+    WireType wire_type = static_cast<WireType>(tag_val & 0x7);
+    switch (field_number) {
+      case 1: { // x
+        if (wire_type != WireType::Bit32) return false;
+        uint32_t u32_val;
+        if (!DecodeFixed32(data, end, u32_val)) return false;
+        std::memcpy(&point.x, &u32_val, 4);
+        break;
+      }
+      case 2: { // y
+        if (wire_type != WireType::Bit32) return false;
+        uint32_t u32_val;
+        if (!DecodeFixed32(data, end, u32_val)) return false;
+        std::memcpy(&point.y, &u32_val, 4);
+        break;
+      }
+      case 3: { // z
+        if (wire_type != WireType::Bit32) return false;
+        uint32_t u32_val;
+        if (!DecodeFixed32(data, end, u32_val)) return false;
+        std::memcpy(&point.z, &u32_val, 4);
+        break;
+      }
+      case 4: { // intensity
+        if (wire_type != WireType::Varint) return false;
+        uint64_t val;
+        if (!DecodeVarint(data, end, val)) return false;
+        point.intensity = static_cast<uint32_t>(val);
+        break;
+      }
+      case 5: { // timestamp
+        if (wire_type != WireType::Varint) return false;
+        uint64_t val;
+        if (!DecodeVarint(data, end, val)) return false;
+        point.timestamp = val;
+        break;
+      }
+      default:
+        if (!SkipField(data, end, wire_type)) return false;
+        break;
+    }
+  }
+  return data == end;
+}
+} // namespace PointXYZITSerializer
+// --- PointCloud Serializer ---
+namespace PointCloudSerializer {
+size_t GetSerializedSize(const PointCloud& cloud) {
+  size_t total_size = 0;
+  if (cloud.frame_id) total_size += SizeofLengthDelimited(2, cloud.frame_id->length());
+  if (cloud.is_dense) total_size += SizeofVarint(MakeTag(3, WireType::Varint)) + 1; // bool is always 1 byte varint
+  for (const auto& p : cloud.point) {
+    const size_t point_size = PointXYZITSerializer::GetSerializedSize(p);
+    total_size += SizeofLengthDelimited(4, point_size);
+  }
+  if (cloud.measurement_time) total_size += SizeofFixed64(5);
+  if (cloud.width) total_size += SizeofVarint(MakeTag(6, WireType::Varint)) + SizeofVarint(*cloud.width);
+  if (cloud.height) total_size += SizeofVarint(MakeTag(7, WireType::Varint)) + SizeofVarint(*cloud.height);
+  return total_size;
+}
+bool Serialize(const PointCloud& cloud, char* buffer, size_t size) {
+  char* target = buffer;
+  const size_t expected_size = GetSerializedSize(cloud);
+  if (size < expected_size) return false; // 缓冲区大小不足
+  if (cloud.frame_id) {
+    target = EncodeVarint(target, MakeTag(2, WireType::LengthDelimited));
+    target = EncodeVarint(target, cloud.frame_id->length());
+    std::memcpy(target, cloud.frame_id->data(), cloud.frame_id->length());
+    target += cloud.frame_id->length();
+  }
+  if (cloud.is_dense) {
+    target = EncodeVarint(target, MakeTag(3, WireType::Varint));
+    target = EncodeVarint(target, *cloud.is_dense ? 1 : 0);
+  }
+  for (const auto& p : cloud.point) {
+    const size_t point_size = PointXYZITSerializer::GetSerializedSize(p);
+    target = EncodeVarint(target, MakeTag(4, WireType::LengthDelimited));
+    target = EncodeVarint(target, point_size);
+    target = PointXYZITSerializer::Serialize(p, target);
+  }
+  if (cloud.measurement_time) {
+    uint64_t u64_val;
+    std::memcpy(&u64_val, &(*cloud.measurement_time), 8);
+    target = SerializeFixed64(target, 5, u64_val);
+  }
+  if (cloud.width) {
+    target = EncodeVarint(target, MakeTag(6, WireType::Varint));
+    target = EncodeVarint(target, *cloud.width);
+  }
+  if (cloud.height) {
+    target = EncodeVarint(target, MakeTag(7, WireType::Varint));
+    target = EncodeVarint(target, *cloud.height);
+  }
+  return (target - buffer) == expected_size;
+}
+bool Deserialize(PointCloud& cloud, const char* buffer, size_t size) {
+  cloud = {};
+  const char* data = buffer;
+  const char* end = buffer + size;
+  while (data < end) {
+    uint64_t tag_val;
+    if (!DecodeVarint(data, end, tag_val)) return false;
+    uint32_t field_number = static_cast<uint32_t>(tag_val >> 3);
+    WireType wire_type = static_cast<WireType>(tag_val & 0x7);
+
+    switch (field_number) {
+      case 2: { // frame_id
+        if (wire_type != WireType::LengthDelimited) return false;
+        std::string_view view;
+        if (!DecodeLengthDelimited(data, end, view)) return false;
+        cloud.frame_id = std::string(view);
+        break;
+      }
+      case 3: { // is_dense
+        if (wire_type != WireType::Varint) return false;
+        uint64_t val;
+        if (!DecodeVarint(data, end, val)) return false;
+        cloud.is_dense = (val != 0);
+        break;
+      }
+      case 4: { // point
+        if (wire_type != WireType::LengthDelimited) return false;
+        uint64_t length;
+        const char* sub_start = data;
+        if (!DecodeVarint(data, end, length)) return false;
+        if (data + length > end) return false;
+        PointXYZIT p;
+        if (!PointXYZITSerializer::Deserialize(p, data, length)) return false;
+        cloud.point.push_back(std::move(p));
+        data += length;
+        break;
+      }
+      case 5: { // measurement_time
+        if (wire_type != WireType::Bit64) return false;
+        uint64_t u64_val;
+        if (!DecodeFixed64(data, end, u64_val)) return false;
+        double d_val;
+        std::memcpy(&d_val, &u64_val, 8);
+        cloud.measurement_time = d_val;
+        break;
+      }
+      case 6: { // width
+        if (wire_type != WireType::Varint) return false;
+        uint64_t val;
+        if (!DecodeVarint(data, end, val)) return false;
+        cloud.width = static_cast<uint32_t>(val);
+        break;
+      }
+      case 7: { // height
+        if (wire_type != WireType::Varint) return false;
+        uint64_t val;
+        if (!DecodeVarint(data, end, val)) return false;
+        cloud.height = static_cast<uint32_t>(val);
+        break;
+      }
+      default:
+        if (!SkipField(data, end, wire_type)) return false;
+        break;
+    }
+  }
+  return data == end;
+}
+} // namespace PointCloudSerializer
+} // namespace sdproto_opt*/

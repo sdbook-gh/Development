@@ -376,7 +376,14 @@ sdproto_opt::PointCloud MakeSDOPTPointCloudFromData(const std::vector<PointCloud
   cloud.width = point_data.size();
   cloud.height = 1;
   cloud.point.resize(point_data.size());
-  std::memcpy(&cloud.point[0], point_data.data(), point_data.size() * sizeof(PointCloudData));
+  // std::memcpy(&cloud.point[0], point_data.data(), point_data.size() * sizeof(PointCloudData));
+  for (int i = 0; i < point_data.size(); ++i) {
+    cloud.point[i].x = point_data[i].x;
+    cloud.point[i].y = point_data[i].y;
+    cloud.point[i].z = point_data[i].z;
+    cloud.point[i].intensity = point_data[i].intensity;
+    cloud.point[i].timestamp = point_data[i].timestamp;
+  }
   return cloud;
 }
 
