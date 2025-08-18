@@ -11,5 +11,6 @@ add_executable(test_spmc_mpmc test_spmc_mpmc.cpp)
 target_link_libraries(test_spmc_mpmc PRIVATE pthread)
 # target_link_libraries(test lib)
 add_executable(test_backtrace test_backtrace.cpp)
-target_compile_options(test_backtrace PRIVATE -O0 -g -rdynamic)
-target_link_libraries(test_backtrace PRIVATE dw)
+target_compile_options(test_backtrace PRIVATE -g -O0 -fno-inline-functions -fno-omit-frame-pointer -rdynamic)
+
+target_link_libraries(test_backtrace PRIVATE dw unwind pthread)
