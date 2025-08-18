@@ -1,518 +1,402 @@
 #pragma once
 
-// https://claude.ai/chat/3f94f4c4-f43f-4adf-92fb-2b788ceb5b20
-#include <cstdint>
+// https://claude.ai/chat/ea4665e3-eb4a-4a01-a616-dae4ea2ec809
+#include <stdint.h>
+#include <cmath>
 #include <cstring>
-#include <exception>
-#include <iostream>
 #include <limits>
 #include <string>
 #include <vector>
 
 namespace sdproto {
-// Wire types for protobuf encoding
-enum WireType { VARINT = 0, FIXED64 = 1, LENGTH_DELIMITED = 2, FIXED32 = 5 };
-
-class ProtoBuffer {
+class ProtobufSerializer {
 private:
-  std::vector<char>* buffer_;
-  size_t read_pos_;
-  bool external_buffer_;
+  // Protobuf wire types
+  enum WireType { VARINT = 0, FIXED64 = 1, LENGTH_DELIMITED = 2, FIXED32 = 5 };
 
-public:
-  ProtoBuffer() : buffer_(new std::vector<char>()), read_pos_(0), external_buffer_(false) {}
-
-  ProtoBuffer(std::vector<char>& external_buf) : buffer_(&external_buf), read_pos_(0), external_buffer_(true) {}
-
-  ~ProtoBuffer() {
-    if (!external_buffer_) { delete buffer_; }
+  // Helper functions for varint encoding
+  static size_t varint_size(uint64_t value) {
+    if (value < (1ULL << 7)) return 1;
+    if (value < (1ULL << 14)) return 2;
+    if (value < (1ULL << 21)) return 3;
+    if (value < (1ULL << 28)) return 4;
+    if (value < (1ULL << 35)) return 5;
+    if (value < (1ULL << 42)) return 6;
+    if (value < (1ULL << 49)) return 7;
+    if (value < (1ULL << 56)) return 8;
+    if (value < (1ULL << 63)) return 9;
+    return 10;
   }
 
-  // Encode varint (variable length integer)
-  void encodeVarint(uint64_t value) {
+  static char* encode_varint(char* ptr, uint64_t value) {
     while (value >= 0x80) {
-      buffer_->push_back((value & 0xFF) | 0x80);
+      *ptr++ = (char)(value | 0x80);
       value >>= 7;
     }
-    buffer_->push_back(value & 0xFF);
+    *ptr++ = (char)value;
+    return ptr;
   }
 
-  // Decode varint
-  uint64_t decodeVarint() {
-    uint64_t result = 0;
-    int shift = 0;
-    while (read_pos_ < buffer_->size()) {
-      char byte = (*buffer_)[read_pos_++];
-      result |= (uint64_t)(byte & 0x7F) << shift;
-      if ((byte & 0x80) == 0) { break; }
-      shift += 7;
-      if (shift >= 64) { throw std::runtime_error("Varint too long"); }
-    }
-    return result;
+  static char* encode_fixed32(char* ptr, uint32_t value) {
+    memcpy(ptr, &value, sizeof(uint32_t));
+    return ptr + sizeof(uint32_t);
   }
 
-  // Encode field key (field_number << 3 | wire_type)
-  void encodeFieldKey(int field_number, WireType wire_type) { encodeVarint((field_number << 3) | wire_type); }
-
-  // Decode field key
-  std::pair<int, WireType> decodeFieldKey() {
-    uint64_t key = decodeVarint();
-    int field_number = key >> 3;
-    WireType wire_type = static_cast<WireType>(key & 0x7);
-    return {field_number, wire_type};
+  static char* encode_fixed64(char* ptr, uint64_t value) {
+    memcpy(ptr, &value, sizeof(uint64_t));
+    return ptr + sizeof(uint64_t);
   }
 
-  // Encode string/bytes
-  void encodeString(const std::string& str) {
-    encodeVarint(str.length());
-    buffer_->insert(buffer_->end(), str.begin(), str.end());
+  static char* encode_float(char* ptr, float value) {
+    uint32_t bits;
+    memcpy(&bits, &value, sizeof(float));
+    return encode_fixed32(ptr, bits);
   }
 
-  // Decode string/bytes
-  std::string decodeString() {
-    uint64_t length = decodeVarint();
-    if (read_pos_ + length > buffer_->size()) { throw std::runtime_error("String extends beyond buffer"); }
-    std::string result(buffer_->begin() + read_pos_, buffer_->begin() + read_pos_ + length);
-    read_pos_ += length;
-    return result;
+  static char* encode_double(char* ptr, double value) {
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof(double));
+    return encode_fixed64(ptr, bits);
   }
 
-  // Encode fixed32
-  void encodeFixed32(uint32_t value) {
-    buffer_->push_back(value & 0xFF);
-    buffer_->push_back((value >> 8) & 0xFF);
-    buffer_->push_back((value >> 16) & 0xFF);
-    buffer_->push_back((value >> 24) & 0xFF);
+  static char* encode_string(char* ptr, const std::string& str) {
+    ptr = encode_varint(ptr, str.length());
+    memcpy(ptr, str.data(), str.length());
+    return ptr + str.length();
   }
 
-  // Decode fixed32
-  uint32_t decodeFixed32() {
-    if (read_pos_ + 4 > buffer_->size()) { throw std::runtime_error("Fixed32 extends beyond buffer"); }
-    uint32_t result = (*buffer_)[read_pos_] | ((*buffer_)[read_pos_ + 1] << 8) | ((*buffer_)[read_pos_ + 2] << 16) | ((*buffer_)[read_pos_ + 3] << 24);
-    read_pos_ += 4;
-    return result;
-  }
+  static uint32_t make_tag(uint32_t field_number, WireType wire_type) { return (field_number << 3) | wire_type; }
 
-  // Encode fixed64
-  void encodeFixed64(uint64_t value) {
-    for (int i = 0; i < 8; i++) { buffer_->push_back((value >> (i * 8)) & 0xFF); }
-  }
-
-  // Decode fixed64
-  uint64_t decodeFixed64() {
-    if (read_pos_ + 8 > buffer_->size()) { throw std::runtime_error("Fixed64 extends beyond buffer"); }
-    uint64_t result = 0;
-    for (int i = 0; i < 8; i++) { result |= (uint64_t)(*buffer_)[read_pos_ + i] << (i * 8); }
-    read_pos_ += 8;
-    return result;
-  }
-
-  // Encode length-delimited data
-  void encodeLengthDelimited(const std::vector<char>& data) {
-    encodeVarint(data.size());
-    buffer_->insert(buffer_->end(), data.begin(), data.end());
-  }
-
-  // Decode length-delimited data
-  std::vector<char> decodeLengthDelimited() {
-    uint64_t length = decodeVarint();
-    if (read_pos_ + length > buffer_->size()) { throw std::runtime_error("Length delimited data extends beyond buffer"); }
-    std::vector<char> result(buffer_->begin() + read_pos_, buffer_->begin() + read_pos_ + length);
-    read_pos_ += length;
-    return result;
-  }
-
-  // Get buffer data
-  const std::vector<char>& getData() const { return *buffer_; }
-
-  // Set data for reading
-  void setDataForReading(const std::vector<char>& data) {
-    if (!external_buffer_) {
-      *buffer_ = data;
-    } else {
-      throw std::runtime_error("Cannot set data on external buffer");
-    }
-    read_pos_ = 0;
-  }
-
-  // Check if at end of buffer
-  bool atEnd() const { return read_pos_ >= buffer_->size(); }
-
-  // Reset read position
-  void resetReadPos() { read_pos_ = 0; }
-
-  // Clear buffer
-  void clear() {
-    buffer_->clear();
-    read_pos_ = 0;
-  }
-
-  // Get current size
-  size_t size() const { return buffer_->size(); }
-};
-
-// PointXYZIT message implementation
-class PointXYZIT {
-private:
-  float x_;
-  float y_;
-  float z_;
-  uint32_t intensity_;
-  uint64_t timestamp_;
-
-  // Field presence flags
-  bool has_x_ = false;
-  bool has_y_ = false;
-  bool has_z_ = false;
-  bool has_intensity_ = false;
-  bool has_timestamp_ = false;
+  static size_t string_size(const std::string& str) { return varint_size(str.length()) + str.length(); }
 
 public:
-  PointXYZIT() {
-    // Set default values
-    x_ = std::numeric_limits<float>::quiet_NaN();
-    y_ = std::numeric_limits<float>::quiet_NaN();
-    z_ = std::numeric_limits<float>::quiet_NaN();
-    intensity_ = 0;
-    timestamp_ = 0;
-  }
+  struct PointXYZIT {
+    float x = std::numeric_limits<float>::quiet_NaN();
+    float y = std::numeric_limits<float>::quiet_NaN();
+    float z = std::numeric_limits<float>::quiet_NaN();
+    uint32_t intensity = 0;
+    uint64_t timestamp = 0;
 
-  // Setters
-  void set_x(float value) {
-    x_ = value;
-    has_x_ = true;
-  }
-  void set_y(float value) {
-    y_ = value;
-    has_y_ = true;
-  }
-  void set_z(float value) {
-    z_ = value;
-    has_z_ = true;
-  }
-  void set_intensity(uint32_t value) {
-    intensity_ = value;
-    has_intensity_ = true;
-  }
-  void set_timestamp(uint64_t value) {
-    timestamp_ = value;
-    has_timestamp_ = true;
-  }
+    // Check if field has non-default value
+    bool has_x() const { return !std::isnan(x); }
+    bool has_y() const { return !std::isnan(y); }
+    bool has_z() const { return !std::isnan(z); }
+    bool has_intensity() const { return intensity != 0; }
+    bool has_timestamp() const { return timestamp != 0; }
 
-  // Getters
-  float x() const { return x_; }
-  float y() const { return y_; }
-  float z() const { return z_; }
-  uint32_t intensity() const { return intensity_; }
-  uint64_t timestamp() const { return timestamp_; }
-
-  // Has methods
-  bool has_x() const { return has_x_; }
-  bool has_y() const { return has_y_; }
-  bool has_z() const { return has_z_; }
-  bool has_intensity() const { return has_intensity_; }
-  bool has_timestamp() const { return has_timestamp_; }
-
-  // Serialize to external buffer
-  void serializeTo(std::vector<char>& buffer) {
-    ProtoBuffer proto_buffer(buffer);
-
-    if (has_x_) {
-      proto_buffer.encodeFieldKey(1, FIXED32);
-      uint32_t x_bits;
-      memcpy(&x_bits, &x_, sizeof(float));
-      proto_buffer.encodeFixed32(x_bits);
+    size_t calculate_size() const {
+      size_t size = 0;
+      if (has_x()) { size += varint_size(make_tag(1, FIXED32)) + 4; }
+      if (has_y()) { size += varint_size(make_tag(2, FIXED32)) + 4; }
+      if (has_z()) { size += varint_size(make_tag(3, FIXED32)) + 4; }
+      if (has_intensity()) { size += varint_size(make_tag(4, VARINT)) + varint_size(intensity); }
+      if (has_timestamp()) { size += varint_size(make_tag(5, VARINT)) + varint_size(timestamp); }
+      return size;
     }
 
-    if (has_y_) {
-      proto_buffer.encodeFieldKey(2, FIXED32);
-      uint32_t y_bits;
-      memcpy(&y_bits, &y_, sizeof(float));
-      proto_buffer.encodeFixed32(y_bits);
+    char* serialize(char* ptr) const {
+      if (has_x()) {
+        ptr = encode_varint(ptr, make_tag(1, FIXED32));
+        ptr = encode_float(ptr, x);
+      }
+      if (has_y()) {
+        ptr = encode_varint(ptr, make_tag(2, FIXED32));
+        ptr = encode_float(ptr, y);
+      }
+      if (has_z()) {
+        ptr = encode_varint(ptr, make_tag(3, FIXED32));
+        ptr = encode_float(ptr, z);
+      }
+      if (has_intensity()) {
+        ptr = encode_varint(ptr, make_tag(4, VARINT));
+        ptr = encode_varint(ptr, intensity);
+      }
+      if (has_timestamp()) {
+        ptr = encode_varint(ptr, make_tag(5, VARINT));
+        ptr = encode_varint(ptr, timestamp);
+      }
+      return ptr;
+    }
+  };
+
+  struct PointCloud {
+    std::string frame_id;
+    bool is_dense = false;
+    std::vector<PointXYZIT> points;
+    double measurement_time = 0.0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+
+    // Check if field has non-default value
+    bool has_frame_id() const { return !frame_id.empty(); }
+    bool has_is_dense() const { return is_dense != false; }
+    bool has_points() const { return !points.empty(); }
+    bool has_measurement_time() const { return measurement_time != 0.0; }
+    bool has_width() const { return width != 0; }
+    bool has_height() const { return height != 0; }
+
+    size_t calculate_size() const {
+      size_t size = 0;
+
+      if (has_frame_id()) { size += varint_size(make_tag(2, LENGTH_DELIMITED)) + string_size(frame_id); }
+      if (has_is_dense()) { size += varint_size(make_tag(3, VARINT)) + varint_size(is_dense ? 1 : 0); }
+      if (has_points()) {
+        for (const auto& point : points) {
+          size_t point_size = point.calculate_size();
+          size += varint_size(make_tag(4, LENGTH_DELIMITED)) + varint_size(point_size) + point_size;
+        }
+      }
+      if (has_measurement_time()) { size += varint_size(make_tag(5, FIXED64)) + 8; }
+      if (has_width()) { size += varint_size(make_tag(6, VARINT)) + varint_size(width); }
+      if (has_height()) { size += varint_size(make_tag(7, VARINT)) + varint_size(height); }
+
+      return size;
     }
 
-    if (has_z_) {
-      proto_buffer.encodeFieldKey(3, FIXED32);
-      uint32_t z_bits;
-      memcpy(&z_bits, &z_, sizeof(float));
-      proto_buffer.encodeFixed32(z_bits);
+    char* serialize(char* ptr) const {
+      if (has_frame_id()) {
+        ptr = encode_varint(ptr, make_tag(2, LENGTH_DELIMITED));
+        ptr = encode_string(ptr, frame_id);
+      }
+      if (has_is_dense()) {
+        ptr = encode_varint(ptr, make_tag(3, VARINT));
+        ptr = encode_varint(ptr, is_dense ? 1 : 0);
+      }
+      if (has_points()) {
+        for (const auto& point : points) {
+          size_t point_size = point.calculate_size();
+          ptr = encode_varint(ptr, make_tag(4, LENGTH_DELIMITED));
+          ptr = encode_varint(ptr, point_size);
+          ptr = point.serialize(ptr);
+        }
+      }
+      if (has_measurement_time()) {
+        ptr = encode_varint(ptr, make_tag(5, FIXED64));
+        ptr = encode_double(ptr, measurement_time);
+      }
+      if (has_width()) {
+        ptr = encode_varint(ptr, make_tag(6, VARINT));
+        ptr = encode_varint(ptr, width);
+      }
+      if (has_height()) {
+        ptr = encode_varint(ptr, make_tag(7, VARINT));
+        ptr = encode_varint(ptr, height);
+      }
+
+      return ptr;
     }
 
-    if (has_intensity_) {
-      proto_buffer.encodeFieldKey(4, VARINT);
-      proto_buffer.encodeVarint(intensity_);
+    // 高性能序列化到用户提供的buffer
+    size_t serialize_to_buffer(char* buffer) const {
+      char* end_ptr = serialize(buffer);
+      return end_ptr - buffer;
     }
 
-    if (has_timestamp_) {
-      proto_buffer.encodeFieldKey(5, VARINT);
-      proto_buffer.encodeVarint(timestamp_);
+    // 获取序列化所需的buffer大小
+    size_t get_serialized_size() const { return calculate_size(); }
+  };
+
+  // 反序列化相关函数
+  static const char* decode_varint(const char* ptr, const char* end, uint64_t& value) {
+    value = 0;
+    int shift = 0;
+    while (ptr < end) {
+      char byte = *ptr++;
+      value |= static_cast<uint64_t>(byte & 0x7F) << shift;
+      if ((byte & 0x80) == 0) { return ptr; }
+      shift += 7;
+      if (shift >= 64) return nullptr; // overflow
     }
+    return nullptr; // incomplete varint
   }
 
-  // Deserialize from external buffer
-  void deserializeFrom(const std::vector<char>& buffer) {
-    std::vector<char> buffer_copy = buffer;
-    ProtoBuffer proto_buffer(buffer_copy);
-    proto_buffer.resetReadPos();
+  static const char* decode_fixed32(const char* ptr, const char* end, uint32_t& value) {
+    if (ptr + 4 > end) return nullptr;
+    memcpy(&value, ptr, sizeof(uint32_t));
+    return ptr + 4;
+  }
 
-    while (!proto_buffer.atEnd()) {
-      auto [field_number, wire_type] = proto_buffer.decodeFieldKey();
+  static const char* decode_fixed64(const char* ptr, const char* end, uint64_t& value) {
+    if (ptr + 8 > end) return nullptr;
+    memcpy(&value, ptr, sizeof(uint64_t));
+    return ptr + 8;
+  }
+
+  static const char* decode_float(const char* ptr, const char* end, float& value) {
+    uint32_t bits;
+    ptr = decode_fixed32(ptr, end, bits);
+    if (ptr) { memcpy(&value, &bits, sizeof(float)); }
+    return ptr;
+  }
+
+  static const char* decode_double(const char* ptr, const char* end, double& value) {
+    uint64_t bits;
+    ptr = decode_fixed64(ptr, end, bits);
+    if (ptr) { memcpy(&value, &bits, sizeof(double)); }
+    return ptr;
+  }
+
+  static const char* decode_string(const char* ptr, const char* end, std::string& str) {
+    uint64_t length;
+    ptr = decode_varint(ptr, end, length);
+    if (!ptr || ptr + length > end) return nullptr;
+    str.assign(reinterpret_cast<const char*>(ptr), length);
+    return ptr + length;
+  }
+
+  static bool deserialize_point(const char* data, size_t size, PointXYZIT& point) {
+    const char* ptr = data;
+    const char* end = data + size;
+
+    while (ptr < end) {
+      uint64_t tag;
+      ptr = decode_varint(ptr, end, tag);
+      if (!ptr) return false;
+
+      uint32_t field_number = tag >> 3;
+      WireType wire_type = static_cast<WireType>(tag & 0x7);
 
       switch (field_number) {
         case 1: // x
-          if (wire_type == FIXED32) {
-            uint32_t bits = proto_buffer.decodeFixed32();
-            memcpy(&x_, &bits, sizeof(float));
-            has_x_ = true;
-          }
+          if (wire_type != FIXED32) return false;
+          ptr = decode_float(ptr, end, point.x);
           break;
         case 2: // y
-          if (wire_type == FIXED32) {
-            uint32_t bits = proto_buffer.decodeFixed32();
-            memcpy(&y_, &bits, sizeof(float));
-            has_y_ = true;
-          }
+          if (wire_type != FIXED32) return false;
+          ptr = decode_float(ptr, end, point.y);
           break;
         case 3: // z
-          if (wire_type == FIXED32) {
-            uint32_t bits = proto_buffer.decodeFixed32();
-            memcpy(&z_, &bits, sizeof(float));
-            has_z_ = true;
-          }
+          if (wire_type != FIXED32) return false;
+          ptr = decode_float(ptr, end, point.z);
           break;
         case 4: // intensity
-          if (wire_type == VARINT) {
-            intensity_ = static_cast<uint32_t>(proto_buffer.decodeVarint());
-            has_intensity_ = true;
+          if (wire_type != VARINT) return false;
+          {
+            uint64_t value;
+            ptr = decode_varint(ptr, end, value);
+            point.intensity = static_cast<uint32_t>(value);
           }
           break;
         case 5: // timestamp
-          if (wire_type == VARINT) {
-            timestamp_ = proto_buffer.decodeVarint();
-            has_timestamp_ = true;
-          }
+          if (wire_type != VARINT) return false;
+          ptr = decode_varint(ptr, end, point.timestamp);
           break;
         default:
           // Skip unknown field
-          skipField(proto_buffer, wire_type);
+          switch (wire_type) {
+            case VARINT: {
+              uint64_t value;
+              ptr = decode_varint(ptr, end, value);
+            } break;
+            case FIXED32:
+              ptr += 4;
+              break;
+            case FIXED64:
+              ptr += 8;
+              break;
+            case LENGTH_DELIMITED: {
+              uint64_t length;
+              ptr = decode_varint(ptr, end, length);
+              if (ptr) ptr += length;
+            } break;
+            default:
+              return false;
+          }
           break;
       }
+      if (!ptr) return false;
     }
+    return true;
   }
 
-private:
-  void skipField(ProtoBuffer& buffer, WireType wire_type) {
-    switch (wire_type) {
-      case VARINT:
-        buffer.decodeVarint();
-        break;
-      case FIXED64:
-        buffer.decodeFixed64();
-        break;
-      case LENGTH_DELIMITED:
-        buffer.decodeLengthDelimited();
-        break;
-      case FIXED32:
-        buffer.decodeFixed32();
-        break;
-    }
-  }
-};
+  static bool deserialize_pointcloud(const char* data, size_t size, PointCloud& cloud) {
+    const char* ptr = data;
+    const char* end = data + size;
 
-// PointCloud message implementation
-class PointCloud {
-private:
-  std::string frame_id_;
-  bool is_dense_;
-  std::vector<PointXYZIT> points_;
-  double measurement_time_;
-  uint32_t width_;
-  uint32_t height_;
+    while (ptr < end) {
+      uint64_t tag;
+      ptr = decode_varint(ptr, end, tag);
+      if (!ptr) return false;
 
-  // Field presence flags
-  bool has_frame_id_ = false;
-  bool has_is_dense_ = false;
-  bool has_measurement_time_ = false;
-  bool has_width_ = false;
-  bool has_height_ = false;
-
-public:
-  PointCloud() {
-    is_dense_ = false;
-    measurement_time_ = 0.0;
-    width_ = 0;
-    height_ = 0;
-  }
-
-  // Setters
-  void set_frame_id(const std::string& value) {
-    frame_id_ = value;
-    has_frame_id_ = true;
-  }
-  void set_is_dense(bool value) {
-    is_dense_ = value;
-    has_is_dense_ = true;
-  }
-  void set_measurement_time(double value) {
-    measurement_time_ = value;
-    has_measurement_time_ = true;
-  }
-  void set_width(uint32_t value) {
-    width_ = value;
-    has_width_ = true;
-  }
-  void set_height(uint32_t value) {
-    height_ = value;
-    has_height_ = true;
-  }
-
-  // Point management
-  void add_point(const PointXYZIT& point) { points_.push_back(point); }
-  PointXYZIT* add_point() {
-    points_.emplace_back();
-    return &points_.back();
-  }
-  void clear_points() { points_.clear(); }
-
-  // Getters
-  const std::string& frame_id() const { return frame_id_; }
-  bool is_dense() const { return is_dense_; }
-  double measurement_time() const { return measurement_time_; }
-  uint32_t width() const { return width_; }
-  uint32_t height() const { return height_; }
-  const std::vector<PointXYZIT>& points() const { return points_; }
-  std::vector<PointXYZIT>& mutable_points() { return points_; }
-  size_t point_size() const { return points_.size(); }
-  const PointXYZIT& point(size_t index) const { return points_.at(index); }
-  PointXYZIT& mutable_point(size_t index) { return points_.at(index); }
-
-  // Has methods
-  bool has_frame_id() const { return has_frame_id_; }
-  bool has_is_dense() const { return has_is_dense_; }
-  bool has_measurement_time() const { return has_measurement_time_; }
-  bool has_width() const { return has_width_; }
-  bool has_height() const { return has_height_; }
-
-  // Serialize to external buffer
-  void serializeTo(std::vector<char>& buffer) {
-    buffer.clear();
-    ProtoBuffer proto_buffer(buffer);
-
-    if (has_frame_id_) {
-      proto_buffer.encodeFieldKey(2, LENGTH_DELIMITED);
-      proto_buffer.encodeString(frame_id_);
-    }
-
-    if (has_is_dense_) {
-      proto_buffer.encodeFieldKey(3, VARINT);
-      proto_buffer.encodeVarint(is_dense_ ? 1 : 0);
-    }
-
-    // Serialize repeated points
-    for (const auto& point : points_) {
-      proto_buffer.encodeFieldKey(4, LENGTH_DELIMITED);
-
-      // Serialize point to temporary buffer
-      std::vector<char> point_buffer;
-      const_cast<PointXYZIT&>(point).serializeTo(point_buffer);
-      proto_buffer.encodeLengthDelimited(point_buffer);
-    }
-
-    if (has_measurement_time_) {
-      proto_buffer.encodeFieldKey(5, FIXED64);
-      uint64_t time_bits;
-      memcpy(&time_bits, &measurement_time_, sizeof(double));
-      proto_buffer.encodeFixed64(time_bits);
-    }
-
-    if (has_width_) {
-      proto_buffer.encodeFieldKey(6, VARINT);
-      proto_buffer.encodeVarint(width_);
-    }
-
-    if (has_height_) {
-      proto_buffer.encodeFieldKey(7, VARINT);
-      proto_buffer.encodeVarint(height_);
-    }
-  }
-
-  // Deserialize from external buffer
-  void deserializeFrom(const std::vector<char>& buffer) {
-    std::vector<char> buffer_copy = buffer;
-    ProtoBuffer proto_buffer(buffer_copy);
-    proto_buffer.resetReadPos();
-
-    while (!proto_buffer.atEnd()) {
-      auto [field_number, wire_type] = proto_buffer.decodeFieldKey();
+      uint32_t field_number = tag >> 3;
+      WireType wire_type = static_cast<WireType>(tag & 0x7);
 
       switch (field_number) {
         case 2: // frame_id
-          if (wire_type == LENGTH_DELIMITED) {
-            frame_id_ = proto_buffer.decodeString();
-            has_frame_id_ = true;
-          }
+          if (wire_type != LENGTH_DELIMITED) return false;
+          ptr = decode_string(ptr, end, cloud.frame_id);
           break;
         case 3: // is_dense
-          if (wire_type == VARINT) {
-            is_dense_ = proto_buffer.decodeVarint() != 0;
-            has_is_dense_ = true;
+          if (wire_type != VARINT) return false;
+          {
+            uint64_t value;
+            ptr = decode_varint(ptr, end, value);
+            cloud.is_dense = (value != 0);
           }
           break;
-        case 4: // point (repeated)
-          if (wire_type == LENGTH_DELIMITED) {
-            std::vector<char> point_data = proto_buffer.decodeLengthDelimited();
+        case 4: // point
+          if (wire_type != LENGTH_DELIMITED) return false;
+          {
+            uint64_t length;
+            ptr = decode_varint(ptr, end, length);
+            if (!ptr || ptr + length > end) return false;
             PointXYZIT point;
-            point.deserializeFrom(point_data);
-            points_.push_back(point);
+            if (!deserialize_point(ptr, length, point)) return false;
+            cloud.points.push_back(point);
+            ptr += length;
           }
           break;
         case 5: // measurement_time
-          if (wire_type == FIXED64) {
-            uint64_t bits = proto_buffer.decodeFixed64();
-            memcpy(&measurement_time_, &bits, sizeof(double));
-            has_measurement_time_ = true;
-          }
+          if (wire_type != FIXED64) return false;
+          ptr = decode_double(ptr, end, cloud.measurement_time);
           break;
         case 6: // width
-          if (wire_type == VARINT) {
-            width_ = static_cast<uint32_t>(proto_buffer.decodeVarint());
-            has_width_ = true;
+          if (wire_type != VARINT) return false;
+          {
+            uint64_t value;
+            ptr = decode_varint(ptr, end, value);
+            cloud.width = static_cast<uint32_t>(value);
           }
           break;
         case 7: // height
-          if (wire_type == VARINT) {
-            height_ = static_cast<uint32_t>(proto_buffer.decodeVarint());
-            has_height_ = true;
+          if (wire_type != VARINT) return false;
+          {
+            uint64_t value;
+            ptr = decode_varint(ptr, end, value);
+            cloud.height = static_cast<uint32_t>(value);
           }
           break;
         default:
           // Skip unknown field
-          skipField(proto_buffer, wire_type);
+          switch (wire_type) {
+            case VARINT: {
+              uint64_t value;
+              ptr = decode_varint(ptr, end, value);
+            } break;
+            case FIXED32:
+              ptr += 4;
+              break;
+            case FIXED64:
+              ptr += 8;
+              break;
+            case LENGTH_DELIMITED: {
+              uint64_t length;
+              ptr = decode_varint(ptr, end, length);
+              if (ptr) ptr += length;
+            } break;
+            default:
+              return false;
+          }
           break;
       }
+      if (!ptr) return false;
     }
-  }
-
-private:
-  void skipField(ProtoBuffer& buffer, WireType wire_type) {
-    switch (wire_type) {
-      case VARINT:
-        buffer.decodeVarint();
-        break;
-      case FIXED64:
-        buffer.decodeFixed64();
-        break;
-      case LENGTH_DELIMITED:
-        buffer.decodeLengthDelimited();
-        break;
-      case FIXED32:
-        buffer.decodeFixed32();
-        break;
-    }
+    return true;
   }
 };
 } // namespace sdproto
 
+// https://docs.google.com/document/d/1Z_mbEbwSsnO5BYBAftTytDHQwRwPIvuPWt10lGZwerg/edit?pli=1&tab=t.0
 #include <cmath> // For std::isnan
 #include <cstdint>
 #include <cstring> // For memcpy
