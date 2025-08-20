@@ -1,5 +1,5 @@
-export NDK=
-cmake -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-27 -DCMAKE_ANDROID_NDK=$NDK -DCMAKE_SYSTEM_NAME=Android -DCMAKE_ANDROID_STL_TYPE=c++_shared ..
+export NDK=/home/shenda/dev/bin/android-ndk-r25c
+cmake -B build -DANDROID -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-27 -DCMAKE_ANDROID_NDK=$NDK -DCMAKE_SYSTEM_NAME=Android -DANDROID_STL=c++_shared ..
 
 set ANDROID_NDK_HOME=E:\dev\SDK\tools\AndroidSdk\ndk\25.2.9519653
 set ANDROID_SDK_CMAKE=E:\dev\SDK\tools\AndroidSdk\cmake\4.0.2\bin
