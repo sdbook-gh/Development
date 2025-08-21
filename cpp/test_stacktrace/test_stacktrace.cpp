@@ -1,10 +1,19 @@
-// libunwind - for stack unwinding, sudo apt install libunwind-dev
+#include <unwind.h> // 用于_Unwind_Backtrace
+#if not defined(BACKWARD_HAS_DWARF)
 #define UNW_LOCAL_ONLY
 #include <libunwind.h>
-#include <unwind.h> // 用于_Unwind_Backtrace
-#include <elfutils/libdwfl.h> // 用于libdwfl解析调试信息, sudo apt install libdw-dev
 #include <backtrace.h>
 #include <backtrace-supported.h>
+#include <elfutils/libdwfl.h> // 用于libdwfl解析调试信息, sudo apt install libdw-dev
+#include <cpptrace/cpptrace.hpp>
+#endif
+#if not defined(BACKWARD_HAS_DWARF)
+// #define BACKWARD_HAS_BFD 1
+#define BACKWARD_HAS_DW 1
+#else
+// #define BACKWARD_HAS_DWARF 1
+#endif
+#include <backward.hpp>
 
 #include <cxxabi.h> // 用于__cxa_demangle
 #include <cassert>
@@ -75,6 +84,7 @@ void test_lambda_crash() {
   lambda(456);
 }
 
+#if not defined(BACKWARD_HAS_DWARF)
 // A helper class to manage libdwfl resources
 class DwarfResolver {
 public:
@@ -296,18 +306,33 @@ static int full_callback(void* data, uintptr_t pc, const char* filename, int lin
   }
   return 0;
 }
+#endif
 
 int main() {
+#if not defined(BACKWARD_HAS_DWARF)
   // 初始化Backtrace
   g_backtrace_state = backtrace_create_state(nullptr, // 使用当前可执行文件
                                              BACKTRACE_SUPPORTS_THREADS, error_callback, nullptr);
-
+#endif
   auto crash_handler = [](int sig) -> void {
     std::cout << "\n*** CRASH DETECTED ***" << std::endl;
     std::cout << "Signal: " << sig << " (" << strsignal(sig) << ")" << std::endl;
-    print_stack_trace_with_dwarf();
-    print_stacktrace();
-    backtrace_full(g_backtrace_state, 0, full_callback, error_callback, nullptr);
+    // print_stack_trace_with_dwarf();
+    // print_stacktrace();
+    // backtrace_full(g_backtrace_state, 0, full_callback, error_callback, nullptr);
+    // auto raw_trace = cpptrace::generate_raw_trace();
+    // raw_trace.resolve().print();
+    {
+      using namespace backward;
+      StackTrace st;
+      st.load_here(32);
+      TraceResolver tr;
+      tr.load_stacktrace(st);
+      for (size_t i = 0; i < st.size(); ++i) {
+        ResolvedTrace trace = tr.resolve(st[i]);
+        std::cout << "#" << i << " [" << trace.addr << "] " << trace.source.filename << " " << trace.source.line << " " << trace.source.col << std::endl;
+      }
+    }
     std::cout << "\n*** END CRASH INFO ***" << std::endl;
     std::_Exit(EXIT_FAILURE);
   };
@@ -317,9 +342,11 @@ int main() {
   signal(SIGILL, crash_handler);
   signal(SIGBUS, crash_handler);
   auto handle_terminate = []() -> void {
-    print_stack_trace_with_dwarf();
-    print_stacktrace();
-    backtrace_full(g_backtrace_state, 0, full_callback, error_callback, nullptr);
+    // print_stack_trace_with_dwarf();
+    // print_stacktrace();
+    // backtrace_full(g_backtrace_state, 0, full_callback, error_callback, nullptr);
+    // auto raw_trace = cpptrace::generate_raw_trace();
+    // raw_trace.resolve().print();
     std::_Exit(EXIT_FAILURE);
   };
   std::set_terminate(handle_terminate);

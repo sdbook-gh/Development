@@ -424,7 +424,7 @@ ShortNamespaceLines: 1
 # 是否跳过宏定义体的格式化
 SkipMacroDefinitionBody: false
 # 头文件排序规则（CaseSensitive表示区分大小写）
-SortIncludes:    CaseSensitive
+SortIncludes: Never
 # Java静态导入排序规则（Before表示在非静态前）
 SortJavaStaticImport: Before
 # using声明排序规则（按字母数字顺序）
