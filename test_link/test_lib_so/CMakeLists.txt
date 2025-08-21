@@ -1,0 +1,5 @@
+find_package(glog REQUIRED)
+add_library(test_lib_so SHARED test_lib_so.cpp)
+target_compile_options(test_lib_so PRIVATE -g)
+target_link_directories(test_lib_so PRIVATE ../extra_lib/build)
+target_link_libraries(test_lib_so PRIVATE glog::glog extra_lib)
