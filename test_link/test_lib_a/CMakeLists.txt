@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION ${CMAKE_VERSION})
 find_package(glog REQUIRED)
 add_library(test_lib_a STATIC test_lib_a.cpp)
 target_compile_options(test_lib_a PRIVATE -g)
