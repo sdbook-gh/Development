@@ -1,0 +1,39 @@
+# build nvComp v2.2.0
+cmake -B build -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc -DCMAKE_INSTALL_PREFIX=$(pwd)/../nvcomp_install -DBUILD_EXAMPLES=ON .
+
+# build nvComp examples v2.2.0
+cmake_minimum_required(VERSION ${CMAKE_VERSION})
+project(nvcomp LANGUAGES C CUDA CXX)
+# Add LZ4 CPU executable
+find_path(LZ4_INCLUDE_DIR NAMES lz4.h)
+find_library(LZ4_LIBRARY NAMES lz4)
+if (LZ4_INCLUDE_DIR AND LZ4_LIBRARY) 
+  # lz4 CPU example requires lz4 libraries
+  add_executable(lz4_cpu_compression lz4_cpu_compression.cu)
+  set_property(TARGET lz4_cpu_compression PROPERTY CUDA_ARCHITECTURES 60)
+  target_include_directories(lz4_cpu_compression PRIVATE ${LZ4_INCLUDE_DIR} /mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/include)
+  target_link_directories(lz4_cpu_compression PRIVATE /mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib)
+  target_link_libraries(lz4_cpu_compression PRIVATE nvcomp cudart)
+  target_link_libraries(lz4_cpu_compression PRIVATE ${LZ4_LIBRARY})
+  add_executable(lz4_cpu_decompression lz4_cpu_decompression.cu)
+  set_property(TARGET lz4_cpu_decompression PROPERTY CUDA_ARCHITECTURES 60)
+  target_include_directories(lz4_cpu_decompression PRIVATE ${LZ4_INCLUDE_DIR} /mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/include)
+  target_link_directories(lz4_cpu_decompression PRIVATE /mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib)
+  target_link_libraries(lz4_cpu_decompression PRIVATE nvcomp cudart)
+  target_link_libraries(lz4_cpu_decompression PRIVATE ${LZ4_LIBRARY})
+else()
+  message(WARNING "Skipping building LZ4 CPU example, as no LZ4 library was found.")
+endif()
+
+cmake -B build -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc -DCMAKE_INSTALL_PREFIX=$(pwd)/../nvcomp_examples_install .
+
+# build nvcomp_sample
+nvcc -I/mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/include -L/mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib -std=c++17 -lnvcomp nvcomp_sample.cu -o nvcomp_sample
+export LD_LIBRARY_PATH=/mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib:$LD_LIBRARY_PATH
+
+# install new version nvcomp
+wget https://developer.download.nvidia.com/compute/nvcomp/5.0.0.6/local_installers/nvcomp-local-repo-wsl-ubuntu-5.0.0_5.0.0-1_amd64.deb
+sudo dpkg -i nvcomp-local-repo-wsl-ubuntu-5.0.0_5.0.0-1_amd64.deb
+sudo cp /var/nvcomp-local-repo-wsl-ubuntu-5.0.0/nvcomp-local-BA36A565-keyring.gpg /usr/share/keyrings/
+sudo apt update
+sudo apt-get -y install nvcomp-cuda-12
