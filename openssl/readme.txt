@@ -1,6 +1,6 @@
 # cross compile by NDK
 # old
-CC="/mnt/e/dev/wsl/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang" CROSS_SYSROOT="/mnt/e/dev/wsl/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/sysroot" ./Configure android64-aarch64 --prefix=$(pwd)/../openssl_install
+CC="/mnt/e/dev/wsl/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/bin/clang --target=aarch64-none-linux-android21 --sysroot=/mnt/e/dev/wsl/android-ndk-r25c/toolchains/llvm/prebuilt/linux-x86_64/sysroot -fPIC" ./Configure android64-aarch64 --prefix=$(pwd)/../openssl_install
 
 export CC=aarch64-linux-android-gcc
 export CFLAGS=" --sysroot=/home/shenda/android-ndk-r16b/sysroot "
