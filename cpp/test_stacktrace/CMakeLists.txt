@@ -24,3 +24,16 @@ if(DWARF STREQUAL "system")
 else()
     target_link_libraries(test_stacktrace PRIVATE dw unwind backtrace cpptrace dwarf z zstd bfd)
 endif()
+
+add_executable(test_dwarf test_dwarf.cpp)
+target_compile_options(test_dwarf PRIVATE -g -O0 -fno-omit-frame-pointer -rdynamic)
+target_link_libraries(test_dwarf PRIVATE dwarf)
+
+add_executable(addr2line addr2line.cpp)
+target_include_directories(addr2line PRIVATE libdwarf-install/include)
+target_link_directories(addr2line PRIVATE libdwarf-install/lib)
+target_link_libraries(addr2line PRIVATE dwarf)
+
+add_executable(test_addr2line test_addr2line.cpp)
+target_compile_options(test_addr2line PRIVATE -g -O0 -fno-omit-frame-pointer -rdynamic)
+target_link_libraries(test_addr2line PRIVATE unwind)
