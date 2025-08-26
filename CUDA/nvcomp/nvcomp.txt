@@ -1,5 +1,5 @@
 # build nvComp v2.2.0
-cmake -B build -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc -DCMAKE_INSTALL_PREFIX=$(pwd)/../nvcomp_install -DBUILD_EXAMPLES=ON .
+cmake -B build -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc -DCMAKE_INSTALL_PREFIX=$(pwd)/../nvcomp_install -DBUILD_EXAMPLES=ON .
 
 # build nvComp examples v2.2.0
 cmake_minimum_required(VERSION ${CMAKE_VERSION})
@@ -27,8 +27,10 @@ endif()
 
 cmake -B build -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.8/bin/nvcc -DCMAKE_INSTALL_PREFIX=$(pwd)/../nvcomp_examples_install .
 
-# build nvcomp_sample
-nvcc -I/mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/include -L/mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib -std=c++17 -lnvcomp nvcomp_sample.cu -o nvcomp_sample
+# build nvcomp samples
+nvcc -I/mnt/e/personal/github/Development/CUDA/nvcomp/nvcomp_install/include -L/mnt/e/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib -std=c++17 -lnvcomp nvcomp_sample.cu -o nvcomp_sample
+nvcc -I/mnt/e/personal/github/Development/CUDA/nvcomp/nvcomp_install/include -L/mnt/e/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib -std=c++17 -lnvcomp nvcomp_lz4compress_sample.cu -o nvcomp_lz4compress
+nvcc -I/mnt/e/personal/github/Development/CUDA/nvcomp/nvcomp_install/include -L/mnt/e/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib -std=c++17 -lnvcomp nvcomp_lz4decompress_sample.cu -o nvcomp_lz4decompress
 export LD_LIBRARY_PATH=/mnt/d/personal/github/Development/CUDA/nvcomp/nvcomp_install/lib:$LD_LIBRARY_PATH
 
 # install new version nvcomp

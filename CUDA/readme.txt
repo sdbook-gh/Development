@@ -1,6 +1,6 @@
 https://www.kimi.com/chat/d2kq9tbduqbctmlecofg
 
-export PATH=/usr/local/cuda-12.8/bin:$PATH
+export PATH=/usr/local/cuda/bin:$PATH
 
 nvcc hello_world.cu -o hello_world
 
