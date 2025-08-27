@@ -322,31 +322,32 @@ int main() {
   }
 #endif
 
-  // 不同循环次数的测试
-  int test_loops[] = {1000000, 5000000, 10000000, 50000000};
-  int num_tests = sizeof(test_loops) / sizeof(test_loops[0]);
+  while (true) {
+    // 不同循环次数的测试
+    int test_loops[] = {1000000, 5000000, 10000000, 50000000};
+    int num_tests = sizeof(test_loops) / sizeof(test_loops[0]);
 
-  for (int i = 0; i < num_tests; ++i) {
-    std::cout << "正在运行测试 " << (i + 1) << "/" << num_tests << " (循环次数: " << test_loops[i] << ")..." << std::endl;
+    for (int i = 0; i < num_tests; ++i) {
+      std::cout << "正在运行测试 " << (i + 1) << "/" << num_tests << " (循环次数: " << test_loops[i] << ")..." << std::endl;
 
-    tester.setLoops(test_loops[i]);
-    double dmips = tester.runBenchmark();
+      tester.setLoops(test_loops[i]);
+      double dmips = tester.runBenchmark();
 
-    std::cout << "循环次数: " << test_loops[i] << std::endl;
-    std::cout << "DMIPS: " << dmips << std::endl;
-    std::cout << std::endl;
+      std::cout << "循环次数: " << test_loops[i] << std::endl;
+      std::cout << "DMIPS: " << dmips << std::endl;
+      std::cout << std::endl;
+    }
+
+    // 最终完整测试
+    std::cout << "=== 最终完整测试 ===" << std::endl;
+    tester.setLoops(100000000); // 1亿次循环
+    std::cout << "正在运行最终测试（1亿次循环）..." << std::endl;
+
+    double final_dmips = tester.runBenchmark();
+
+    std::cout << "最终结果:" << std::endl;
+    std::cout << "DMIPS: " << final_dmips << std::endl;
+    std::cout << "测试完成" << std::endl;
   }
-
-  // 最终完整测试
-  std::cout << "=== 最终完整测试 ===" << std::endl;
-  tester.setLoops(100000000); // 1亿次循环
-  std::cout << "正在运行最终测试（1亿次循环）..." << std::endl;
-
-  double final_dmips = tester.runBenchmark();
-
-  std::cout << "最终结果:" << std::endl;
-  std::cout << "DMIPS: " << final_dmips << std::endl;
-  std::cout << "测试完成" << std::endl;
-
   return 0;
 }
