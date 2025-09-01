@@ -31,3 +31,14 @@ sudo nsys profile -o profile_out -t osrt --cpuctxsw=system-wide --sample=system-
     return 0;
   }
 python3 -c 'import time; print(int(time.time_ns()))' && python3 -c 'import time; print(int(time.clock_gettime_ns(time.CLOCK_MONOTONIC)))'
+
+# 使用perf和python分析事件
+sudo ./perf record -e sched:sched_switch -a -- sleep 3
+sudo ./perf script -i perf.data --gen-script python # change sys.path.append to perf source code dir
+sudo ./perf script -i perf.data -s ./script.py
+
+# 使用perf记录函数调用时间
+  sudo ./perf probe -x ./build/test_func_duration --funcs|grep benchmark # 查看可添加的函数
+  sudo ./perf probe -f -x ./build/test_func_duration function_entry="benchmark()"
+  sudo ./perf probe -f -x ./build/test_func_duration function_entry="benchmark()%return"
+  sudo ./perf record -e 'probe_test_func_duration:*' ./build/test_func_duration
