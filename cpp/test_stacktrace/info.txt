@@ -1,0 +1,80 @@
+# print call stack on windows
+https://claude.ai/chat/1b8d413f-8a63-4780-af2a-b6397db711de
+    #include <windows.h>
+    #include <dbghelp.h>
+    #include <iostream>
+    #include <vector>
+
+    #pragma comment(lib, "dbghelp.lib")
+
+    void PrintCallStack()
+    {
+        // 初始化符号处理器
+        HANDLE process = GetCurrentProcess();
+        SymInitialize(process, NULL, TRUE);
+        
+        // 获取当前线程的上下文
+        CONTEXT context;
+        memset(&context, 0, sizeof(CONTEXT));
+        context.ContextFlags = CONTEXT_FULL;
+        RtlCaptureContext(&context);
+        
+        // 设置栈帧信息
+        STACKFRAME64 frame;
+        memset(&frame, 0, sizeof(STACKFRAME64));
+        
+    #ifdef _M_IX86
+        DWORD machine = IMAGE_FILE_MACHINE_I386;
+        frame.AddrPC.Offset = context.Eip;
+        frame.AddrPC.Mode = AddrModeFlat;
+        frame.AddrFrame.Offset = context.Ebp;
+        frame.AddrFrame.Mode = AddrModeFlat;
+        frame.AddrStack.Offset = context.Esp;
+        frame.AddrStack.Mode = AddrModeFlat;
+    #elif _M_X64
+        DWORD machine = IMAGE_FILE_MACHINE_AMD64;
+        frame.AddrPC.Offset = context.Rip;
+        frame.AddrPC.Mode = AddrModeFlat;
+        frame.AddrFrame.Offset = context.Rsp;
+        frame.AddrFrame.Mode = AddrModeFlat;
+        frame.AddrStack.Offset = context.Rsp;
+        frame.AddrStack.Mode = AddrModeFlat;
+    #endif
+        
+        // 遍历调用栈
+        for (int i = 0; ; i++)
+        {
+            BOOL result = StackWalk64(
+                machine,
+                GetCurrentProcess(),
+                GetCurrentThread(),
+                &frame,
+                &context,
+                NULL,
+                SymFunctionTableAccess64,
+                SymGetModuleBase64,
+                NULL);
+                
+            if (!result) break;
+            
+            // 获取符号信息
+            char buffer[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
+            PSYMBOL_INFO symbol = (PSYMBOL_INFO)buffer;
+            symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+            symbol->MaxNameLen = MAX_SYM_NAME;
+            
+            DWORD64 displacement = 0;
+            if (SymFromAddr(process, frame.AddrPC.Offset, &displacement, symbol))
+            {
+                std::cout << "[" << i << "] " << symbol->Name << " + 0x" 
+                        << std::hex << displacement << std::dec << std::endl;
+            }
+            else
+            {
+                std::cout << "[" << i << "] 0x" << std::hex 
+                        << frame.AddrPC.Offset << std::dec << std::endl;
+            }
+        }
+        
+        SymCleanup(process);
+    }
