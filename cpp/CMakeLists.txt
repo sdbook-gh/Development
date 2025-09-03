@@ -9,3 +9,7 @@ add_executable(test_spmc_mpmc test_spmc_mpmc.cpp)
 
 set(CMAKE_CXX_STANDARD 20)
 add_executable(test_template test_template.cpp)
+
+add_executable(test_virtual_func test_virtual_func.cpp)
+target_compile_options(test_virtual_func PRIVATE -g -fno-inline -rdynamic)
+target_link_libraries(test_virtual_func PRIVATE -ldl)
