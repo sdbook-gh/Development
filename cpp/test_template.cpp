@@ -78,7 +78,10 @@ struct foo {
 template <typename T, typename U = typename T::value_type>
 struct bar {
   using value_type = U;
+  int do_something();
 };
+template<typename T, typename U>
+int bar<T, U>::do_something() {return 0;}
 
 int main() {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
@@ -91,6 +94,7 @@ int main() {
 
   TestTemplateTemplateParameter<int, std::string> tttp;
   TestTemplateStr<"20"> tts;
+  TestTemplateStr<string_literal<3>("20")> tts2;
 
   bar<foo<int>> x;
   return 0;
