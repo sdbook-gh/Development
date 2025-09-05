@@ -18,7 +18,7 @@ void process_variadic_arg2(Args&&... args) {
 #include <type_traits>
 #include <string>
 
-// #define CHECK_VIRTUAL_STRUCTURE
+#define CHECK_VIRTUAL_STRUCTURE
 #ifdef CHECK_VIRTUAL_STRUCTURE
 struct Base {
   virtual void do_something() = 0;
@@ -49,11 +49,49 @@ struct A
   }
 };
 
+template <typename T, size_t size>
+inline size_t get_array_size(T (&array)[size]) noexcept {
+  return size;
+}
+
+#include <vector>
+template <typename T1, typename T2, template <typename> typename container = std::vector>
+class TestTemplateTemplateParameter {
+private:
+  container<T1> c1;
+  container<T2> c2;
+};
+
+template <size_t N>
+struct string_literal {
+  // constexpr string_literal(const char (&str)[N]) { std::copy_n(str, N, value); }
+  constexpr string_literal(const char (&str)[N]) { std::copy_n(str, N, value); }
+  char value[N];
+};
+template <string_literal str>
+class TestTemplateStr {};
+
+template <typename T>
+struct foo {
+  using value_type = T;
+};
+template <typename T, typename U = typename T::value_type>
+struct bar {
+  using value_type = U;
+};
+
 int main() {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
   process_variadic_arg2(1, 2, 3, 4, 5);
-
   std::cout << "is_trivial: " << std::is_trivial<std::string>::value << " is_standard_layout: " << std::is_standard_layout<std::string>::value << std::endl;
   std::cout << "is_trivial: " << std::is_trivial<A>::value << " is_standard_layout: " << std::is_standard_layout<A>::value << std::endl;
+
+  int array[5] = {1, 2, 3, 4, 5};
+  printf("array size: %ld\n", get_array_size(array));
+
+  TestTemplateTemplateParameter<int, std::string> tttp;
+  TestTemplateStr<"20"> tts;
+
+  bar<foo<int>> x;
   return 0;
 }
