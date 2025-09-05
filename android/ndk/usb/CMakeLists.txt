@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION ${CMAKE_VERSION})
+add_library(test_libusb SHARED test_libusb.cpp)
+target_include_directories(test_libusb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libusb-1.0.29/include/libusb-1.0)
+target_compile_options(test_libusb PRIVATE -g -Wall -Werror)
+target_link_directories(test_libusb PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/libusb-1.0.29/lib)
+target_link_libraries(test_libusb PRIVATE libusb-1.0.a log)

@@ -14,16 +14,32 @@ android {
 
     }
 
+    signingConfigs {
+        release {
+            storeFile file('keystore/platform.keystore')
+            keyAlias '123456'
+            keyPassword '123456'
+            storePassword '123456'
+        }
+        debug {
+            storeFile file('keystore/platform.keystore')
+            keyAlias '123456'
+            keyPassword '123456'
+            storePassword '123456'
+        }
+    }
+
     buildTypes {
         debug {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debug
         }
     }
 
     sourceSets {
         main {
-            jniLibs.srcDirs = ['libs'] 
+            jniLibs.srcDirs = ['libs']
         }
     }
     namespace 'com.example.jniapp'
