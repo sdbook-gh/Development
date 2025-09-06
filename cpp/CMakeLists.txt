@@ -13,3 +13,7 @@ add_executable(test_template test_template.cpp)
 add_executable(test_virtual_func test_virtual_func.cpp)
 target_compile_options(test_virtual_func PRIVATE -g -fno-inline -rdynamic)
 target_link_libraries(test_virtual_func PRIVATE -ldl)
+
+add_executable(test_futex test_futex.cpp)
+
+add_executable(test_time_wheel test_time_wheel.cpp)
