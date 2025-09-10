@@ -16,7 +16,87 @@
     printf("vptr[1]: %p\n", ((void **)vptr)[1]);
   }
 
-# 变长类模板实例化过程
+# 变长类模板实例化过程 do_test
+  do_test<5>{};
+  template<int N, int ...M>
+  struct do_test : public do_test<N - 1, M...>
+  {
+    inline do_test()
+    {
+      std::operator<<(std::cout, "do_test N: ").operator<<(N).operator<<(std::endl);
+    }
+  };
+  template<>
+  struct do_test<0>
+  {
+    inline do_test()
+    {
+      std::operator<<(std::cout, "do_test_end").operator<<(std::endl);
+    }
+  };
+  # do_test递归实例化
+    /* First instantiated from: insights.cpp:16 */
+    #ifdef INSIGHTS_USE_TEMPLATE
+    template<>
+    struct do_test<5> : public do_test<4>
+    {
+      inline do_test()
+      : do_test<4>()
+      {
+        std::operator<<(std::cout, "do_test N: ").operator<<(5).operator<<(std::endl);
+      }
+    };
+    #endif
+    /* First instantiated from: insights.cpp:4 */
+    #ifdef INSIGHTS_USE_TEMPLATE
+    template<>
+    struct do_test<4> : public do_test<3>
+    {
+      inline do_test()
+      : do_test<3>()
+      {
+        std::operator<<(std::cout, "do_test N: ").operator<<(4).operator<<(std::endl);
+      }
+    };
+    #endif
+    /* First instantiated from: insights.cpp:4 */
+    #ifdef INSIGHTS_USE_TEMPLATE
+    template<>
+    struct do_test<3> : public do_test<2>
+    {
+      inline do_test()
+      : do_test<2>()
+      {
+        std::operator<<(std::cout, "do_test N: ").operator<<(3).operator<<(std::endl);
+      }
+    };
+    #endif
+    /* First instantiated from: insights.cpp:4 */
+    #ifdef INSIGHTS_USE_TEMPLATE
+    template<>
+    struct do_test<2> : public do_test<1>
+    {
+      inline do_test()
+      : do_test<1>()
+      {
+        std::operator<<(std::cout, "do_test N: ").operator<<(2).operator<<(std::endl);
+      }
+    };
+    #endif
+    /* First instantiated from: insights.cpp:4 */
+    #ifdef INSIGHTS_USE_TEMPLATE
+    template<>
+    struct do_test<1> : public do_test<0>
+    {
+      inline do_test()
+      : do_test<0>()
+      {
+        std::operator<<(std::cout, "do_test N: ").operator<<(1).operator<<(std::endl);
+      }
+    };
+    #endif
+
+# 变长类模板实例化过程 tuple
   tuple<int, double, char> three = tuple<int, double, char>(42, 42.0, 'a');
   get<2>(three);
   # tuple实例化过程

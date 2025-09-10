@@ -177,6 +177,74 @@ typename nth_type<N, Ts...>::value_type& get(tuple<Ts...>& t) {
   return getter<N>::get(t);
 }
 
+template <int N, int... M>
+struct do_test : public do_test<N - 1, M...> {
+  do_test() {
+    std::cout << "do_test N: " << N << std::endl;
+    //((std::cout << "do_test N: " << N << " M: " << M << " M size: " << sizeof...(M) << std::endl), ...);
+  }
+};
+template <>
+struct do_test<0> {
+  do_test() { std::cout << "do_test_end" << std::endl; }
+};
+
+#include <tuple>
+template <typename T, size_t... I>
+void print_tuple(T const& tuple, std::index_sequence<I...>) {
+  (..., (std::cout << std::get<I>(tuple) << " "));
+  std::cout << std::endl;
+  ((std::cout << std::get<I>(tuple) << " "), ...);
+  std::cout << std::endl;
+}
+template <typename... T>
+void print_tuple_new(const std::tuple<T...>& tuple) {
+  [&]<typename TupType, size_t... I>(const TupType& tuple, std::index_sequence<I...>) { (..., (std::cout << std::get<I>(tuple) << " ")); }(tuple, std::make_index_sequence<sizeof...(T)>());
+  std::cout << std::endl;
+}
+
+template <typename... Ts>
+void print_rev(Ts&&... args) {
+  (..., (std::cout << args << ' '));
+  std::cout << std::endl;
+  ((std::cout << args << ' '), ...);
+  std::cout << std::endl;
+}
+
+template <typename T, size_t I>
+T seq_to_val() {
+  return (T)I;
+}
+template <typename T, size_t... I>
+std::array<T, sizeof...(I)> make_array(std::index_sequence<I...>) {
+  return std::array<T, sizeof...(I)>{seq_to_val<T, I>()...};
+}
+
+#include <array>
+#include <utility>
+#include <cstring>
+struct Foo {
+  int a;
+  char b;
+  float c;
+};
+// 把每个成员拷贝到缓冲区
+template <std::size_t... I>
+void serialize_impl(const Foo& f, unsigned char* buf, std::index_sequence<I...>) {
+  // 用 lambda+下标 拿到第 I 个成员，再 memcpy
+  auto copy = [&]<std::size_t J>(std::integral_constant<std::size_t, J>) {
+    if constexpr (J == 0) std::memcpy(buf, &f.a, sizeof(f.a));
+    if constexpr (J == 1) std::memcpy(buf, &f.b, sizeof(f.b));
+    if constexpr (J == 2) std::memcpy(buf, &f.c, sizeof(f.c));
+  };
+  std::size_t offset = 0;
+  ((copy(std::integral_constant<std::size_t, I>{}), offset += sizeof(std::tuple_element_t<I, std::tuple<int, char, float>>)), ...);
+}
+template <class... Members>
+void serialize(const Foo& f, unsigned char* buf, std::index_sequence_for<Members...> seq) {
+  serialize_impl(f, buf, seq);
+}
+
 int main() {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
   process_variadic_arg2(1, 2, 3, 4, 5);
@@ -218,5 +286,24 @@ int main() {
 
   tuple<int, double, char> three(42, 42.0, 'a');
   std::cout << get<0>(three) << std::endl;
+
+  do_test<5>{};
+
+  // 创建一个tuple并调用print_tuple打印
+  // std::tuple<int, double, std::string> t{1, 2.5, "hello"};
+  auto t{std::make_tuple(1, 2.5, "hello")};
+  print_tuple<>(t, std::make_index_sequence<3>());
+  print_tuple_new(t);
+
+  print_rev(1, 2, 3);
+
+  make_array<int>(std::make_index_sequence<5>());
+  auto make_array_new = []<typename T, size_t... I>(std::index_sequence<I...>) { return std::array<T, sizeof...(I)>{I...}; };
+  make_array_new.operator()<int>(std::make_index_sequence<5>());
+
+  unsigned char buffer[sizeof(Foo)];
+  Foo obj{123, 'X', 2.71f};
+  serialize<int, char, float>(obj, buffer, {}); // 自动推导 3 个成员
+
   return 0;
 }
