@@ -17,3 +17,5 @@ target_link_libraries(test_virtual_func PRIVATE -ldl)
 add_executable(test_futex test_futex.cpp)
 
 add_executable(test_time_wheel test_time_wheel.cpp)
+
+add_executable(test_shm test_shm.cpp)

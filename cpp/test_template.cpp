@@ -245,6 +245,72 @@ void serialize(const Foo& f, unsigned char* buf, std::index_sequence_for<Members
   serialize_impl(f, buf, seq);
 }
 
+template <typename T>
+struct base_parser {
+  void init() { std::cout << "init\n"; }
+};
+template <typename T>
+struct parser : base_parser<T> {
+  void parse() {
+    this->init(); // OK
+    base_parser<T>::init(); // OK
+    std::cout << "parse\n";
+  }
+};
+
+#include <map>
+struct dictionary_traits {
+  using key_type = int;
+  using map_type = std::map<key_type, std::string>;
+  static constexpr int identity = 1;
+};
+template <typename T>
+struct dictionary : public T::map_type // [1]
+{
+  int start_key{T::identity}; // [2]
+  typename T::key_type next_key; // [3]
+};
+
+template <typename T>
+struct base_parser_N {
+  template <typename U>
+  struct token {};
+  template <typename U>
+  void init() {
+    std::cout << "init\n";
+  }
+};
+template <typename T>
+struct parser_N : base_parser_N<T> {
+  void parse() {
+    using token_type = typename base_parser_N<T>::template token<int>; // [1]
+    token_type t1{};
+    typename base_parser_N<T>::template token<int> t2{}; // [2]
+    std::cout << "parse\n";
+    base_parser_N<T>::template init<T>();
+  }
+};
+
+// CI Current Instantiation
+template <typename T>
+struct parser_CI {
+  parser_CI* p1; // parser_CI is the CI
+  parser_CI<T>* p2; // parser_CI<T> is the CI
+  ::parser_CI<T>* p3; // ::parser_CI<T> is the CI
+  parser_CI<T*> p4; // parser_CI<T*> is not the CI
+  struct token {
+    token* t1; // token is the CI
+    parser_CI<T>::token* t2; // parser_CI<T>::token is the CI
+    typename parser_CI<T*>::token* t3;
+    // parser_CI<T*>::token is not the CI
+  };
+};
+template <typename T>
+struct parser_CI<T*> {
+  parser_CI<T*>* p1; // parser_CI<T*> is the CI
+  parser_CI<T>* p2; // parser_CI<T> is not the CI
+};
+
 int main() {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
   process_variadic_arg2(1, 2, 3, 4, 5);
@@ -305,5 +371,12 @@ int main() {
   Foo obj{123, 'X', 2.71f};
   serialize<int, char, float>(obj, buffer, {}); // 自动推导 3 个成员
 
+  parser<int> pa;
+  pa.parse();
+
+  dictionary<dictionary_traits> d;
+
+  parser_N<int> pa_N;
+  pa_N.parse();
   return 0;
 }
