@@ -277,7 +277,7 @@ struct base_parser_N {
   struct token {};
   template <typename U>
   void init() {
-    std::cout << "init\n";
+    std::cout << "base_parser_N init\n";
   }
 };
 template <typename T>
@@ -286,7 +286,7 @@ struct parser_N : base_parser_N<T> {
     using token_type = typename base_parser_N<T>::template token<int>; // [1]
     token_type t1{};
     typename base_parser_N<T>::template token<int> t2{}; // [2]
-    std::cout << "parse\n";
+    std::cout << "parser_N parse\n";
     base_parser_N<T>::template init<T>();
   }
 };
@@ -311,7 +311,87 @@ struct parser_CI<T*> {
   parser_CI<T>* p2; // parser_CI<T> is not the CI
 };
 
-int main() {
+template <unsigned int N>
+constexpr unsigned int factorial = N * factorial<N - 1>;
+template <>
+constexpr unsigned int factorial<0> = 1;
+
+#include <cxxabi.h>
+template <typename T>
+struct wrapper {};
+template <int N>
+struct manyfold_wrapper {
+  using sub_type = manyfold_wrapper<N - 1>::value_type;
+  using value_type = wrapper<sub_type>;
+};
+template <>
+struct manyfold_wrapper<0> {
+  using value_type = unsigned int;
+};
+
+void g(Foo& v) { std::cout << "g(foo&)\n"; }
+void g(Foo&& v) { std::cout << "g(foo&&)\n"; }
+void h(Foo& v) {
+  // g(v);
+  g(std::forward<Foo&>(v));
+}
+void h(Foo&& v) {
+  //  g(v);
+  g(std::forward<Foo&&>(v));
+}
+template <typename T>
+void h_new(T&& v) {
+  g(std::forward<T>(v));
+}
+#include <memory>
+template <typename T, typename... Args>
+std::unique_ptr<T> make_unique_new(Args&&... args) {
+  return std::unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+
+template <typename Func, typename... Args>
+auto syscall_with_check(Func func, Args&&... args) -> decltype(func(args...)) {
+  auto result = func(std::forward<Args>(args)...);
+  if (result == -1) {
+    int saved_errno = errno;
+    throw std::system_error(saved_errno, std::system_category(), "System call failed");
+  }
+  return result;
+}
+
+template <typename T>
+struct wrapper_new;
+template <typename T>
+void print(wrapper_new<T> const& w);
+template <typename T>
+struct printer;
+template <typename T>
+struct wrapper_new {
+  wrapper_new(T const v) : value(v) {}
+
+private:
+  T value;
+  friend void print<T>(wrapper_new<T> const&);
+  friend struct printer<void>;
+};
+template <typename T>
+void print(wrapper_new<T> const& w) {
+  std::cout << w.value << '\n'; /* error */
+}
+template <typename T>
+struct printer {
+  void operator()(wrapper_new<T> const& w) { std::cout << w.value << '\n'; /* error*/ }
+};
+template <>
+struct printer<void> {
+  template <typename T>
+  void operator()(wrapper_new<T> const& w) {
+    std::cout << w.value << '\n'; /* error*/
+  }
+};
+
+#include <fcntl.h>
+auto main() -> int {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
   process_variadic_arg2(1, 2, 3, 4, 5);
   std::cout << "is_trivial: " << std::is_trivial<std::string>::value << " is_standard_layout: " << std::is_standard_layout<std::string>::value << std::endl;
@@ -378,5 +458,26 @@ int main() {
 
   parser_N<int> pa_N;
   pa_N.parse();
+
+  std::cout << factorial<5> << '\n';
+
+  std::cout << abi::__cxa_demangle(typeid(manyfold_wrapper<3>::value_type).name(), 0, 0, 0) << '\n';
+
+  Foo f{1, '2', 3.0f};
+  h(f);
+  h(std::move(f));
+  h_new(f);
+  h_new(std::move(f));
+  auto fup = make_unique_new<Foo>(f);
+  fup = make_unique_new<Foo>(std::move(f));
+
+  syscall_with_check(open, "/tmp/test.txt", O_RDONLY);
+
+  wrapper_new<int> w{43};
+  print<int>(w);
+  // print<char>(w);
+  printer<void>()(w);
+  // printer<int>()(w);
+
   return 0;
 }
