@@ -390,6 +390,91 @@ struct printer<void> {
   }
 };
 
+template <typename T, size_t N>
+void handle(T (&arr)[N], char (*)[N % 2 == 0 ? 1 : 0] = 0) {
+  std::cout << "handle even array\n";
+}
+template <typename T, size_t N>
+void handle(T (&arr)[N], char (*)[N % 2 == 1 ? 1 : 0] = 0) {
+  std::cout << "handle odd array\n";
+}
+
+template <typename T>
+struct foo_SFINAE {
+  using foo_type = T;
+};
+template <typename T>
+struct bar_SFINAE {
+  using bar_type = T;
+};
+struct int_foo : foo_SFINAE<int> {};
+struct int_bar : bar_SFINAE<int> {};
+template <typename T>
+decltype(typename T::foo_type(), void()) handle(T const& v) {
+  std::cout << "handle a foo\n";
+}
+template <typename T>
+decltype(typename T::bar_type(), void()) handle(T const& v) {
+  std::cout << "handle a bar\n";
+}
+template <typename T>
+decltype(static_cast<int>(T()), void()) handle(T const& v) {
+  std::cout << "handle a number\n";
+}
+
+template <typename T, typename = typename std::enable_if_t<std::is_integral_v<T>>>
+struct integral_wrapper {
+  T value;
+};
+template <typename T, typename = typename std::enable_if_t<std::is_floating_point_v<T>>>
+struct floating_wrapper {
+  T value;
+};
+
+template <typename T>
+bool are_equal(T const& a, T const& b) {
+  if constexpr (std::is_floating_point_v<T>)
+    return std::abs(a - b) < 0.001;
+  else
+    return a == b;
+}
+
+template <typename T>
+std::string as_string(T value) {
+  if constexpr (std::is_null_pointer_v<T>)
+    return "null";
+  else if constexpr (std::is_same_v<T, bool>)
+    return value ? "true" : "false";
+  else if constexpr (std::is_arithmetic_v<T>)
+    return std::to_string(value);
+}
+
+namespace detail {
+template <bool b>
+struct copy_fn {
+  template <typename InputIt, typename OutputIt>
+  constexpr static OutputIt copy(InputIt first, InputIt last, OutputIt d_first) {
+    while (first != last) { *d_first++ = *first++; }
+    return d_first;
+  }
+};
+template <>
+struct copy_fn<true> {
+  template <typename InputIt, typename OutputIt>
+  constexpr static OutputIt* copy(InputIt* first, InputIt* last, OutputIt* d_first) {
+    std::memmove(d_first, first, (last - first) * sizeof(InputIt));
+    return d_first + (last - first);
+  }
+};
+} // namespace detail
+template <typename InputIt, typename OutputIt>
+constexpr OutputIt my_copy(InputIt first, InputIt last, OutputIt d_first) {
+  using input_type = std::remove_cv_t<typename std::iterator_traits<InputIt>::value_type>;
+  using output_type = std::remove_cv_t<typename std::iterator_traits<OutputIt>::value_type>;
+  constexpr bool opt = std::is_same_v<input_type, output_type> && std::is_pointer_v<InputIt> && std::is_pointer_v<OutputIt> && std::is_trivially_copy_assignable_v<input_type>;
+  return detail::copy_fn<opt>::copy(first, last, d_first);
+}
+
 #include <fcntl.h>
 auto main() -> int {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
@@ -471,7 +556,7 @@ auto main() -> int {
   auto fup = make_unique_new<Foo>(f);
   fup = make_unique_new<Foo>(std::move(f));
 
-  syscall_with_check(open, "/tmp/test.txt", O_RDONLY);
+  // syscall_with_check(open, "/tmp/test.txt", O_RDONLY);
 
   wrapper_new<int> w{43};
   print<int>(w);
@@ -479,5 +564,29 @@ auto main() -> int {
   printer<void>()(w);
   // printer<int>()(w);
 
+  int arr1[]{1, 2, 3, 4, 5};
+  handle(arr1);
+  int arr2[]{1, 2, 3, 4};
+  handle(arr2);
+
+  int_foo fi;
+  int_bar bi;
+  double ii = 0;
+  handle(fi); // OK
+  handle(bi); // OK
+  handle(ii); // OK
+
+  integral_wrapper<int>{.value = 1};
+  floating_wrapper<double>{.value = 1.0};
+  are_equal<double>(1, 1.0);
+
+  std::vector<int> v1{1, 2, 3, 4, 5};
+  std::vector<int> v2(5);
+  // calls the generic implementation
+  my_copy(std::begin(v1), std::end(v1), std::begin(v2));
+  int a1[5] = {1, 2, 3, 4, 5};
+  int a2[5];
+  // calls the optimized implementation
+  my_copy(a1, a1 + 5, a2);
   return 0;
 }
