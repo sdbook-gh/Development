@@ -475,6 +475,27 @@ constexpr OutputIt my_copy(InputIt first, InputIt last, OutputIt d_first) {
   return detail::copy_fn<opt>::copy(first, last, d_first);
 }
 
+template <class T, T v>
+struct integral_constant {
+  static constexpr T value = v;
+  using value_type = T;
+};
+
+template <typename... T>
+void process_any(T&&... t) {
+  ((std::cout << std::forward<T>(t) << "\n"), ...);
+  (..., (std::cout << std::forward<T>(t) << "\n"));
+}
+// https://chat.deepseek.com/a/chat/s/49e0b9ad-61bf-41d7-8eb4-f49a51bd5f31
+template <typename, typename... Ts>
+struct has_common_type : std::false_type {};
+template <typename... Ts>
+struct has_common_type<std::void_t<std::common_type_t<Ts...>>, Ts...> : std::true_type {};
+template <typename... Ts>
+constexpr bool has_common_type_v = sizeof...(Ts) < 2 || has_common_type<void, Ts...>::value;
+template <typename... Ts, typename = std::enable_if_t<has_common_type_v<Ts...>>>
+void process(Ts&&... ts) {}
+
 #include <fcntl.h>
 auto main() -> int {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
@@ -588,5 +609,10 @@ auto main() -> int {
   int a2[5];
   // calls the optimized implementation
   my_copy(a1, a1 + 5, a2);
+
+  process(1, 2.0, 3.0);
+  process_any(1, 2.0, "3");
+
+  integral_constant<int, 1> vali;
   return 0;
 }
