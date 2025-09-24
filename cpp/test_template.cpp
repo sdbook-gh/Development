@@ -496,7 +496,97 @@ constexpr bool has_common_type_v = sizeof...(Ts) < 2 || has_common_type<void, Ts
 template <typename... Ts, typename = std::enable_if_t<has_common_type_v<Ts...>>>
 void process(Ts&&... ts) {}
 
+#include <concepts>
+template <typename T>
+  requires std::is_integral_v<T> && std::is_arithmetic_v<T>
+T add(T const&& a, T const&& b) {
+  return a + b;
+}
+
+template <typename T, typename U = void>
+struct is_container : std::false_type {};
+template <typename T>
+struct is_container<T, std::void_t<typename T::value_type, typename T::size_type, typename T::allocator_type, typename T::iterator, typename T::const_iterator>> : std::true_type {};
+template <typename T, typename U = void>
+constexpr bool is_container_v = is_container<T, U>::value;
+template <typename T>
+concept container = requires(T t) {
+  typename T::value_type;
+  typename T::size_type;
+  typename T::allocator_type;
+  typename T::iterator;
+  typename T::const_iterator;
+  t.size();
+  t.begin();
+  t.end();
+  t.cbegin();
+  t.cend();
+};
+template <container T>
+void process_container(T const& t) {
+  std::cout << "container size: " << t.size() << std::endl;
+}
+
+template <typename T>
+  requires std::is_arithmetic_v<T>
+struct arithmetic_container {};
+template <typename T>
+concept arithmetic_container_concept = requires { typename arithmetic_container<T>; };
+
+template <typename T, typename... Ts>
+// inline constexpr bool are_same_v = std::conjunction_v<std::is_same<T, Ts>...>;
+inline constexpr bool are_same_v = (std::is_same_v<T, Ts> && ...);
+template <typename T, typename... Ts>
+inline constexpr bool are_same_plus_v = (std::is_same_v<std::remove_cvref_t<T>, decltype(std::declval<T>() + std::declval<Ts>())> && ...);
+// template <typename T, typename U>
+// concept PlusResultIsSameAsT = requires(T t, U u) {
+//   // 表达式 t + u 必须是合法的，该表达式的结果类型必须与 T 的纯净类型 (std::remove_cvref_t<T>) 相同。
+//   { t + u } -> std::same_as<std::remove_cvref_t<T>>;
+// };
+// template <typename T, typename... Ts>
+// inline constexpr bool are_same_plus_v = (PlusResultIsSameAsT<T, Ts> && ...);
+template <typename... T>
+concept HomogenousRange = requires(T... t) {
+  (... + t);
+  requires(are_same_plus_v<T...>);
+  requires are_same_v<T...>;
+  requires sizeof...(T) > 1;
+};
+template <typename... T>
+  requires HomogenousRange<T...>
+auto addmulti(T&&... t) {
+  return (... + t);
+}
+template <typename... T>
+  requires(std::is_integral_v<typename std::remove_reference_t<T>> && ...)
+auto addmulti_atomic(T&&... args) {
+  return (args++ + ...);
+}
+
+template <typename F, typename... T>
+concept NonThrowing = requires(F&& func, T... t) {
+  { func(t...) } -> std::convertible_to<int>;
+  { func(t...) } noexcept;
+  // requires std::is_convertible_v<decltype(func(t...)), int> && std::is_nothrow_invocable_v<F, T...>;
+};
+template <typename F, typename... T>
+  requires NonThrowing<F, T...> && HomogenousRange<T...>
+void invoke(F&& func, T... t) {
+  func(t...);
+}
+template <typename T>
+concept arithmatic = std::is_arithmetic_v<T>;
+auto test_func(arithmatic auto a, arithmatic auto b) noexcept {
+  printf("add: %lld, %lld\n", (long long int)a, (long long int)b);
+  return a + b;
+}
+template <typename F, typename... T>
+void invoke_new(F&& func, T&&... t) {
+  std::forward<F>(func)(std::forward<T>(t)...);
+}
+
 #include <fcntl.h>
+#include <chrono>
 auto main() -> int {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
   process_variadic_arg2(1, 2, 3, 4, 5);
@@ -614,5 +704,29 @@ auto main() -> int {
   process_any(1, 2.0, "3");
 
   integral_constant<int, 1> vali;
+
+  std::cout << "is_container_v<std::vector<int>>: " << is_container_v<std::vector<int>> << std::endl;
+  process_container(v1);
+
+  addmulti(1, 2, 3, 4, 5);
+  addmulti_atomic(1, 2, 3, 4, 5);
+  invoke(test_func<int, int>, 1, 2);
+  int va = 1, vb = 2, vc = 3;
+  // https://chat.deepseek.com/a/chat/s/6f38d309-9ef3-4227-9b4a-1cbf32e430ac
+  invoke_new(addmulti<int&, int&, int&>, va, vb, vc); // addmulti类型为int& 参数类型折叠 int& && -> int&
+  invoke_new(addmulti<int, int, int>, std::move(va), std::move(vb), std::move(vc)); // addmulti类型为int 参数类型为左值转换为 int&&
+  invoke_new(addmulti<int, int, int>, 1, 2, 3); // addmulti类型为int 参数类型为右值 int&&
+  invoke_new([](auto... args) { return addmulti(args...); }, va, vb, vc);
+  addmulti_atomic(va, vb, vc);
+  printf("%d %d %d\n", va, vb, vc);
+  addmulti_atomic<int&, int&, int&>(va, vb, vc);
+  printf("%d %d %d\n", va, vb, vc);
+  invoke_new([](auto&&... args) { return addmulti_atomic(std::forward<decltype(args)>(args)...); }, va, vb, vc);
+  printf("%d %d %d\n", va, vb, vc);
+
+  auto lsum = [](std::integral auto a, std::integral auto b) { return a + b; };
+  std::cout << lsum(1, 2) << std::endl;
+
+  using std::string_literals::operator""s;
   return 0;
 }

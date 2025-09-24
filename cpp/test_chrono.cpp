@@ -36,8 +36,29 @@ int main() {
     std::cout << "秒: " << local_time.tm_sec << std::endl;
   }
   auto diff = tpu - tpw;
-  auto diff_100ns = std::chrono::duration_cast<std::chrono::seconds>(diff);
-  std::int64_t epoch_diff_100ns = diff_100ns.count();
-  std::cout << epoch_diff_100ns << '\n';
+  std::cout << diff.count() << '\n';
+  auto diff_minutes = std::chrono::duration_cast<std::chrono::minutes>(diff);
+  std::int64_t epoch_diff_minutes = diff_minutes.count();
+  std::cout << epoch_diff_minutes << '\n';
+
+  using std::chrono_literals::operator""s;
+  using std::chrono_literals::operator""ms;
+  using std::chrono_literals::operator""us;
+  using std::chrono_literals::operator""ns;
+
+  auto y = 2025;
+  auto m = 9u;
+  auto d = 24u;
+  int hh = 14, mm = 30, ss = 45;
+  std::chrono::year_month_day ymd{std::chrono::year{y}, std::chrono::month{m}, std::chrono::day{d}};
+  // 非法日期会在这里隐式转换成 ok()/sys_days 时暴露
+  const std::chrono::sys_days dp = ymd; // days since 1970-01-01
+  auto h = std::chrono::hours{hh};
+  auto min = std::chrono::minutes{mm};
+  auto s = std::chrono::seconds{ss};
+  auto time_of_day = h + min + s; // duration 类型
+  // auto tp = std::chrono::system_clock::time_point{dp} + time_of_day;
+  auto tp = std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>{dp} + time_of_day;
+  std::cout << "timestamp (s): " << tp.time_since_epoch().count() << '\n';
   return 0;
 }
