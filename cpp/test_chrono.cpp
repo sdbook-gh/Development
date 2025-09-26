@@ -41,10 +41,7 @@ int main() {
   std::int64_t epoch_diff_minutes = diff_minutes.count();
   std::cout << epoch_diff_minutes << '\n';
 
-  using std::chrono_literals::operator""s;
-  using std::chrono_literals::operator""ms;
-  using std::chrono_literals::operator""us;
-  using std::chrono_literals::operator""ns;
+  using namespace std::chrono_literals;
 
   auto y = 2025;
   auto m = 9u;

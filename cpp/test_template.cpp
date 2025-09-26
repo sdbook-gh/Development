@@ -536,15 +536,15 @@ concept arithmetic_container_concept = requires { typename arithmetic_container<
 template <typename T, typename... Ts>
 // inline constexpr bool are_same_v = std::conjunction_v<std::is_same<T, Ts>...>;
 inline constexpr bool are_same_v = (std::is_same_v<T, Ts> && ...);
-template <typename T, typename... Ts>
-inline constexpr bool are_same_plus_v = (std::is_same_v<std::remove_cvref_t<T>, decltype(std::declval<T>() + std::declval<Ts>())> && ...);
-// template <typename T, typename U>
-// concept PlusResultIsSameAsT = requires(T t, U u) {
-//   // 表达式 t + u 必须是合法的，该表达式的结果类型必须与 T 的纯净类型 (std::remove_cvref_t<T>) 相同。
-//   { t + u } -> std::same_as<std::remove_cvref_t<T>>;
-// };
 // template <typename T, typename... Ts>
-// inline constexpr bool are_same_plus_v = (PlusResultIsSameAsT<T, Ts> && ...);
+// inline constexpr bool are_same_plus_v = (std::is_same_v<std::remove_cvref_t<T>, decltype(std::declval<std::remove_cvref_t<T>>() + std::declval<std::remove_cvref_t<Ts>>())> && ...);
+template <typename T, typename U>
+concept PlusResultIsSameAsT = requires(std::remove_cvref_t<T> t, std::remove_cvref_t<U> u) {
+  // 表达式 t + u 必须是合法的，该表达式的结果类型必须与 T 的纯净类型 (std::remove_cvref_t<T>) 相同。
+  { t + u } -> std::same_as<std::remove_cvref_t<T>>;
+};
+template <typename T, typename... Ts>
+inline constexpr bool are_same_plus_v = (PlusResultIsSameAsT<T, Ts> && ...);
 template <typename... T>
 concept HomogenousRange = requires(T... t) {
   (... + t);
@@ -558,7 +558,7 @@ auto addmulti(T&&... t) {
   return (... + t);
 }
 template <typename... T>
-  requires(std::is_integral_v<typename std::remove_reference_t<T>> && ...)
+  requires(std::is_integral_v<typename std::remove_cvref_t<T>> && ...)
 auto addmulti_atomic(T&&... args) {
   return (args++ + ...);
 }
@@ -574,6 +574,8 @@ template <typename F, typename... T>
 void invoke(F&& func, T... t) {
   func(t...);
 }
+
+// using concepts to constrain auto parameters
 template <typename T>
 concept arithmatic = std::is_arithmetic_v<T>;
 auto test_func(arithmatic auto a, arithmatic auto b) noexcept {
@@ -585,8 +587,151 @@ void invoke_new(F&& func, T&&... t) {
   std::forward<F>(func)(std::forward<T>(t)...);
 }
 
+// 实现variadic concept
+template <typename S, typename T>
+concept add_concept = requires(S s, T t) { requires(s + t); };
+template <typename S, typename... T>
+concept variadic_concept = sizeof...(T) > 0 && requires { requires(add_concept<S, T> && ...); };
+template <typename S, typename... T>
+  requires variadic_concept<S, T...>
+void process_variadic_args(S s, T... t) {
+  std::cout << "process_variadic_args: " << (s + ... + t) << std::endl;
+}
+template <typename S>
+void process_variadic_args(S s) {
+  std::cout << "process_variadic_args: " << s << std::endl;
+}
+
+// CRTP
+template <typename T>
+struct game_unit {
+  void attack() { static_cast<T*>(this)->do_attack(); }
+};
+struct knight : game_unit<knight> {
+  void do_attack() { std::cout << "draw sword\n"; }
+};
+struct mage : game_unit<mage> {
+  void do_attack() { std::cout << "spell magic curse\n"; }
+};
+template <typename T>
+void fight(std::vector<game_unit<T>*> const& units) {
+  for (auto unit : units) { unit->attack(); }
+}
+#include <atomic>
+template <typename T, size_t N>
+struct limited_instances {
+  static std::atomic<size_t> count;
+  limited_instances() {
+    if (count >= N) throw std::logic_error{"Too many instances"};
+    ++count;
+  }
+  ~limited_instances() { --count; }
+};
+template <typename T, size_t N>
+std::atomic<size_t> limited_instances<T, N>::count = 0;
+struct excalibur : limited_instances<excalibur, 1> {};
+struct book_of_magic : limited_instances<book_of_magic, 3> {};
+#include <set>
+template <typename T>
+struct base_unit {
+  template <typename U>
+  void ally_with(U& other);
+};
+struct hero : base_unit<hero> {
+  hero(std::string_view n) : name(n) {}
+  hero* begin() { return this; }
+  hero* end() { return this + 1; }
+
+private:
+  std::string name;
+  std::set<hero*> connections;
+  template <typename U>
+  friend struct base_unit;
+  template <typename U>
+  friend std::ostream& operator<<(std::ostream& os, base_unit<U>& object);
+};
+struct hero_party : std::vector<hero>, base_unit<hero_party> {};
+template <typename T>
+template <typename U>
+void base_unit<T>::ally_with(U& other) {
+  for (auto& from : *static_cast<T*>(this)) {
+    for (auto& to : other) {
+      from.connections.insert(&to);
+      to.connections.insert(&from);
+    }
+  }
+}
+template <typename T>
+std::ostream& operator<<(std::ostream& os, base_unit<T>& object) {
+  for (auto& obj : *static_cast<T*>(&object)) {
+    for (auto* n : obj.connections) os << obj.name << " --> [" << n->name << "]" << '\n';
+  }
+  return os;
+}
+#include <thread>
+struct executor {
+  void execute(std::function<void(void)> const& task) {
+    threads.push_back(std::thread([task]() {
+      using namespace std::chrono_literals;
+      std::this_thread::sleep_for(250ms);
+      task();
+    }));
+  }
+  ~executor() {
+    for (auto& t : threads) t.join();
+  }
+
+private:
+  std::vector<std::thread> threads;
+};
+struct building : public std::enable_shared_from_this<building> {
+  building() { std::cout << "building created\n"; }
+  ~building() { std::cout << "building destroyed\n"; }
+  void upgrade() {
+    if (exec) {
+      // exec->execute([self = this]() { self->do_upgrade(); }); // dangling pointer
+      exec->execute([self = shared_from_this()]() { self->do_upgrade(); });
+    }
+  }
+  void set_executor(executor* e) { exec = e; }
+
+private:
+  void do_upgrade() {
+    std::cout << "upgrading\n";
+    operational = false;
+    using namespace std::chrono_literals;
+    std::this_thread::sleep_for(1000ms);
+    operational = true;
+    std::cout << "building is functional\n";
+  }
+  bool operational = false;
+  executor* exec = nullptr;
+};
+
+// type erasure
+struct unit {
+  template <typename T>
+  unit(T&& obj) : unit_(std::make_shared<unit_model<T>>(std::forward<T>(obj))) {}
+  void attack() { unit_->attack(); }
+  struct unit_concept {
+    virtual void attack() = 0;
+    virtual ~unit_concept() = default;
+  };
+  template <typename T>
+  struct unit_model : public unit_concept {
+    unit_model(T& unit) : t(unit) {}
+    void attack() override { t.attack(); }
+
+  private:
+    T& t;
+  };
+
+private:
+  std::shared_ptr<unit_concept> unit_;
+};
+
 #include <fcntl.h>
-#include <chrono>
+#include <tuple>
 auto main() -> int {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
   process_variadic_arg2(1, 2, 3, 4, 5);
@@ -727,6 +872,40 @@ auto main() -> int {
   auto lsum = [](std::integral auto a, std::integral auto b) { return a + b; };
   std::cout << lsum(1, 2) << std::endl;
 
-  using std::string_literals::operator""s;
+  using namespace std::string_literals;
+  auto str = "hello"s;
+  std::tuple tempt(10, 2.5f, "test"s, true);
+
+  knight k;
+  mage m;
+  fight<knight>({&k});
+  fight<mage>({&m});
+
+  hero k1("Arthur");
+  hero k2("Sir Lancelot");
+  hero_party p1;
+  p1.emplace_back("Bors");
+  hero_party p2;
+  p2.emplace_back("Cador");
+  p2.emplace_back("Constantine");
+  k1.ally_with(k2);
+  k1.ally_with(p1);
+  p1.ally_with(k2);
+  p1.ally_with(p2);
+  std::cout << k1 << '\n';
+  std::cout << k2 << '\n';
+  std::cout << p1 << '\n';
+  std::cout << p2 << '\n';
+
+  executor e;
+  std::shared_ptr<building> b = std::make_shared<building>();
+  b->set_executor(&e);
+  b->upgrade();
+  std::cout << "main finished\n";
+
+  knight kk;
+  mage mm;
+  std::vector<unit> units{unit(k), unit(m)};
+  for (auto& u : units) u.attack();
   return 0;
 }
