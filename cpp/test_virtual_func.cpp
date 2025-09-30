@@ -67,7 +67,7 @@ int main() {
     void* makeSound_addr = (void*)&Dog::makeSound;
     if (dladdr(makeSound_addr, &info)) {
       // 计算函数地址相对于库基地址的偏移量
-      size_t offset = (uintptr_t)makeSound_addr - (uintptr_t)info.dli_fbase;
+      size_t offset = (size_t)makeSound_addr - (size_t)info.dli_fbase;
       // 打印函数所在的共享库文件名、库的基地址和函数偏移量
       printf("库文件: %s\n", info.dli_fname);
       printf("基地址: %p\n", info.dli_fbase);

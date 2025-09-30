@@ -65,7 +65,7 @@ private:
 template <size_t N>
 struct string_literal {
   // constexpr string_literal(const char (&str)[N]) { std::copy_n(str, N, value); }
-  constexpr string_literal(const char (&str)[N]) { std::copy_n(str, N, value); }
+  constexpr string_literal(const char (&str)[N]) { std::copy(&str[0], &str[N], value); }
   char value[N];
 };
 template <string_literal str>
@@ -730,8 +730,397 @@ private:
   std::shared_ptr<unit_concept> unit_;
 };
 
+// tag dispatching
+#include <iterator>
+template <typename Iter, typename Distance>
+void advance(Iter& it, Distance n, std::random_access_iterator_tag) {
+  std::cout << "random_access_iterator_tag\n";
+  it += n;
+}
+template <typename Iter, typename Distance>
+void advance(Iter& it, Distance n, std::bidirectional_iterator_tag) {
+  std::cout << "bidirectional_iterator_tag\n";
+  if (n > 0) {
+    while (n--) ++it;
+  } else {
+    while (n++) --it;
+  }
+}
+template <typename Iter, typename Distance>
+void advance(Iter& it, Distance n, std::input_iterator_tag) {
+  std::cout << "input_iterator_tag\n";
+  while (n--) { ++it; }
+}
+template <typename Iter, typename Distance>
+void advance(Iter& it, Distance n) {
+  advance(it, n, typename std::iterator_traits<Iter>::iterator_category{});
+}
+#include <sstream>
+struct num_tag {};
+struct str_tag {};
+struct generic_tag {};
+template <typename T, typename = void>
+struct tag_traits {
+  using tag = generic_tag; // 默认分支
+};
+template <typename T>
+struct tag_traits<T, std::enable_if_t<std::is_arithmetic_v<std::decay_t<T>>>> {
+  using tag = num_tag;
+};
+template <typename T>
+struct tag_traits<T, std::enable_if_t<std::is_same_v<const char*, std::decay_t<T>>>> {
+  using tag = str_tag;
+};
+template <>
+struct tag_traits<std::string> {
+  using tag = str_tag;
+};
+template <typename T, typename = void>
+struct check_out_to_stream : std::false_type {};
+template <typename T>
+struct check_out_to_stream<T, std::void_t<decltype(std::declval<std::ostream>() << std::declval<T>())>> : std::true_type {};
+template <typename T>
+concept out_to_stream = requires(T t) { std::declval<std::ostream>() << t; };
+template <typename T>
+std::string value_to_string(T&& value, generic_tag) {
+  std::cout << "generic_tag\n";
+  // if constexpr (out_to_stream<T>) {
+  if constexpr (check_out_to_stream<T>::value) {
+    std::stringstream os;
+    os << std::forward<T>(value);
+    return os.str();
+  } else {
+    return "";
+  }
+}
+template <typename T>
+std::string value_to_string(T&& value, num_tag) {
+  std::cout << "num_tag\n";
+  return std::to_string(std::forward<T>(value));
+}
+template <typename T>
+std::string value_to_string(T&& value, str_tag) {
+  std::cout << "str_tag\n";
+  return std::forward<T>(value);
+}
+template <typename T>
+std::string value_to_string(T&& value) {
+  return value_to_string(std::forward<T>(value), typename tag_traits<T>::tag{});
+}
+
+// constexpr if
+template <typename It, typename Distance>
+constexpr void advance_ex(It& it, Distance n) {
+  using category = typename std::iterator_traits<It>::iterator_category;
+  static_assert(std::is_base_of_v<std::input_iterator_tag, category>);
+  auto dist = typename std::iterator_traits<It>::difference_type(n);
+  if constexpr (std::is_base_of_v<std::random_access_iterator_tag, category>) {
+    it += dist;
+  } else {
+    while (dist > 0) {
+      --dist;
+      ++it;
+    }
+    if constexpr (std::is_base_of_v<std::bidirectional_iterator_tag, category>) {
+      while (dist < 0) {
+        ++dist;
+        --it;
+      }
+    }
+  }
+}
+
+// expression template
+template <typename T, typename C = std::vector<T>>
+struct vector {
+  vector() = default;
+  vector(std::size_t const n) : data_(n) {}
+  vector(std::initializer_list<T>&& l) : data_(l) {}
+  vector(C const& other) : data_(other) {}
+  template <typename U, typename X>
+  vector(vector<U, X> const& other) : data_(other.size()) {
+    for (std::size_t i = 0; i < other.size(); ++i) data_[i] = static_cast<T>(other[i]);
+  }
+  template <typename U, typename X>
+  vector& operator=(vector<U, X> const& other) {
+    data_.resize(other.size());
+    for (std::size_t i = 0; i < other.size(); ++i) data_[i] = static_cast<T>(other[i]);
+    return *this;
+  }
+  std::size_t size() const noexcept { return data_.size(); }
+  T operator[](const std::size_t i) const { return data_[i]; }
+  T& operator[](const std::size_t i) { return data_[i]; }
+  C& data() noexcept { return data_; }
+  C const& data() const noexcept { return data_; }
+
+private:
+  C data_;
+};
+template <typename L, typename R>
+struct vector_add {
+  vector_add(L const& a, R const& b) : lhv(a), rhv(b) {}
+  auto operator[](std::size_t const i) const { return lhv[i] + rhv[i]; }
+  std::size_t size() const noexcept { return lhv.size(); }
+
+private:
+  L const& lhv;
+  R const& rhv;
+};
+template <typename L, typename R>
+struct vector_mul {
+  vector_mul(L const& a, R const& b) : lhv(a), rhv(b) {}
+  auto operator[](std::size_t const i) const { return lhv[i] * rhv[i]; }
+  std::size_t size() const noexcept { return lhv.size(); }
+
+private:
+  L const& lhv;
+  R const& rhv;
+};
+template <typename S, typename R>
+struct vector_scalar_mul {
+  vector_scalar_mul(S const& s, R const& b) : scalar(s), rhv(b) {}
+  auto operator[](std::size_t const i) const { return scalar * rhv[i]; }
+  std::size_t size() const noexcept { return rhv.size(); }
+
+private:
+  S const& scalar;
+  R const& rhv;
+};
+template <typename T, typename L, typename U, typename R>
+auto operator+(vector<T, L> const& a, vector<U, R> const& b) {
+  using result_type = decltype(std::declval<T>() + std::declval<U>());
+  return vector<result_type, vector_add<L, R>>(vector_add<L, R>(a.data(), b.data()));
+}
+template <typename T, typename L, typename U, typename R>
+auto operator*(vector<T, L> const& a, vector<U, R> const& b) {
+  using result_type = decltype(std::declval<T>() + std::declval<U>());
+  return vector<result_type, vector_mul<L, R>>(vector_mul<L, R>(a.data(), b.data()));
+}
+template <typename T, typename S, typename E>
+auto operator*(S const& a, vector<T, E> const& v) {
+  using result_type = decltype(std::declval<T>() + std::declval<S>());
+  return vector<result_type, vector_scalar_mul<S, E>>(vector_scalar_mul<S, E>(a, v.data()));
+}
+
+// typelists
+template <typename... Ts>
+struct typelist {};
+template <typename... Ts>
+struct transformer {
+  using input_types = typelist<Ts...>;
+  using output_types = typelist<std::add_const_t<Ts>...>;
+};
+static_assert(std::is_same_v<transformer<int, double>::output_types, typelist<int const, double const>>);
+namespace detail {
+template <typename TL>
+struct length;
+template <template <typename...> typename TL, typename... Ts>
+struct length<TL<Ts...>> {
+  using type = std::integral_constant<std::size_t, sizeof...(Ts)>;
+};
+} // namespace detail
+template <typename TL>
+using length_t = typename detail::length<TL>::type;
+template <typename TL>
+constexpr std::size_t length_v = length_t<TL>::value;
+struct empty_type {};
+namespace detail {
+template <typename TL>
+struct front_type;
+template <template <typename...> typename TL, typename T, typename... Ts>
+struct front_type<TL<T, Ts...>> {
+  using type = T;
+};
+template <template <typename...> typename TL>
+struct front_type<TL<>> {
+  using type = empty_type;
+};
+} // namespace detail
+template <typename TL>
+using front_t = typename detail::front_type<TL>::type;
+namespace detail {
+template <typename TL>
+struct back_type;
+template <template <typename...> typename TL, typename T, typename... Ts>
+struct back_type<TL<T, Ts...>> {
+  using type = back_type<TL<Ts...>>::type;
+};
+template <template <typename...> typename TL, typename T>
+struct back_type<TL<T>> {
+  using type = T;
+};
+template <template <typename...> typename TL>
+struct back_type<TL<>> {
+  using type = empty_type;
+};
+} // namespace detail
+template <typename TL>
+using back_t = typename detail::back_type<TL>::type;
+namespace detail {
+template <std::size_t I, std::size_t N, typename TL>
+struct at_type;
+template <std::size_t I, std::size_t N, template <typename...> typename TL, typename T, typename... Ts>
+struct at_type<I, N, TL<T, Ts...>> {
+  using type = std::conditional_t<I == N, T, typename at_type<I, N + 1, TL<Ts...>>::type>;
+};
+template <std::size_t I, std::size_t N>
+struct at_type<I, N, typelist<>> {
+  using type = empty_type;
+};
+} // namespace detail
+template <std::size_t I, typename TL>
+using at_t = typename detail::at_type<I, 0, TL>::type;
+// complex push_back push_front pop_front pop_back
+#if 0
+namespace detail {
+template <typename TL, typename T>
+struct push_back_type;
+template <template <typename...> typename TL, typename T, typename... Ts>
+struct push_back_type<TL<Ts...>, T> {
+  using type = TL<Ts..., T>;
+};
+template <typename TL, typename T>
+struct push_front_type;
+template <template <typename...> typename TL, typename T, typename... Ts>
+struct push_front_type<TL<Ts...>, T> {
+  using type = TL<T, Ts...>;
+};
+} // namespace detail
+template <typename TL, typename T>
+using push_back_t = typename detail::push_back_type<TL, T>::type;
+template <typename TL, typename T>
+using push_front_t = typename detail::push_front_type<TL, T>::type;
+namespace detail {
+template <typename TL>
+struct pop_front_type;
+template <template <typename...> typename TL, typename T, typename... Ts>
+struct pop_front_type<TL<T, Ts...>> {
+  using type = TL<Ts...>;
+};
+template <template <typename...> typename TL>
+struct pop_front_type<TL<>> {
+  using type = TL<>;
+};
+} // namespace detail
+template <typename TL>
+using pop_front_t = typename detail::pop_front_type<TL>::type;
+namespace detail {
+template <std::ptrdiff_t N, typename R, typename TL>
+struct pop_back_type;
+template <std::ptrdiff_t N, typename... Ts, typename U, typename... Us>
+struct pop_back_type<N, typelist<Ts...>, typelist<U, Us...>> {
+  using type = typename pop_back_type<N - 1, typelist<Ts..., U>, typelist<Us...>>::type;
+};
+template <typename... Ts, typename... Us>
+struct pop_back_type<0, typelist<Ts...>, typelist<Us...>> {
+  using type = typelist<Ts...>;
+};
+template <typename... Ts, typename U, typename... Us>
+struct pop_back_type<0, typelist<Ts...>, typelist<U, Us...>> {
+  using type = typelist<Ts...>;
+};
+template <>
+struct pop_back_type<-1, typelist<>, typelist<>> {
+  using type = typelist<>;
+};
+} // namespace detail
+template <typename TL>
+using pop_back_t = typename detail::pop_back_type<static_cast<std::ptrdiff_t>(length_v<TL>) - 1, typelist<>, TL>::type;
+#endif
+// simple push_front pop_back
+// https://gemini.google.com/app/1ef563db6e22418b
+template <typename T, typename TL>
+struct PushFront {};
+template <typename T, typename... TL>
+struct PushFront<T, typelist<TL...>> {
+  using type = typelist<T, TL...>;
+};
+template <typename T, typename... TL>
+using PushFront_t = typename PushFront<T, TL...>::type;
+#if 0
+template <typename TL>
+struct PopBack {};
+template <typename T, typename... TL>
+struct PopBack<typelist<T, TL...>> {
+  using type = typename PushFront<T, typename PopBack<typelist<TL...>>::type>::type;
+};
+template <typename T>
+struct PopBack<typelist<T>> {
+  using type = typelist<>;
+};
+template <>
+struct PopBack<void> {
+  using type = typelist<>;
+};
+#else
+template <typename TL>
+struct PopBack {};
+template <typename TL, typename Indecies>
+struct PopBackImp {};
+template <typename... TL, std::size_t... Indecies>
+struct PopBackImp<typelist<TL...>, std::index_sequence<Indecies...>> {
+  // typename std::tuple_element<Indecies, std::tuple<TL...>>::type... (核心逻辑)
+  // 这是最关键、最神奇的部分。我们从内到外分析：
+  // a. std::tuple<TL...>
+  // 作用：将我们从 typelist 中捕获的类型包 TL... 放入一个 std::tuple 类型中。
+  // 为什么这么做？：typelist 是我们自己定义的，它没有内置的按索引查找类型的工具。而 std::tuple 是标准库的一部分，它配套了 std::tuple_element 这个工具，可以方便地通过索引来获取其内部的类型。所以，我们在这里“借用”std::tuple 和它的工具集来完成索引操作。
+  // 示例：如果 TL... 是 int, double, char，那么 std::tuple<TL...> 就是 std::tuple<int, double, char>。
+  // b. std::tuple_element<Indecies, ... >::type
+  // std::tuple_element<I, TupleType>::type 是一个标准库元函数，它的作用是获取 TupleType 中索引为 I 的元素的类型。
+  // 在这里，Indecies 不是单个索引，而是一个参数包 (0, 1)。
+  // c. ... (最后的省略号)
+  // 这个省略号是 C++ 中最强大的特性之一：参数包展开 (Pack Expansion)。
+  // 它会将它左边的模式 (typename std::tuple_element<Indecies, std::tuple<TL...>>::type) 应用到 Indecies... 参数包中的每一个元素上，然后用逗号将结果连接起来。
+  using type = typelist<typename std::tuple_element<Indecies, std::tuple<TL...>>::type...>;
+};
+template <typename... TL>
+struct PopBack<typelist<TL...>> {
+  static constexpr std::size_t size = sizeof...(TL);
+  using type = typename PopBackImp<typelist<TL...>, std::make_index_sequence<size - 1>>::type;
+};
+template <typename T>
+struct PopBack<typelist<T>> {
+  using type = typelist<>;
+};
+template <>
+struct PopBack<void> {
+  using type = typelist<>;
+};
+#endif
+template <typename TL>
+using PopBack_t = typename PopBack<TL>::type;
+
+// template template parameter
+#include <deque>
+#include <vector>
+template <template <typename> typename Container, typename T>
+struct Wrapper {
+private:
+  Container<T> data_;
+
+public:
+  void push(T const& t) { data_.push_back(t); }
+  void pop(T& t) {
+    t = *(data_.begin());
+    if constexpr (std::is_same_v<Container<T>, std::deque<T>>) {
+      data_.pop_front();
+    } else if constexpr (std::is_same_v<Container<T>, std::vector<T>>) {
+      data_.erase(data_.begin());
+    }
+  }
+};
+template <template <typename> typename Predicate = std::void_t, typename... Ts>
+struct CountIf {
+  static constexpr std::size_t value = 0;
+};
+template <template <typename> typename Predicate, typename T, typename... Ts>
+struct CountIf<Predicate, T, Ts...> {
+  static constexpr std::size_t value = (Predicate<T>::value ? 1 : 0) + CountIf<Predicate, Ts...>::value;
+};
+
 #include <fcntl.h>
 #include <tuple>
+#include <list>
 auto main() -> int {
   process_variadic_arg1<int>(1, 2, 3, 4, 5);
   process_variadic_arg2(1, 2, 3, 4, 5);
@@ -897,15 +1286,81 @@ auto main() -> int {
   std::cout << p1 << '\n';
   std::cout << p2 << '\n';
 
-  executor e;
-  std::shared_ptr<building> b = std::make_shared<building>();
-  b->set_executor(&e);
-  b->upgrade();
-  std::cout << "main finished\n";
+  {
+    executor e;
+    std::shared_ptr<building> b = std::make_shared<building>();
+    b->set_executor(&e);
+    b->upgrade();
+    std::cout << "main finished\n";
+  }
 
   knight kk;
   mage mm;
   std::vector<unit> units{unit(k), unit(m)};
   for (auto& u : units) u.attack();
+
+  std::vector<int> v{1, 2, 3, 4, 5};
+  auto sv = std::begin(v);
+  ::advance(sv, 2);
+  std::list<int> l{1, 2, 3, 4, 5};
+  auto sl = std::begin(l);
+  ::advance(sl, 2);
+  std::istringstream is("1.1 2.2 3.3");
+  auto sis = std::istream_iterator<double>(is);
+  ::advance(sis, 2);
+
+  value_to_string(123);
+  value_to_string("hello");
+  value_to_string(std::array{1});
+
+  {
+    vector<int> v1{1, 2, 3};
+    vector<int> v2{4, 5, 6};
+    double a{1.5};
+    vector<double> v3 = v1 + a * v2; // {7.0, 9.5, 12.0}
+    int c = 10;
+    vector<double> v31 = v1 + c * v2; // {7.0, 9.5, 12.0}
+    vector<int> v4 = v1 * v2 + v1 + v2; // {9, 17, 27}
+  }
+
+  static_assert(length_t<typelist<int, double, char>>::value == 3);
+  static_assert(length_v<typelist<int, double, char>> == 3);
+  static_assert(length_v<typelist<int, double>> == 2);
+  static_assert(length_v<typelist<int>> == 1);
+  static_assert(std::is_same_v<front_t<typelist<>>, empty_type>);
+  static_assert(std::is_same_v<front_t<typelist<int>>, int>);
+  static_assert(std::is_same_v<front_t<typelist<int, double, char>>, int>);
+  static_assert(std::is_same_v<back_t<typelist<>>, empty_type>);
+  static_assert(std::is_same_v<back_t<typelist<int>>, int>);
+  static_assert(std::is_same_v<back_t<typelist<int, double, char>>, char>);
+  static_assert(std::is_same_v<at_t<0, typelist<>>, empty_type>);
+  static_assert(std::is_same_v<at_t<0, typelist<int>>, int>);
+  static_assert(std::is_same_v<at_t<0, typelist<int, char>>, int>);
+  static_assert(std::is_same_v<at_t<1, typelist<>>, empty_type>);
+  static_assert(std::is_same_v<at_t<1, typelist<int>>, empty_type>);
+  static_assert(std::is_same_v<at_t<1, typelist<int, char>>, char>);
+  static_assert(std::is_same_v<at_t<2, typelist<>>, empty_type>);
+  static_assert(std::is_same_v<at_t<2, typelist<int>>, empty_type>);
+  static_assert(std::is_same_v<at_t<2, typelist<int, char>>, empty_type>);
+  // static_assert(std::is_same_v<pop_back_t<typelist<>>, typelist<>>);
+  // static_assert(std::is_same_v<pop_back_t<typelist<double>>, typelist<>>);
+  // static_assert(std::is_same_v<pop_back_t<typelist<double, char>>, typelist<double>>);
+  // static_assert(std::is_same_v<pop_back_t<typelist<double, char, int>>, typelist<double, char>>);
+  static_assert(std::is_same_v<PushFront_t<int, typelist<>>, typelist<int>>);
+  static_assert(std::is_same_v<PopBack_t<typelist<int>>, typelist<>>);
+
+  Wrapper<std::deque, int> wrapper_deque;
+  int val_deque{1};
+  wrapper_deque.push(val_deque);
+  wrapper_deque.pop(val_deque);
+  Wrapper<std::vector, int> wrapper_vector;
+  int val_vector{1};
+  wrapper_vector.push(val_vector);
+  wrapper_vector.pop(val_vector);
+  std::cout << CountIf<>::value << '\n';
+  std::cout << CountIf<std::is_integral>::value << '\n';
+  std::cout << CountIf<std::is_integral, int>::value << '\n';
+  std::cout << CountIf<std::is_integral, decltype("S"), float, double>::value << '\n';
+
   return 0;
 }
