@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <typeinfo>
 #include <dlfcn.h>
+#include <cstdint>
 
 static void print_caller_addr() {
   void* addr = __builtin_return_address(0);
@@ -52,22 +53,23 @@ void Cat::move() { std::cout << "猫在走路" << std::endl; }
 int main() {
   printf("test_func %p\n", &test_func);
   printf("test_func_new %p\n", &test_func_new);
+#if !defined(__clang__)
   {
-    printf("Dog::makeSound %p\n", (void*)&Dog::makeSound);
-    printf("Cat::makeSound %p\n", (void*)&Cat::makeSound);
+    printf("Dog::makeSound %p\n", (void*)&Dog::makeSound); // UB行为
+    printf("Cat::makeSound %p\n", (void*)&Cat::makeSound); // UB行为
     IAnimal* pAnimal = new Dog();
     printf("pAnimal: %s\n", typeid(*pAnimal).name());
     if (std::is_polymorphic<IAnimal>::value) {
       void* vptr = *(void**)pAnimal;
       printf("vptr: %p\n", vptr);
-      printf("vptr[0]: %p\n", ((void **)vptr)[0]);
-      printf("vptr[1]: %p\n", ((void **)vptr)[1]);
+      printf("vptr[0]: %p\n", ((void**)vptr)[0]);
+      printf("vptr[1]: %p\n", ((void**)vptr)[1]);
     }
     Dl_info info;
-    void* makeSound_addr = (void*)&Dog::makeSound;
+    void* makeSound_addr = (void*)&Dog::makeSound; // UB行为
     if (dladdr(makeSound_addr, &info)) {
       // 计算函数地址相对于库基地址的偏移量
-      size_t offset = (uintptr_t)makeSound_addr - (uintptr_t)info.dli_fbase;
+      size_t offset = (uintptr_t)makeSound_addr - (uintptr_t)info.dli_fbase; // uintptr_t够大以存储任何指针的值，主要用于需要将指针视为整数进行特殊处理的场景
       // 打印函数所在的共享库文件名、库的基地址和函数偏移量
       printf("库文件: %s\n", info.dli_fname);
       printf("基地址: %p\n", info.dli_fbase);
@@ -78,5 +80,6 @@ int main() {
     pAnimal->makeSound();
     delete pAnimal;
   }
+#endif
   return 0;
 }

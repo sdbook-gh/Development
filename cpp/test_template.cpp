@@ -1,3 +1,4 @@
+#if __cplusplus >= 202000L
 #include <initializer_list>
 #include <iostream>
 
@@ -1364,3 +1365,28 @@ auto main() -> int {
 
   return 0;
 }
+// 一个包含模板成员函数的结构体
+struct Printer {
+  template <typename T, std::size_t N>
+  void print(T value) {
+    std::cout << "Value: " << value << " for " << N << std::endl;
+  }
+};
+// 一个模板函数，它接收一个对象并尝试调用其模板成员函数
+template <typename P, typename V, std::size_t tag>
+void process(P printer, V data) {
+  // 错误发生在这里！
+  // 编译器不知道 P::print<V> 是一个模板。
+  // 它可能会将 '<' 解释为“小于”运算符。
+  printer.template print<V, tag>(data);
+}
+void process() {
+  Printer p;
+  int v{11};
+  process<Printer, int, 11>(p, v);
+}
+#else
+#include <iostream>
+#include <cstdint>
+int main() { return 0; }
+#endif

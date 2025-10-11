@@ -42,7 +42,7 @@ int main() {
   std::cout << epoch_diff_minutes << '\n';
 
   using namespace std::chrono_literals;
-
+#if __cplusplus >= 202000L
   auto y = 2025;
   auto m = 9u;
   auto d = 24u;
@@ -57,5 +57,6 @@ int main() {
   // auto tp = std::chrono::system_clock::time_point{dp} + time_of_day;
   auto tp = std::chrono::time_point<std::chrono::system_clock, std::chrono::seconds>{dp} + time_of_day;
   std::cout << "timestamp (s): " << tp.time_since_epoch().count() << '\n';
+#endif
   return 0;
 }
