@@ -13,6 +13,8 @@ add_executable(test_chrono test_chrono.cpp)
 set(CMAKE_CXX_STANDARD 23)
 add_executable(test_template test_template.cpp)
 add_executable(test_stl test_stl.cpp)
+add_executable(test_perf test_perf.cpp)
+target_compile_options(test_perf PRIVATE -mavx2 -O3)
 
 set(CMAKE_CXX_STANDARD 17)
 add_executable(test_virtual_func test_virtual_func.cpp)
