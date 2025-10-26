@@ -2085,26 +2085,805 @@ int main() {
 // }
 
 //# 判断子序列
-bool check_sub(const string &in_str, const string &sub_str) {
-  bool ret_value{false};
-  int pos_in{0}, pos_sub{0};
-  while (pos_in < in_str.size()) {
-    if (in_str[pos_in] == sub_str[pos_sub]) {
-      ++pos_in;
-      ++pos_sub;
-      if (pos_sub >= sub_str.size()) {
-        ret_value = true;
-        break;
+// bool check_sub(const string &in_str, const string &sub_str) {
+//   bool ret_value{false};
+//   int pos_in{0}, pos_sub{0};
+//   while (pos_in < in_str.size()) {
+//     if (in_str[pos_in] == sub_str[pos_sub]) {
+//       ++pos_in;
+//       ++pos_sub;
+//       if (pos_sub >= sub_str.size()) {
+//         ret_value = true;
+//         break;
+//       }
+//     } else {
+//       ++pos_in;
+//     }
+//   }
+//   return ret_value;
+// }
+
+// int main() {
+//   printf("%d\n", check_sub("ahbgdc", "abc"));
+//   printf("%d\n", check_sub("ahbgdc", "axc"));
+//   return 0;
+// }
+
+/*############################################################*/
+
+#include <cstdio>
+#include <vector>
+#include <thread>
+#include <algorithm>
+#include <thread>
+#include <mutex>
+#include <deque>
+#include <string>
+#include <stack>
+#include <map>
+#include <set>
+
+struct TreeNode {
+  TreeNode* left{nullptr};
+  TreeNode* right{nullptr};
+  int value{0};
+  int level{0};
+};
+void make_tree(std::vector<std::vector<std::string>> const& vv, TreeNode& t) {
+  if (vv.empty()) { return; }
+  int level{0};
+  std::deque<TreeNode*> ndq;
+  ndq.push_back(&t);
+  t.value = std::atoi(vv[0][0].c_str());
+  for (int i = 1; i < vv.size(); ++i) {
+    // printf("level %d\n", level);
+    int node_num = 2 * ++level;
+    for (int j = 0; j < node_num && j < vv[i].size();) {
+      TreeNode* left = new TreeNode;
+      if (!vv[i][j].empty()) {
+        left->value = std::atoi(vv[i][j++].c_str());
+      } else {
+        j++;
       }
-    } else {
-      ++pos_in;
+      TreeNode* right = new TreeNode;
+      if (!vv[i][j].empty()) {
+        right->value = std::atoi(vv[i][j++].c_str());
+      } else {
+        j++;
+      }
+      left->level = right->level = level;
+      TreeNode* parent = ndq.front();
+      ndq.pop_front();
+      parent->left = left;
+      parent->right = right;
+      ndq.push_back(left);
+      ndq.push_back(right);
     }
   }
-  return ret_value;
+};
+void in_traverse_tree(std::deque<TreeNode const*>& dq) {
+  if (dq.empty()) return;
+  static int level = 0;
+  TreeNode const* pn = dq.front();
+  dq.pop_front();
+  if (pn != nullptr) {
+    if (pn->level > level) {
+      printf("\n");
+      level = pn->level;
+    }
+    printf("%d ", pn->value);
+    dq.push_back(pn->left);
+    dq.push_back(pn->right);
+  }
+  in_traverse_tree(dq);
+}
+void print_tree(TreeNode const& t) {
+  int level{0};
+  std::deque<TreeNode const*> dq;
+  dq.push_back(&t);
+  in_traverse_tree(dq);
+  printf("\n");
+}
+
+std::string get_max_common_prefix(std::vector<std::string> const& v) {
+  std::string ret;
+  if (v.empty()) return ret;
+  int error = 0;
+  int i = 1;
+  for (; i <= v[0].size(); ++i) {
+    ret = v[0].substr(0, i);
+    for (int j = 1; j < v.size(); ++j) {
+      if (v[j].find(ret) != 0) {
+        error = 1;
+        break;
+      }
+    }
+    if (error != 0) { break; }
+  }
+  return ret.substr(0, i - 1);
+}
+
+std::string reverse_word(std::string const& s) {
+  std::string rs{s.rbegin(), s.rend()};
+  std::string ret;
+  int i = 0, j = 0;
+  for (; j < rs.size();) {
+    if (rs[j] != ' ') {
+      ++j;
+      continue;
+    }
+    if (j > i) {
+      std::string s{rs.rbegin() + rs.size() - j, rs.rbegin() + rs.size() - i};
+      // printf("1 [%s]\n", s.c_str());
+      ret += s;
+      i = j;
+    } else {
+      while (rs[j] == ' ' && j < rs.size()) j++;
+      std::string s{rs.rbegin() + rs.size() - j, rs.rbegin() + rs.size() - i};
+      // printf("2 [%s]\n", s.c_str());
+      ret += s;
+      i = j;
+    }
+  }
+  if (j > i) {
+    std::string s{rs.rbegin() + rs.size() - j, rs.rbegin() + rs.size() - i};
+    printf("3 [%s]\n", s.c_str());
+    ret += s;
+  }
+  return ret;
+}
+
+int get_rain_capacity(std::vector<int> const& v) {
+  int ret{0};
+  if (v.empty()) return ret;
+  int level{1};
+  int stop{0};
+  while (stop == 0) {
+    stop = 1;
+    int can_contain{0};
+    int level_capacity{0};
+    for (int i = 1; i < v.size(); ++i) {
+      if (v[i - 1] > level) { stop = 0; }
+      if (can_contain == 0) {
+        if (v[i - 1] >= level && v[i] < level) {
+          can_contain = 1;
+          level_capacity = 1;
+        }
+      } else if (v[i] < level) {
+        ++level_capacity;
+      } else if (v[i] >= level) {
+        can_contain = 0;
+        ret += level_capacity;
+        level_capacity = 0;
+      }
+    }
+    ++level;
+  }
+  return ret;
+}
+
+std::string digital_roma(int v) {
+  std::string ret;
+  int d = v / 1000;
+  if (d > 0) {
+    for (int i = 0; i < d; ++i) ret += "M";
+    v -= (d * 1000);
+    d = v / 100;
+  } else {
+    d = v / 100;
+  }
+  if (d > 0) {
+    switch (d) {
+      case 1:
+        ret += "C";
+        break;
+      case 2:
+        ret += "CC";
+        break;
+      case 3:
+        ret += "CCC";
+        break;
+      case 4:
+        ret += "CD";
+        break;
+      case 5:
+        ret += "D";
+        break;
+      case 6:
+        ret += "DC";
+        break;
+      case 7:
+        ret += "DCC";
+        break;
+      case 8:
+        ret += "DCCC";
+        break;
+      case 9:
+        ret += "CM";
+        break;
+    }
+    v -= (d * 100);
+    d = v / 10;
+  } else {
+    d = v / 10;
+  }
+  if (d > 0) {
+    switch (d) {
+      case 1:
+        ret += "X";
+        break;
+      case 2:
+        ret += "XX";
+        break;
+      case 3:
+        ret += "XXX";
+        break;
+      case 4:
+        ret += "XL";
+        break;
+      case 5:
+        ret += "L";
+        break;
+      case 6:
+        ret += "LX";
+        break;
+      case 7:
+        ret += "LXX";
+        break;
+      case 8:
+        ret += "LXXX";
+        break;
+      case 9:
+        ret += "XC";
+        break;
+    }
+    v -= (d * 10);
+    d = v;
+  }
+  if (d > 0) {
+    switch (d) {
+      case 1:
+        ret += "I";
+        break;
+      case 2:
+        ret += "II";
+        break;
+      case 3:
+        ret += "III";
+        break;
+      case 4:
+        ret += "IV";
+        break;
+      case 5:
+        ret += "V";
+        break;
+      case 6:
+        ret += "VI";
+        break;
+      case 7:
+        ret += "VII";
+        break;
+      case 8:
+        ret += "VIII";
+        break;
+      case 9:
+        ret += "IX";
+        break;
+    }
+  }
+  return ret;
+}
+
+int roma_digital(std::string const& s) {
+  int ret{0};
+  for (int i = 0; i < s.size();) {
+    if (s[i] == 'M') {
+      ret += 1000;
+      ++i;
+    } else if (s[i] == 'D') {
+      ret += 500;
+      ++i;
+    } else if (s[i] == 'C') {
+      if (i < s.size() - 1) {
+        if (s[i + 1] == 'M') {
+          ret += 900;
+          i += 2;
+        } else if (s[i + 1] == 'D') {
+          ret += 400;
+          i += 2;
+        } else {
+          ret += 100;
+          ++i;
+        }
+      } else {
+        ret += 100;
+        ++i;
+      }
+    } else if (s[i] == 'L') {
+      ret += 50;
+      ++i;
+    } else if (s[i] == 'X') {
+      if (i < s.size() - 1) {
+        if (s[i + 1] == 'C') {
+          ret += 90;
+          i += 2;
+        } else if (s[i + 1] == 'L') {
+          ret += 40;
+          i += 2;
+        } else {
+          ret += 10;
+          ++i;
+        }
+      } else {
+        ret += 10;
+        ++i;
+      }
+    } else if (s[i] == 'V') {
+      ret += 5;
+      ++i;
+    } else if (s[i] == 'I') {
+      if (i < s.size() - 1) {
+        if (s[i + 1] == 'X') {
+          ret += 9;
+          i += 2;
+        } else if (s[i + 1] == 'V') {
+          ret += 4;
+          i += 2;
+        } else {
+          ret += 1;
+          ++i;
+        }
+      } else {
+        ret += 1;
+        ++i;
+      }
+    }
+  }
+  return ret;
+}
+
+void get_min_array(std::vector<int> const& v, int t, int& ret, int p = 0) {
+  for (int q = p + 1; q < v.size(); ++q) {
+    if (v[p] == t) {
+      ret = 1;
+      return;
+    }
+    if (v[p] + v[q] >= t) {
+      if (ret == 0 || ret > 2) { ret = 2; }
+    } else {
+      int subret{0};
+      get_min_array(v, t - v[p], subret, q);
+      if (subret > 0) {
+        if (ret == 0 || ret > subret + 1) { ret = subret + 1; }
+      }
+    }
+  }
+  if (p < v.size() - 1) {
+    if (ret == 0 || ret > 1) { get_min_array(v, t, ret, p + 1); }
+  }
+}
+
+bool is_sub_str(std::string const& s, std::string const& sub) {
+  bool ret{false};
+  if (s.empty() || sub.empty()) return ret;
+  int subpos{0};
+  int spos{0};
+  int stop{0};
+  for (; spos < s.size() && stop == 0;) {
+    subpos = 0;
+    for (int i = spos; i < s.size(); ++i) {
+      if (s[i] == sub[subpos]) { ++subpos; }
+      if (subpos >= sub.size()) {
+        ret = true;
+        stop = 1;
+        break;
+      }
+    }
+    if (stop == 0) { ++spos; }
+  }
+  return ret;
+}
+
+struct Element {
+  int value{0};
+  int op{0};
+};
+int calc(std::string const& exp) {
+  int ret{0};
+  if (exp.empty()) return ret;
+  std::stack<std::string> st;
+  std::vector<Element> vcsub;
+  int number{0};
+  for (int i = 0; i < exp.size(); ++i) {
+    if (exp[i] == '(') {
+      st.push("(");
+    } else if (exp[i] == ')') {
+      vcsub.clear();
+      std::string subexp = st.top();
+      while (subexp != "(" && !st.empty()) {
+        if (subexp == "+") {
+          vcsub.push_back({number, 1});
+          st.pop();
+        } else if (subexp == "-") {
+          vcsub.push_back({number, 2});
+          st.pop();
+        } else {
+          number = std::atoi(st.top().c_str());
+          if (!vcsub.empty()) { vcsub.push_back({number, 0}); }
+          st.pop();
+        }
+        if (st.empty()) break;
+        subexp = st.top();
+      }
+      if (subexp != "(") {
+        printf("bad expression\n");
+        return 0;
+      }
+      st.pop();
+      int subval{0};
+      for (auto i = vcsub.rbegin(); i != vcsub.rend(); ++i) {
+        if (i->op == 0) {
+          subval = i->value;
+        } else if (i->op == 1) {
+          subval += i->value;
+        } else if (i->op == 2) {
+          subval -= i->value;
+        }
+      }
+      st.push(std::to_string(subval));
+    } else if (exp[i] == '+') {
+      st.push("+");
+    } else if (exp[i] == '-') {
+      st.push("-");
+    } else {
+      if (st.top()[0] >= '0' && st.top()[0] <= '9') {
+        st.top() += exp[i];
+      } else {
+        st.push("");
+        st.top() += exp[i];
+      }
+    }
+  }
+  if (st.size() > 1) {
+    vcsub.clear();
+    std::string subexp = st.top();
+    while (subexp != "(" && !st.empty()) {
+      if (subexp == "+") {
+        vcsub.push_back({number, 1});
+        st.pop();
+      } else if (subexp == "-") {
+        vcsub.push_back({number, 2});
+        st.pop();
+      } else {
+        number = std::atoi(st.top().c_str());
+        if (!vcsub.empty()) { vcsub.push_back({number, 0}); }
+        st.pop();
+      }
+      if (st.empty()) break;
+      subexp = st.top();
+    }
+    int subval{0};
+    for (auto i = vcsub.rbegin(); i != vcsub.rend(); ++i) {
+      if (i->op == 0) {
+        subval = i->value;
+      } else if (i->op == 1) {
+        subval += i->value;
+      } else if (i->op == 2) {
+        subval -= i->value;
+      }
+    }
+    st.push(std::to_string(subval));
+  }
+  ret = std::atoi(st.top().c_str());
+  return ret;
+}
+
+struct ListNode {
+  ListNode* next{nullptr};
+  int value{0};
+};
+
+void make_list(ListNode*& l, std::vector<int> const& v) {
+  if (v.empty()) {
+    l = nullptr;
+    return;
+  }
+  l = new ListNode{nullptr, v[0]};
+  ListNode* lp{l};
+  for (int i = 1; i < v.size(); ++i) {
+    ListNode* lc = new ListNode{nullptr, v[i]};
+    lp->next = lc;
+    lp = lc;
+  }
+}
+void print_list(ListNode* l) {
+  while (l != nullptr) {
+    printf("%d ", l->value);
+    l = l->next;
+  }
+  printf("\n");
+}
+void rotate_list(ListNode*& l, int s) {
+  if (l == nullptr) return;
+  if (s <= 0) return;
+  ListNode* lo{l};
+  ListNode* lp{nullptr};
+  ListNode* ll{nullptr};
+  for (int i = 0; i < s; ++i) {
+    lp = lo;
+    if (lo->next == nullptr) {
+      ll = lo;
+      lo = l;
+    } else {
+      lo = lo->next;
+    }
+  }
+  if (lo == l) { return; }
+  if (ll == nullptr) {
+    for (ll = lo; ll->next != nullptr;) { ll = ll->next; }
+  }
+  lp->next = nullptr;
+  ll->next = l;
+  l = lo;
+}
+void reverse_list(ListNode*& l, int p0, int p1) {
+  if (l == nullptr) return;
+  if (p0 < 0 || p1 < 0 || p0 >= p1) return;
+  ListNode* l0{l};
+  ListNode* l1{l};
+  ListNode* lp{nullptr};
+  for (int i = 0; i < p0; ++i) {
+    lp = l0;
+    if (l0->next == nullptr)
+      l0 = l;
+    else
+      l0 = l0->next;
+  }
+  for (int i = 0; i < p1; ++i) {
+    if (l1->next == nullptr)
+      l1 = l;
+    else
+      l1 = l1->next;
+  }
+  if (l1 <= l0) return;
+  ListNode* next = l1->next;
+  ListNode* lr0{nullptr};
+  ListNode* lr1{nullptr};
+  for (lr0 = l0, lr1 = l0->next; lr0 != l1;) {
+    ListNode* l = lr1->next;
+    lr1->next = lr0;
+    lr0 = lr1;
+    lr1 = l;
+  }
+  if (lp != nullptr) {
+    l0->next = next;
+    lp->next = l1;
+  } else {
+    l = l1;
+    l0->next = next;
+  }
+}
+
+int get_arrow_count(std::vector<std::vector<int>> const& vs) {
+  if (vs.empty()) return 0;
+  std::vector<std::vector<int>> svs;
+  svs.emplace_back(vs[0]);
+  for (int i = 1; i < vs.size(); ++i) {
+    int merge = 0;
+    for (int j = 0; j < svs.size();) {
+      int xl0 = vs[i][0], xr0 = vs[i][1];
+      int xl1 = svs[j][0], xr1 = svs[j][1];
+      if (xr0 < xl1 || xr1 < xl0) {
+        ++j;
+      } else {
+        int xl = xl0 < xl1 ? xl1 : xl0;
+        int xr = xr0 < xr1 ? xr0 : xr1;
+        svs[j][0] = xl;
+        svs[j][1] = xr;
+        merge = 1;
+        break;
+      }
+    }
+    if (merge == 0) { svs.emplace_back(vs[i]); }
+  }
+  return svs.size();
+}
+
+void merge_range(std::vector<std::vector<int>> const& vs, std::vector<std::vector<int>>& vr) {
+  if (vs.empty()) {
+    vr.clear();
+    return;
+  }
+  vr.emplace_back(vs[0]);
+  for (int i = 1; i < vs.size(); ++i) {
+    int merge{0};
+    for (int j = 0; j < vr.size(); ++j) {
+      int xl0 = vs[i][0], xr0 = vs[i][1];
+      int xl1 = vr[j][0], xr1 = vr[j][1];
+      if (xr0 < xl1 || xl0 > xr1) { continue; }
+      int xl = xl0 < xl1 ? xl0 : xl1;
+      int xr = xr0 > xr1 ? xr0 : xr1;
+      vr[j][0] = xl, vr[j][1] = xr;
+      merge = 1;
+      break;
+    }
+    if (merge == 0) { vr.emplace_back(vs[i]); }
+  }
+}
+
+using range = std::vector<int>;
+using ranges = std::vector<range>;
+void insert_range(ranges& rs, range const& r) {
+  if (rs.empty()) {
+    rs.emplace_back(r);
+    return;
+  }
+  for (int i = 0; i < rs.size();) {
+    int xl = rs[i][0], xr = rs[i][1];
+    if (r[1] < xl || r[0] > xr) {
+      ++i;
+      continue;
+    }
+    rs[i][0] = xl < r[0] ? xl : r[0], rs[i][1] = xr > r[1] ? xr : r[1];
+    for (int j = i + 1; j < rs.size();) {
+      xl = rs[i][0], xr = rs[i][1];
+      if (rs[j][1] < xl || rs[j][0] > xr) { break; }
+      rs[i][0] = xl < rs[j][0] ? xl : rs[j][0], rs[i][1] = xr > rs[j][1] ? xr : rs[j][1];
+      rs.erase(rs.begin() + j);
+    }
+    break;
+  }
+}
+
+int max_capacity(std::vector<int> const& v) {
+  if (v.size() < 2) return 0;
+  int ret{0};
+  int stop{0};
+  int left{0}, right{(int)v.size() - 1};
+  while (stop == 0) {
+    int val = (v[left] < v[right] ? v[left] : v[right]) * (right - left);
+    if (val >= ret) {
+      ret = val;
+    } else {
+      break;
+    }
+    if (v[left] < v[right] && left < right - 1 && v[left + 1] > v[left])
+      ++left;
+    else if (v[left] > v[right] && right > left + 1 && v[right - 1] > v[right])
+      --right;
+    else
+      stop = 1;
+  }
+  return ret;
+}
+
+std::vector<int> get_substr_pos(std::string const& s, std::vector<std::string> const& vsub) {
+  std::vector<int> vpos;
+  if (s.empty() || vsub.empty()) return vpos;
+  std::map<size_t, size_t> msubpos;
+  int stop{0};
+  int fpos{0};
+  while (stop == 0 && fpos < s.size()) {
+    msubpos.clear();
+    for (int i = 0; i < vsub.size(); ++i) {
+      size_t pos = s.find(vsub[i], fpos);
+      if (pos == std::string::npos) {
+        stop = 1;
+        break;
+      } else if (msubpos.count(pos) > 0) {
+        pos = s.find(pos + msubpos[pos]);
+        if (pos == std::string::npos) {
+          stop = 1;
+          break;
+        }
+        msubpos[pos] = vsub[i].size();
+      } else {
+        msubpos[pos] = vsub[i].size();
+      }
+    }
+    if (stop == 0) {
+      int unmatch{0};
+      for (auto it = msubpos.begin(); it != msubpos.end();) {
+        auto it0 = it;
+        auto it1 = ++it;
+        if (it1 == msubpos.end()) break;
+        if (it0->first + it0->second != it1->first) {
+          unmatch = 1;
+          break;
+        }
+      }
+      if (unmatch == 1) {
+        fpos = msubpos.begin()->first + msubpos.begin()->second;
+        continue;
+      }
+      vpos.emplace_back(msubpos.begin()->first);
+      fpos = msubpos.begin()->first + msubpos.begin()->second;
+    }
+  }
+  return vpos;
+}
+
+void merge_vector(std::vector<int>& ov, std::vector<int> const& iv) {
+  if (iv.empty()) return;
+  ov.resize(ov.size() + iv.size());
+  int pos{0};
+  int ovs{(int)ov.size() - (int)iv.size()};
+  int i{0};
+  for (; i < iv.size();) {
+    if (ov[pos] > iv[i]) {
+      std::copy(ov.begin() + pos, ov.begin() + pos + ovs, ov.begin() + pos + 1);
+      ov[pos] = iv[i];
+      ++i;
+    } else {
+      --ovs;
+    }
+    ++pos;
+    if (ovs == 0) break;
+  }
+  if (i < iv.size()) { std::copy(iv.begin() + i, iv.end(), ov.begin() + pos); }
 }
 
 int main() {
-  printf("%d\n", check_sub("ahbgdc", "abc"));
-  printf("%d\n", check_sub("ahbgdc", "axc"));
+  // std::vector<std::vector<std::string>> vv;
+  // vv.emplace_back(std::vector<std::string>{"1"});
+  // vv.emplace_back(std::vector<std::string>{"", "3"});
+  // vv.emplace_back(std::vector<std::string>{"", "", "6", "7"});
+  // TreeNode t;
+  // make_tree(vv, t);
+  // print_tree(t);
+
+  // printf("%s\n", get_max_common_prefix(std::vector<std::string>{"atl", "atle", "atl"}).c_str());
+
+  // printf("[%s]\n", reverse_word("   abc  def    ghi   ").c_str());
+
+  // printf("%d\n", get_rain_capacity(std::vector<int>{4,2,0,3,2,5}));
+
+  // printf("%s\n", digital_roma(3749).c_str());
+
+  // printf("%d\n", roma_digital("MCMXCIV"));
+
+  // int ret{0};
+  // std::vector<int> v{1, 1, 1, 1, 1, 1, 1, 1};
+  // get_min_array(v, 4, ret);
+  // printf("%d\n", ret);
+
+  // printf("%d\n", is_sub_str("ahbgdc", "abc"));
+
+  // printf("%d\n", calc("(0)+(1+(1-3))"));
+
+  // ListNode* l{nullptr};
+  // make_list(l, std::vector<int>{1, 2, 3, 4, 5});
+  // print_list(l);
+  // rotate_list(l, 111);
+  // print_list(l);
+  // reverse_list(l, 36, 44);
+  // print_list(l);
+
+  // printf("%d\n", get_arrow_count(std::vector<std::vector<int>>{{10, 16}, {2, 8}, {1, 6}, {7, 12}}));
+  // printf("%d\n", get_arrow_count(std::vector<std::vector<int>>{{1, 2}, {3, 4}, {5, 6}, {7, 8}}));
+  // printf("%d\n", get_arrow_count(std::vector<std::vector<int>>{{1, 2}, {2, 3}, {3, 4}, {4, 5}}));
+
+  // std::vector<std::vector<int>> res;
+  // merge_range(decltype(res){{4, 7}, {1, 4}}, res);
+  // for (auto const& e : res) { printf("[%d,%d]", e[0], e[1]); }
+  // printf("\n");
+
+  // ranges res{{{1, 2}, {3, 5}, {6, 7}, {8, 10}, {12, 16}}};
+  // ranges res{{{1, 3}, {6, 9}}};
+  // insert_range(res, range{2, 5});
+  // for (auto const& e : res) { printf("[%d,%d]", e[0], e[1]); }
+  // printf("\n");
+
+  // printf("%d\n", max_capacity({1, 2, 3, 4, 5, 6, 7, 8, 9}));
+  // printf("%d\n", max_capacity({1, 8, 6, 2, 5, 4, 8, 3, 7}));
+  // printf("%d\n", max_capacity({1, 1}));
+
+  // for (auto const& e : get_substr_pos("barfoofoobarthefoobarman", {"bar", "foo", "the"})) { printf("%d\n", e); }
+
+  std::vector<int> ov{5, 6, 7};
+  std::vector<int> iv{1, 2, 8};
+  merge_vector(ov, iv);
+  for (auto const& e : ov) { printf("%d ", e); }
+  printf("\n");
   return 0;
 }
