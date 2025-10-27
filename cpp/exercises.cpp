@@ -2123,6 +2123,228 @@ int main() {
 #include <map>
 #include <set>
 
+#include <cstdio>
+#include <cstdint>
+#include <mutex>
+#include <condition_variable>
+#include <vector>
+#include <algorithm>
+#include <thread>
+#include <atomic>
+#include <chrono>
+#include <memory>
+#include <deque>
+
+class BoundedBlockQueue {
+public:
+  BoundedBlockQueue(int capacity) {
+    if (capacity <= 0) {
+      printf("bad capacity\n");
+    }
+    this->capacity = capacity;
+    buffer.resize(capacity);
+    size = 0;
+  }
+  void enqueue(int val) {
+    std::unique_lock lock(en_lock);
+    if (size >= capacity) {
+      en_cv.wait(lock, [&](){return size < capacity;});
+    }
+    buffer[size++] = val;
+    de_cv.notify_one();
+  }
+  void dequeue(int &val) {
+    std::unique_lock lock(de_lock);
+    if (size <= 0) {
+      de_cv.wait(lock, [&](){return size > 0;});
+    }
+    val = buffer[--size];
+    en_cv.notify_one();
+  }
+private:
+  int size{0};
+  int capacity{0};
+  std::vector<int> buffer;
+  std::mutex en_lock;
+  std::mutex de_lock;
+  std::condition_variable en_cv;
+  std::condition_variable de_cv;
+};
+
+int f1() {
+  BoundedBlockQueue q{2};
+  std::thread th([&](){
+    std::this_thread::sleep_for(std::chrono::seconds{3});
+    int val;
+    q.dequeue(val);
+    printf("first dequeue %d\n", val);
+    q.dequeue(val);
+    q.dequeue(val);
+    q.dequeue(val);
+    printf("second dequeue %d\n", val);
+  });
+  q.enqueue(1);
+  q.enqueue(2);
+  q.enqueue(3);
+  printf("3 enqueueue\n");
+  std::this_thread::sleep_for(std::chrono::seconds{3});
+  q.enqueue(4);
+  printf("4 enqueueue\n");
+  th.join();
+
+  std::mutex mt[3];
+  std::condition_variable cv[3];
+  int flag[3]{0};
+  std::thread th3([&](){
+    std::unique_lock lock{mt[2]};
+    cv[2].wait(lock,[&](){
+      return flag[2] == 1;
+    });
+    printf("th3 wait for th2 completed\n");
+    std::this_thread::sleep_for(std::chrono::seconds{3});
+    flag[2] = 2;
+    cv[2].notify_one();
+  });
+  std::thread th2([&](){
+    {
+      std::unique_lock lock{mt[1]};
+      cv[1].wait(lock, [&](){return flag[1] == 1;});
+      printf("th2 wait for th1 completed\n");
+    }
+    std::this_thread::sleep_for(std::chrono::seconds{2});
+    printf("th2 sleep 2s\n");
+    {
+      std::unique_lock lock{mt[2]};
+      flag[2] = 1;
+      cv[2].notify_one();
+      cv[2].wait(lock, [&](){
+        return flag[2] == 2;
+      });
+      printf("th3 completed\n");
+    }
+    std::unique_lock lock{mt[1]};
+    std::this_thread::sleep_for(std::chrono::seconds{2});
+    flag[1] = 2;
+    cv[1].notify_one();
+  });
+  std::thread th1([&](){
+    std::this_thread::sleep_for(std::chrono::seconds{1});
+    printf("th1 sleep 1s\n");
+    std::unique_lock lock{mt[2]};
+    flag[1] = 1;
+    cv[1].notify_one();
+    cv[1].wait(lock,[&](){
+      return flag[1] == 2;
+    });
+    printf("th2 completed\n");
+  });
+  th1.join();
+  th2.join();
+  th3.join();
+  return 0;
+}
+
+struct ListNode {
+  ListNode *next{nullptr};
+  int value{0};
+};
+struct List {
+  ListNode *head{nullptr};
+  int size{0};
+};
+void free_list(ListNode *n) {
+  ListNode *next{nullptr};
+  while (n != nullptr) {
+    next = n->next;
+    delete n;
+    n = next;
+  }
+}
+void print_list(ListNode *n) {
+  ListNode *next{nullptr};
+  while (n != nullptr) {
+    next = n->next;
+    printf("%d ", n->value);
+    n = next;
+  }
+  printf("\n");
+}
+void make_list(std::vector<int> const& v, List& l) {
+  if (v.empty()) {
+    l.size = 0;
+    free_list(l.head);
+    l.head = nullptr;
+    return;
+  }
+  l.head = new ListNode;
+  ListNode *pn = l.head;
+  pn->value = v[0];
+  for(int i = 1; i < v.size(); ++i) {
+    ListNode *nn = new ListNode;
+    nn->value = v[i];
+    pn->next = nn;
+    pn = nn;
+  }
+  l.size = v.size();
+}
+void merge_list(List& l1, List& l2, List&lo) {
+  if (l1.size == 0 && l2.size == 0) {
+    lo.size = 0;
+    free_list(lo.head);
+    lo.head = nullptr;
+    return;
+  }
+  ListNode *pn1 = l1.head;
+  ListNode *pn2 = l2.head;
+  lo.head = new ListNode;
+  ListNode *pno = lo.head;
+  int sizeo = 0;
+  while(pn1 != nullptr && pn2 != nullptr) {
+    ListNode *nn = pno;
+    if (sizeo > 0) {
+      nn = new ListNode;
+    }
+    if (pn1->value < pn2->value) {
+      nn->value = pn1->value;
+      pn1 = pn1->next;
+    } else {
+      nn->value = pn2->value;
+      pn2 = pn2->next;
+    }
+    if (sizeo > 0) {
+      pno->next = nn;
+      pno = nn;
+    }
+    ++sizeo;
+  }
+  while (pn1 != nullptr) {
+    ListNode *nn = pno;
+    if (sizeo > 0) {
+      nn = new ListNode;
+    }
+    nn->value = pn1->value;
+    if (sizeo > 0) {
+      pno->next = nn;
+      pno = nn;
+    }
+    ++sizeo;
+    pn1 = pn1->next;
+  }
+  while (pn2 != nullptr) {
+    ListNode *nn = pno;
+    if (sizeo > 0) {
+      nn = new ListNode;
+    }
+    nn->value = pn2->value;
+    if (sizeo > 0) {
+      pno->next = nn;
+      pno = nn;
+    }
+    ++sizeo;
+    pn2 = pn2->next;
+  }
+}
+
 struct TreeNode {
   TreeNode* left{nullptr};
   TreeNode* right{nullptr};
@@ -2824,6 +3046,22 @@ void merge_vector(std::vector<int>& ov, std::vector<int> const& iv) {
 }
 
 int main() {
+  // std::vector<int> v1{1,3,5,7,9};
+  // List l1;
+  // make_list(v1, l1);
+  // print_list(l1.head);
+  // std::vector<int> v2{2,4,6,8,10};
+  // List l2;
+  // make_list(v2, l2);
+  // print_list(l2.head);
+  // List lo;
+  // merge_list(l1,l2,lo);
+  // print_list(lo.head);
+  // free_list(l1.head);
+  // free_list(l2.head);
+  // free_list(lo.head);
+  // return 0;
+
   // std::vector<std::vector<std::string>> vv;
   // vv.emplace_back(std::vector<std::string>{"1"});
   // vv.emplace_back(std::vector<std::string>{"", "3"});
