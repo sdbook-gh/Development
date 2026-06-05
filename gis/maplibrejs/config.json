@@ -1,0 +1,27 @@
+{
+  "options": {
+    "paths": {
+      "root": "/data",
+      "fonts": "fonts",
+      "styles": "styles",
+      "mbtiles": ""
+    },
+    "domains": [
+      "localhost",
+      "127.0.0.1"
+    ]
+  },
+  "styles": {
+    "font-provider": {
+      "style": "dummy.json",
+      "tilejson": {
+        "type": "vector"
+      }
+    }
+  },
+  "data": {
+    "beijing-260531": {
+      "mbtiles": "beijing-260531.mbtiles"
+    }
+  }
+}

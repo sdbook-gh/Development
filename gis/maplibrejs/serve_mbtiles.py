@@ -191,42 +191,64 @@ class MBTilesHandler(http.server.BaseHTTPRequestHandler):
 
     def _search_live(self, query):
         """
-        与 search_mbtiles.py 逻辑完全一致，使用 mapbox-vector-tile 解析。
+        与 search_mbtiles.py 逻辑完全一致，使用 mapbox-vector-tile 解析几何坐标。
         """
         results = []
         try:
             db = sqlite3.connect(f"file:{MBTILES_FILE}?mode=ro", uri=True)
             query_lower = query.lower()
             
-            # 获取最大级别
             cursor = db.execute("SELECT MAX(zoom_level) FROM tiles")
             max_zoom = cursor.fetchone()[0]
             
-            # 搜索最大级别
             cursor = db.execute(
                 "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles WHERE zoom_level = ?",
                 (max_zoom,)
             )
             
             seen_names = set()
-            for z, x, y, data in cursor:
+            for z, x, y_tms, data in cursor:
                 try:
-                    # 解压
                     tile_bytes = data
                     if tile_bytes.startswith(b'\x1f\x8b'):
                         tile_bytes = gzip.decompress(tile_bytes)
                     
-                    # 使用 mapbox_vector_tile 解析
                     decoded_tile = mapbox_vector_tile.decode(tile_bytes)
                     
+                    y_xyz = (1 << z) - 1 - y_tms
+                    n = 2.0 ** z
+                    
                     for layer_name, layer_data in decoded_tile.items():
+                        extent = layer_data.get('extent', 4096)
                         for feature in layer_data['features']:
                             name = feature.get('properties', {}).get('name')
                             if name and query_lower in name.lower():
-                                if name not in seen_names:
-                                    lat, lon = xyz_to_latlon(z, x, y)
-                                    results.append({"name": name, "lat": lat, "lon": lon})
-                                    seen_names.add(name)
+                                geom = feature.get('geometry', {})
+                                coords = geom.get('coordinates', [])
+                                
+                                if geom['type'] == 'Point':
+                                    px, py = coords
+                                elif geom['type'] in ['LineString', 'MultiPoint']:
+                                    px, py = coords[0]
+                                elif geom['type'] in ['Polygon', 'MultiLineString']:
+                                    px, py = coords[0][0]
+                                elif geom['type'] == 'MultiPolygon':
+                                    px, py = coords[0][0][0]
+                                else:
+                                    continue
+
+                                lon = (x + px / extent) / n * 360.0 - 180.0
+                                lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * (y_xyz + py / extent) / n)))
+                                lat = math.degrees(lat_rad)
+                                
+                                result = {"name": name, "lat": lat, "lon": lon, "layer": layer_name}
+                                
+                                # 使用 (名称, 纬度, 经度) 作为唯一键进行去重
+                                # 这样同名但在不同位置的元素会被保留
+                                result_key = (name, round(lat, 6), round(lon, 6))
+                                if result_key not in seen_names:
+                                    results.append(result)
+                                    seen_names.add(result_key)
                                     
                 except: continue
                 

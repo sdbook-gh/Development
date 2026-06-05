@@ -4,15 +4,6 @@ import math
 import sys
 import mapbox_vector_tile
 
-def xyz_to_latlon(z, x, y_tms):
-    """将 MBTiles 的 Z/X/Y (TMS) 转换为经纬度坐标"""
-    y_xyz = (1 << z) - 1 - y_tms
-    n = 2.0 ** z
-    lon_deg = x / n * 360.0 - 180.0
-    lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y_xyz / n)))
-    lat_deg = math.degrees(lat_rad)
-    return lat_deg, lon_deg
-
 def search_mbtiles(db_path, keyword):
     print(f"正在读取文件: {db_path}")
     print(f"正在全量解析要素并搜索关键词: '{keyword}'...")
@@ -27,7 +18,6 @@ def search_mbtiles(db_path, keyword):
         print(f"搜索最高级别: {max_zoom}")
 
         # 2. 扫描瓦片数据
-        # 我们主要搜索 max_zoom 级别，因为信息最全
         cursor.execute(
             "SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles WHERE zoom_level = ?", 
             (max_zoom,)
@@ -37,42 +27,64 @@ def search_mbtiles(db_path, keyword):
         keyword_lower = keyword.lower()
         
         tile_count = 0
-        for z, x, y, data in cursor:
+        for z, x, y_tms, data in cursor:
             tile_count += 1
             if tile_count % 100 == 0:
                 print(f"已处理 {tile_count} 个瓦片...", end='\r')
 
             try:
-                # 处理 PBF 瓦片的解压
                 if data.startswith(b'\x1f\x8b'):
                     data = gzip.decompress(data)
                 
-                # --- 正确的矢量瓦片解析逻辑 ---
-                # 使用 mapbox_vector_tile 库将二进制 PBF 解码为 Python 字典
+                # 解码瓦片
                 decoded_tile = mapbox_vector_tile.decode(data)
                 
-                # 遍历图层 (如 roads, buildings, water 等)
+                # 转换坐标所需参数
+                # MBTiles 使用 TMS (y起于南)，MapLibre 使用 XYZ (y起于北)
+                y_xyz = (1 << z) - 1 - y_tms
+                n = 2.0 ** z
+                
                 for layer_name, layer_data in decoded_tile.items():
-                    # 遍历图层中的每一个地图元素 (Feature)
+                    extent = layer_data.get('extent', 4096)
+                    
                     for feature in layer_data['features']:
                         properties = feature.get('properties', {})
                         name = properties.get('name')
                         
-                        # 使用 name 属性进行匹配
                         if name and keyword_lower in name.lower():
-                            lat, lon = xyz_to_latlon(z, x, y)
+                            # --- 直接从地图元素的 geometry 获取坐标 ---
+                            geom = feature.get('geometry', {})
+                            coords = geom.get('coordinates', [])
+                            
+                            # 提取一个具有代表性的点 (px, py 是瓦片内的本地坐标，通常 0-4096)
+                            if geom['type'] == 'Point':
+                                px, py = coords
+                            elif geom['type'] in ['LineString', 'MultiPoint']:
+                                px, py = coords[0]
+                            elif geom['type'] in ['Polygon', 'MultiLineString']:
+                                px, py = coords[0][0]
+                            elif geom['type'] == 'MultiPolygon':
+                                px, py = coords[0][0][0]
+                            else:
+                                continue
+
+                            # 将瓦片本地坐标 (px, py) 转换为全球经纬度
+                            # 经度计算
+                            lon = (x + px / extent) / n * 360.0 - 180.0
+                            # 纬度计算 (Web Mercator 反投影)
+                            lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * (y_xyz + py / extent) / n)))
+                            lat = math.degrees(lat_rad)
+
                             result = {
                                 "name": name,
                                 "layer": layer_name,
                                 "lat": lat,
                                 "lon": lon
                             }
-                            # 去重
                             if result not in found_results:
                                 found_results.append(result)
                                 
-            except Exception as e:
-                # 忽略损坏的瓦片
+            except Exception:
                 continue
 
         print(f"\n扫描完成，共处理 {tile_count} 个瓦片。")
@@ -84,9 +96,8 @@ def search_mbtiles(db_path, keyword):
         else:
             print(f"\n找到 {len(found_results)} 个匹配元素：")
             print("-" * 80)
-            print(f"{'地图元素名称':<35} | {'图层':<15} | {'坐标 (纬, 经)'}")
+            print(f"{'地图元素名称':<35} | {'图层':<15} | {'精确坐标 (纬, 经)'}")
             print("-" * 80)
-            # 按名称排序
             found_results.sort(key=lambda x: x['name'])
             for res in found_results:
                 print(f"{res['name']:<35} | {res['layer']:<15} | {res['lat']:>9.6f}, {res['lon']:>10.6f}")

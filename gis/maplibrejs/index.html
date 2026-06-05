@@ -103,6 +103,7 @@
                     'beijing': {
                         type: 'vector',
                         tiles: ['http://localhost:8080/data/beijing-260531/{z}/{x}/{y}.pbf'],
+                        // tiles: ['http://127.0.0.1:3000/tiles/{z}/{x}/{y}'],
                         minzoom: 6,
                         maxzoom: 14
                     }
@@ -487,7 +488,8 @@
             data.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'search-item';
-                div.innerHTML = `<strong>${item.name}</strong>`;
+                const layerDesc = item.layer ? `<small style="color:#888; margin-left:5px;">(${translateLayer(item.layer)})</small>` : '';
+                div.innerHTML = `<strong>${item.name}</strong>${layerDesc}`;
                 
                 div.addEventListener('click', () => {
                     const center = [item.lon, item.lat];
