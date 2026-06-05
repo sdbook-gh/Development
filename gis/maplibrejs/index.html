@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>北京矢量地图</title>
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+    <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; }
+        #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+        #zoom { position: absolute; top: 10px; right: 10px; background: rgba(255,255,255,0.9); padding: 6px 8px; border-radius: 4px; font-family: Arial, sans-serif; z-index: 2; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
+        /* 搜索框样式 */
+        .search-container {
+            position: absolute;
+            top: 10px;
+            left: 50px;
+            z-index: 10;
+            width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .coord-container {
+            background: white;
+            padding: 8px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+        .coord-input {
+            width: 85px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .jump-btn {
+            padding: 5px 10px;
+            background: #0078ff;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .jump-btn:hover { background: #005fcc; }
+        #search-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            font-size: 14px;
+            outline: none;
+        }
+        #search-results {
+            background: white;
+            border-radius: 4px;
+            margin-top: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+        .search-item {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            font-size: 13px;
+        }
+        .search-item:hover {
+            background-color: #f5f5f5;
+        }
+        .search-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <!-- 搜索界面 -->
+    <div class="search-container">
+        <div class="coord-container">
+            <input type="number" id="lng-input" class="coord-input" placeholder="经度" step="any">
+            <input type="number" id="lat-input" class="coord-input" placeholder="纬度" step="any">
+            <button id="jump-btn" class="jump-btn">跳转</button>
+        </div>
+        <input type="text" id="search-input" placeholder="输入地名搜索..." autocomplete="off">
+        <div id="search-results"></div>
+    </div>
+    <script>
+        const map = new maplibregl.Map({
+            container: 'map',
+            // 使用本地系统字体渲染 CJK 字形，避免外部 glyphs 请求
+            localIdeographFontFamily: ['Noto Sans SC', 'Microsoft YaHei', 'sans-serif'],
+            style: {
+                version: 8,
+                glyphs: "http://localhost:8080/fonts/{fontstack}/{range}.pbf",
+                sources: {
+                    'beijing': {
+                        type: 'vector',
+                        tiles: ['http://localhost:8080/data/beijing-260531/{z}/{x}/{y}.pbf'],
+                        minzoom: 6,
+                        maxzoom: 14
+                    }
+                },
+                layers: [
+                    // 1. 背景色（最底层）
+                    {
+                        id: 'background',
+                        type: 'background',
+                        paint: {
+                            'background-color': '#f2efe9'
+                        }
+                    },
+                    // 2. 土地利用（面）
+                    {
+                        id: 'landuse',
+                        type: 'fill',
+                        source: 'beijing',
+                        'source-layer': 'landuse',
+                        minzoom: 6,
+                        paint: {
+                            'fill-color': '#d5e3d0',
+                            'fill-opacity': 0.6,
+                            'fill-outline-color': '#a0b898'
+                        }
+                    },
+                    // 3. 水体（面）
+                    {
+                        id: 'water',
+                        type: 'fill',
+                        source: 'beijing',
+                        'source-layer': 'water',
+                        minzoom: 6,
+                        paint: {
+                            'fill-color': '#a6d3e8',
+                            'fill-opacity': 0.8,
+                            'fill-outline-color': '#7fb6d1'
+                        }
+                    },
+                    // 4. 水系（线）
+                    {
+                        id: 'waterways',
+                        type: 'line',
+                        source: 'beijing',
+                        'source-layer': 'waterways',
+                        minzoom: 6,
+                        paint: {
+                            'line-color': '#72a7c8',
+                            'line-width': 1
+                        }
+                    },
+                    // 3. 建筑物（面）
+                    {
+                        id: 'buildings',
+                        type: 'fill',
+                        source: 'beijing',
+                        'source-layer': 'buildings',
+                        minzoom: 6,
+                        paint: {
+                            'fill-color': '#d4c8b5',
+                            'fill-opacity': 0.8,
+                            'fill-outline-color': '#b3a68e'
+                        }
+                    },
+                    // 自然保护（面）
+                    {
+                        id: 'protected',
+                        type: 'fill',
+                        source: 'beijing',
+                        'source-layer': 'protected',
+                        minzoom: 6,
+                        paint: {
+                            'fill-color': '#cfe8c7',
+                            'fill-opacity': 0.5,
+                            'fill-outline-color': '#9ecb98'
+                        }
+                    },
+                    // 自然类地物（面）
+                    {
+                        id: 'natural_a',
+                        type: 'fill',
+                        source: 'beijing',
+                        'source-layer': 'natural_a',
+                        minzoom: 6,
+                        paint: {
+                            'fill-color': '#e6f2e6',
+                            'fill-opacity': 0.6,
+                            'fill-outline-color': '#cfe6cf'
+                        }
+                    },
+                    // 铁路（线）
+                    {
+                        id: 'railways',
+                        type: 'line',
+                        source: 'beijing',
+                        'source-layer': 'railways',
+                        minzoom: 6,
+                        paint: {
+                            'line-color': '#8b6f6f',
+                            'line-width': 1.5
+                        }
+                    },
+                    // 道路（线）
+                    {
+                        id: 'roads',
+                        type: 'line',
+                        source: 'beijing',
+                        'source-layer': 'roads',
+                        minzoom: 6,
+                        paint: {
+                            'line-color': '#e0b18a',
+                            'line-width': [
+                                'interpolate', ['linear'], ['zoom'], 6, 0.5, 14, 2, 22, 5
+                            ]
+                        }
+                    },
+                    // 5. 行政边界（线或面，这里用线表示）
+                    {
+                        id: 'admin-line',
+                        type: 'line',
+                        source: 'beijing',
+                        'source-layer': 'admin',
+                        minzoom: 6,
+                        paint: {
+                            'line-color': '#888888',
+                            'line-width': 1,
+                            'line-dasharray': [4, 2]
+                        }
+                    },
+                    // 4. 建筑物名称
+                    {
+                        id: 'buildings-label',
+                        type: 'symbol',
+                        source: 'beijing',
+                        'source-layer': 'buildings',
+                        minzoom: 15,
+                        layout: {
+                            'text-field': ['get', 'name'],
+                            'text-font': ['Klokantech Noto Sans Regular'],
+                            'text-size': 11
+                        },
+                        paint: {
+                            'text-color': '#333333',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 1
+                        }
+                    },
+                    // 6. 行政边界名称
+                    {
+                        id: 'admin-label',
+                        type: 'symbol',
+                        source: 'beijing',
+                        'source-layer': 'admin',
+                        minzoom: 8,
+                        layout: {
+                            'text-field': ['get', 'name'],
+                            'text-font': ['Klokantech Noto Sans Regular'],
+                            'text-size': 12,
+                            'text-anchor': 'center',
+                            'text-max-width': 8
+                        },
+                        paint: {
+                            'text-color': '#444444',
+                            'text-halo-color': '#f2efe9',
+                            'text-halo-width': 1.5
+                        }
+                    },
+                    // 7. 道路名称
+                    {
+                        id: 'roads-label',
+                        type: 'symbol',
+                        source: 'beijing',
+                        'source-layer': 'roads',
+                        minzoom: 13,
+                        layout: {
+                            'symbol-placement': 'line',
+                            'text-field': ['get', 'name'],
+                            'text-font': ['Klokantech Noto Sans Regular'],
+                            'text-size': 11,
+                            'text-letter-spacing': 0.1,
+                            'text-max-angle': 30
+                        },
+                        paint: {
+                            'text-color': '#666666',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 1.5
+                        }
+                    },
+                    // 8. 土地利用标签
+                    {
+                        id: 'landuse-label',
+                        type: 'symbol',
+                        source: 'beijing',
+                        'source-layer': 'landuse',
+                        minzoom: 12,
+                        layout: {
+                            'text-field': ['get', 'name'],
+                            'text-font': ['Klokantech Noto Sans Regular'],
+                            'text-size': 11
+                        },
+                        paint: {
+                            'text-color': '#4a6741',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 1
+                        }
+                    },
+                    // 9. 铁路/地铁标签
+                    {
+                        id: 'railways-label',
+                        type: 'symbol',
+                        source: 'beijing',
+                        'source-layer': 'railways',
+                        minzoom: 13,
+                        layout: {
+                            'symbol-placement': 'line',
+                            'text-field': ['get', 'name'],
+                            'text-font': ['Klokantech Noto Sans Regular'],
+                            'text-size': 10
+                        },
+                        paint: {
+                            'text-color': '#7a5a5a',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 1
+                        }
+                    },
+                    // 10. 水域标签
+                    {
+                        id: 'water-label',
+                        type: 'symbol',
+                        source: 'beijing',
+                        'source-layer': 'water',
+                        minzoom: 11,
+                        layout: {
+                            'text-field': ['get', 'name'],
+                            'text-font': ['Klokantech Noto Sans Regular'],
+                            'text-size': 12
+                        },
+                        paint: {
+                            'text-color': '#006699',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 1
+                        }
+                    },
+                    // 11. 水系标签
+                    {
+                        id: 'waterways-label',
+                        type: 'symbol',
+                        source: 'beijing',
+                        'source-layer': 'waterways',
+                        minzoom: 13,
+                        layout: {
+                            'symbol-placement': 'line',
+                            'text-field': ['get', 'name'],
+                            'text-font': ['Klokantech Noto Sans Regular'],
+                            'text-size': 11
+                        },
+                        paint: {
+                            'text-color': '#006699',
+                            'text-halo-color': '#ffffff',
+                            'text-halo-width': 1
+                        }
+                    }
+                ]
+            },
+            center: [116.4074, 39.9042],   // 北京
+            zoom: 10
+        });
+
+        // 添加导航控件
+        map.addControl(new maplibregl.NavigationControl(), 'top-left');
+
+        // 缩放等级指示器
+        const zoomEl = document.createElement('div');
+        zoomEl.id = 'zoom';
+        zoomEl.textContent = 'Zoom: ' + map.getZoom().toFixed(2);
+        document.body.appendChild(zoomEl);
+        map.on('move', () => { zoomEl.textContent = 'Zoom: ' + map.getZoom().toFixed(2); });
+
+        // 调试：打印加载/错误/数据事件，帮助定位为什么地图不渲染
+        map.on('load', () => console.log('map load success'));
+        map.on('error', (e) => {
+            console.error('MapLibre Error Details:', {
+                message: e.error ? e.error.message : 'Unknown error',
+                error: e.error,
+                sourceId: e.sourceId,
+                tile: e.tile
+            });
+        });
+        map.on('tileerror', (e) => console.error('Tile Load Error:', e.tile));
+        map.on('sourcedata', (e) => console.log('sourcedata', e));
+        map.on('data', (e) => console.log('data', e));
+
+        // --- 经纬度跳转功能 ---
+        const lngInput = document.getElementById('lng-input');
+        const latInput = document.getElementById('lat-input');
+        const jumpBtn = document.getElementById('jump-btn');
+
+        jumpBtn.addEventListener('click', () => {
+            const lng = parseFloat(lngInput.value);
+            const lat = parseFloat(latInput.value);
+
+            if (isNaN(lng) || isNaN(lat)) {
+                alert('请输入有效的经纬度数值');
+                return;
+            }
+
+            if (lng < -180 || lng > 180 || lat < -90 || lat > 90) {
+                alert('经度范围: -180 到 180, 纬度范围: -90 到 90');
+                return;
+            }
+
+            // 移动地图
+            map.flyTo({
+                center: [lng, lat],
+                zoom: 14,
+                essential: true
+            });
+
+            // 添加标记
+            if (marker) marker.remove();
+            marker = new maplibregl.Marker()
+                .setLngLat([lng, lat])
+                .addTo(map);
+        });
+
+        // --- 搜索功能实现 ---
+        const searchInput = document.getElementById('search-input');
+        const searchResults = document.getElementById('search-results');
+        let marker = null;
+        let debounceTimer;
+
+        searchInput.addEventListener('input', (e) => {
+            const query = e.target.value.trim();
+            if (!query) {
+                searchResults.style.display = 'none';
+                return;
+            }
+
+            // --- 全量搜索逻辑：调用后端的 /search 接口 ---
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                fetch(`http://localhost:3000/search?q=${encodeURIComponent(query)}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        displayFullResults(data);
+                    })
+                    .catch(err => {
+                        console.error('搜索请求失败:', err);
+                        // 如果后端接口失败，回退到当前的本地可见要素查询
+                        const features = map.querySourceFeatures('beijing');
+                        const fallbackResults = [];
+                        const seen = new Set();
+                        for (const f of features) {
+                            if (f.properties.name && f.properties.name.toLowerCase().includes(query.toLowerCase())) {
+                                if (!seen.has(f.properties.name)) {
+                                    fallbackResults.push({
+                                        name: f.properties.name,
+                                        lat: f.geometry.type === 'Point' ? f.geometry.coordinates[1] : f.geometry.coordinates[0][1],
+                                        lon: f.geometry.type === 'Point' ? f.geometry.coordinates[0] : f.geometry.coordinates[0][0]
+                                    });
+                                    seen.add(f.properties.name);
+                                }
+                            }
+                        }
+                        displayFullResults(fallbackResults);
+                    });
+            }, 300);
+        });
+
+        function displayFullResults(data) {
+            searchResults.innerHTML = '';
+            if (!data || data.length === 0) {
+                const div = document.createElement('div');
+                div.className = 'search-item';
+                div.textContent = '未找到匹配地名';
+                div.style.color = '#999';
+                searchResults.appendChild(div);
+                searchResults.style.display = 'block';
+                return;
+            }
+
+            data.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'search-item';
+                div.innerHTML = `<strong>${item.name}</strong>`;
+                
+                div.addEventListener('click', () => {
+                    const center = [item.lon, item.lat];
+                    map.flyTo({
+                        center: center,
+                        zoom: 15,
+                        essential: true
+                    });
+
+                    if (marker) marker.remove();
+                    marker = new maplibregl.Marker()
+                        .setLngLat(center)
+                        .addTo(map);
+
+                    searchInput.value = item.name;
+                    searchResults.style.display = 'none';
+                });
+                searchResults.appendChild(div);
+            });
+            searchResults.style.display = 'block';
+        }
+
+        function translateLayer(layer) {
+            const dict = {
+                'buildings': '建筑物',
+                'roads': '道路',
+                'admin': '行政区',
+                'water': '水域',
+                'landuse': '土地利用',
+                'natural_a': '自然地物'
+            };
+            return dict[layer] || layer;
+        }
+
+        // 点击外部关闭搜索结果
+        document.addEventListener('click', (e) => {
+            if (e.target !== searchInput) {
+                searchResults.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
