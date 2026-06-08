@@ -82,6 +82,8 @@ class MBTilesHandler(http.server.BaseHTTPRequestHandler):
             print(f"收到搜索请求: {q}")
             results = self._search_live(q)
             print(f"搜索返回结果数: {len(results)}")
+            for res in results:
+                print(f"  - {res['name']} ({res.get('layer', 'unknown')}): [{res['lat']:.9f}, {res['lon']:.9f}]")
             self._send_json(results)
             return
 
@@ -213,7 +215,9 @@ class MBTilesHandler(http.server.BaseHTTPRequestHandler):
                     if tile_bytes.startswith(b'\x1f\x8b'):
                         tile_bytes = gzip.decompress(tile_bytes)
                     
-                    decoded_tile = mapbox_vector_tile.decode(tile_bytes)
+                    # 使用 mapbox_vector_tile 解析，设置 y_coord_down=True 以对齐 MVT 规范
+                    # 遵循新版 API 签名，使用 default_options 传递参数
+                    decoded_tile = mapbox_vector_tile.decode(tile_bytes, default_options={'y_coord_down': True})
                     
                     y_xyz = (1 << z) - 1 - y_tms
                     n = 2.0 ** z
@@ -226,6 +230,7 @@ class MBTilesHandler(http.server.BaseHTTPRequestHandler):
                                 geom = feature.get('geometry', {})
                                 coords = geom.get('coordinates', [])
                                 
+                                # 提取要素内的第一个坐标点作为代表
                                 if geom['type'] == 'Point':
                                     px, py = coords
                                 elif geom['type'] in ['LineString', 'MultiPoint']:
@@ -237,8 +242,12 @@ class MBTilesHandler(http.server.BaseHTTPRequestHandler):
                                 else:
                                     continue
 
+                                # 核心修复：基于 Web Mercator 反投影算法计算精确经纬度
+                                # 1. 计算在该级别下的全局像素占比 (y_frac 从北极点 0 到南极点 1)
                                 lon = (x + px / extent) / n * 360.0 - 180.0
-                                lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * (y_xyz + py / extent) / n)))
+                                y_frac = (y_xyz + py / extent) / n
+                                # 2. 使用 sinh 函数进行反投影计算纬度
+                                lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y_frac)))
                                 lat = math.degrees(lat_rad)
                                 
                                 result = {"name": name, "lat": lat, "lon": lon, "layer": layer_name}

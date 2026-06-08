@@ -36,8 +36,9 @@ def search_mbtiles(db_path, keyword):
                 if data.startswith(b'\x1f\x8b'):
                     data = gzip.decompress(data)
                 
-                # 解码瓦片
-                decoded_tile = mapbox_vector_tile.decode(data)
+                # 解码瓦片，设置 y_coord_down=True 以匹配 MVT 规范
+                # 遵循新版 API 签名，使用 default_options 传递参数以消除警告
+                decoded_tile = mapbox_vector_tile.decode(data, default_options={'y_coord_down': True})
                 
                 # 转换坐标所需参数
                 # MBTiles 使用 TMS (y起于南)，MapLibre 使用 XYZ (y起于北)
@@ -56,7 +57,7 @@ def search_mbtiles(db_path, keyword):
                             geom = feature.get('geometry', {})
                             coords = geom.get('coordinates', [])
                             
-                            # 提取一个具有代表性的点 (px, py 是瓦片内的本地坐标，通常 0-4096)
+                            # 提取一个具有代表性的点
                             if geom['type'] == 'Point':
                                 px, py = coords
                             elif geom['type'] in ['LineString', 'MultiPoint']:
@@ -69,10 +70,11 @@ def search_mbtiles(db_path, keyword):
                                 continue
 
                             # 将瓦片本地坐标 (px, py) 转换为全球经纬度
-                            # 经度计算
+                            # 1. 经度计算
                             lon = (x + px / extent) / n * 360.0 - 180.0
-                            # 纬度计算 (Web Mercator 反投影)
-                            lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * (y_xyz + py / extent) / n)))
+                            # 2. 纬度计算 (Web Mercator 反投影)
+                            y_frac = (y_xyz + py / extent) / n
+                            lat_rad = math.atan(math.sinh(math.pi * (1 - 2 * y_frac)))
                             lat = math.degrees(lat_rad)
 
                             result = {
@@ -100,7 +102,7 @@ def search_mbtiles(db_path, keyword):
             print("-" * 80)
             found_results.sort(key=lambda x: x['name'])
             for res in found_results:
-                print(f"{res['name']:<35} | {res['layer']:<15} | {res['lat']:>9.6f}, {res['lon']:>10.6f}")
+                print(f"{res['name']:<35} | {res['layer']:<15} | {res['lat']:>12.9f}, {res['lon']:>12.9f}")
             print("-" * 80)
 
     except sqlite3.Error as e:
