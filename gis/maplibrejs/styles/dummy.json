@@ -1,0 +1,35 @@
+{
+  "version": 8,
+  "name": "Font Provider",
+  "metadata": {
+    "maputnik:renderer": "mlgljs"
+  },
+  "sources": {
+    "beijing": {
+      "type": "vector",
+      "url": "mbtiles://beijing-260531"
+    }
+  },
+  "glyphs": "{fontstack}/{range}.pbf",
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#fff"
+      }
+    },
+    {
+      "id": "font-ref",
+      "type": "symbol",
+      "source": "beijing",
+      "source-layer": "roads",
+      "layout": {
+        "text-field": "{name}",
+        "text-font": [
+          "Klokantech Noto Sans Regular"
+        ]
+      }
+    }
+  ]
+}
