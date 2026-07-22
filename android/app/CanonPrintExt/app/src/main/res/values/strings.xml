@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">G3800 手动双面</string>
+    <style name="Theme.G3800Duplex" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>
