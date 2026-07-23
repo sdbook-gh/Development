@@ -29,14 +29,15 @@
 5. 均分为 3 段，写入 xlsx 的 3 个块（每块 序号/英文/中文）
 """
 
+import argparse
 import math
 from pathlib import Path
 import openpyxl
 from openpyxl.styles import Font, Alignment
 
 BASE_DIR = Path(__file__).resolve().parent
-SRC_XLSX = BASE_DIR / "中考必背词汇表（1842个）.xlsx"
-OUT_XLSX = BASE_DIR / "序号_英文_中文.xlsx"
+DEFAULT_SRC = BASE_DIR / "中考必背词汇表（1842个）.xlsx"
+DEFAULT_OUT = BASE_DIR / "序号_英文_中文.xlsx"
 
 # 输出分块数量
 NUM_BLOCKS = 3
@@ -153,16 +154,35 @@ def write_xlsx(entries: list[tuple[int, str, str]], out_path: Path) -> None:
 
 
 def main() -> None:
-    if not SRC_XLSX.exists():
-        raise FileNotFoundError(f"未找到源文件: {SRC_XLSX}")
+    parser = argparse.ArgumentParser(
+        description="从 Excel 词汇表中提取「序号 英文 中文」三列并输出到新文件"
+    )
+    parser.add_argument(
+        "input",
+        nargs="?",
+        default=str(DEFAULT_SRC),
+        help=f"输入 Excel 文件路径（默认: {DEFAULT_SRC.name}）",
+    )
+    parser.add_argument(
+        "-o", "--output",
+        default=str(DEFAULT_OUT),
+        help=f"输出 Excel 文件路径（默认: {DEFAULT_OUT.name}）",
+    )
+    args = parser.parse_args()
 
-    entries = extract_entries(SRC_XLSX)
-    write_xlsx(entries, OUT_XLSX)
+    src_xlsx = Path(args.input)
+    out_xlsx = Path(args.output)
+
+    if not src_xlsx.exists():
+        raise FileNotFoundError(f"未找到源文件: {src_xlsx}")
+
+    entries = extract_entries(src_xlsx)
+    write_xlsx(entries, out_xlsx)
 
     serials = [n for n, _, _ in entries]
     print(f"提取完成 ✅")
-    print(f"  源文件 : {SRC_XLSX.name}")
-    print(f"  输出   : {OUT_XLSX.name}")
+    print(f"  源文件 : {src_xlsx.name}")
+    print(f"  输出   : {out_xlsx.name}")
     print(f"  数量   : {len(serials)}")
     if serials:
         print(f"  范围   : {serials[0]} ~ {serials[-1]}")

@@ -3,10 +3,11 @@
 将词汇表渲染为多张适合 A4 打印的 JPEG 图片。
 方案 A：横向 A4 + 3 块布局（序号/英文/中文 ×3），按序号横排填充。
 """
+import argparse
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
-from extract_serial import extract_entries, SRC_XLSX, BASE_DIR
+from extract_serial import extract_entries, DEFAULT_SRC, BASE_DIR
 
 # ---- A4 / 渲染参数 ----
 DPI = 300
@@ -21,7 +22,7 @@ FONT_BOLD = "/mnt/c/Windows/Fonts/msyhbd.ttc"    # 微软雅黑 Bold
 FONT_FALLBACKS = (FONT_REG, "/mnt/c/Windows/Fonts/simhei.ttf",
                   "/mnt/c/Windows/Fonts/simsun.ttc")
 
-OUT_DIR = BASE_DIR / "images_a4"
+DEFAULT_OUT_DIR = BASE_DIR / "images_a4"
 QUALITY = 90
 
 
@@ -158,11 +159,31 @@ def render(entries, out_dir: Path) -> dict:
 
 
 def main() -> None:
-    if not SRC_XLSX.exists():
-        raise FileNotFoundError(f"未找到源文件: {SRC_XLSX}")
-    entries = extract_entries(SRC_XLSX)
-    info = render(entries, OUT_DIR)
+    parser = argparse.ArgumentParser(
+        description="将词汇表渲染为多张适合 A4 打印的 JPEG 图片"
+    )
+    parser.add_argument(
+        "input",
+        nargs="?",
+        default=str(DEFAULT_SRC),
+        help=f"输入 Excel 文件路径（默认: {DEFAULT_SRC.name}）",
+    )
+    parser.add_argument(
+        "-o", "--output-dir",
+        default=str(DEFAULT_OUT_DIR),
+        help=f"输出目录路径（默认: {DEFAULT_OUT_DIR.name}）",
+    )
+    args = parser.parse_args()
+
+    src_xlsx = Path(args.input)
+    out_dir = Path(args.output_dir)
+
+    if not src_xlsx.exists():
+        raise FileNotFoundError(f"未找到源文件: {src_xlsx}")
+    entries = extract_entries(src_xlsx)
+    info = render(entries, out_dir)
     print(f"渲染完成 ✅")
+    print(f"  源文件 : {src_xlsx.name}")
     print(f"  条目数 : {len(entries)}")
     print(f"  字号   : {info['font_pt']}pt")
     print(f"  每页行 : {info['rows_per_page']}")
