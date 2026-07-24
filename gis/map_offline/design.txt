@@ -1,0 +1,994 @@
+# 原始设计
+  图层名                            zoom        说明                                            
+  -----------------------------------------------------------------------------------------------
+  boundary_admin_country            z0–z6       国家级边界。                                    
+  boundary_admin_state              z3–z10      省/州级边界。                                   
+  boundary_admin_subdivision        z6–z12      市/县/区级边界。                                
+  places_country_state              z0–z6       国家/州/省级点或面中心点。                      
+  places_city                       z4–z12      城市级地点。                                    
+  places_town_village               z7–z14      乡镇/村级地点。                                 
+  places_local                      z10–z14     更小的居住点、社区、街区。                      
+  places_a                          z7–z12      城市面状边界，仅在需要“城市面”视觉时保留。    
+  roads_motorway                    z6–z14      高速/快速路。                                   
+  roads_primary_secondary           z8–z14      主干/次干道路。                                 
+  roads_minor                       z10–z14     支路、服务路、一般小路。                        
+  roads_path                        z12–z14     步道、自行车道、非机动车小路。                  
+  railways                          z8–z14      铁路。                                          
+  waterways_river                   z8–z14      主河流。                                        
+  waterways_canal                   z9–z14      运河/人工水道。                                 
+  waterways_stream                  z10–z14     支流、小溪、排水沟。                            
+  water                             z4–z14      湖泊、海洋、宽水体。                            
+  natural_a_forest                  z4–z14      森林、植被面。                                  
+  natural_a_mountain                z6–z14      山地、冰川、裸地等大面。                        
+  natural_peak                      z8–z14      山峰点。                                        
+  natural_tree                      z12–z14     树点/小型自然点要素。                           
+  landuse_residential_commercial    z8–z14      居住、商业、城市建设用地。                      
+  landuse_industrial                z8–z14      工业用地。                                      
+  landuse_recreation                z8–z14      公园、体育、休闲设施用地。                      
+  landuse_agriculture               z8–z14      农业、牧场等。                                  
+  protected                         z7–z12      保护区。                                        
+  pois_major                        z10–z14     重要 POI。                                      
+  pois_minor                        z12–z14     一般 POI。                                      
+  pofw                              z10–z14     宗教场所。                                      
+  transport_station                 z10–z14     公交站、地铁站、交通点。                        
+  traffic_signal                    z12–z14     信号灯。                                        
+  buildings_major                   z13–z14     地标建筑、重要建筑。                            
+  buildings_minor                   z13–z14     普通建筑面。                                    
+
+  图层名                          zoom        说明                                  
+  -----------------------------------------------------------------------------------
+  places_country_state_text       z0–z6       国家/州/省名称。                      
+  places_city_text                z4–z12      城市名称。                            
+  places_town_village_text        z7–z14      乡镇/村名称。                         
+  places_local_text               z10–z14     社区、街区等小地名。                  
+  roads_motorway_text             z6–z14      高速/快速路编号与名称。               
+  roads_primary_secondary_text    z8–z14      主次干道名称。                        
+  roads_minor_text                z10–z14     支路、小路名称。                      
+  roads_path_text                 z12–z14     步道、自行车道名称，通常很少显示。    
+  railways_text                   z8–z14      铁路名称。                            
+  waterways_river_text            z8–z14      主河流名称。                          
+  waterways_canal_text            z9–z14      运河名称。                            
+  waterways_stream_text           z11–z14     小溪/支流名称，通常低优先级。         
+  water_text                      z4–z14      湖泊/海洋名称。                       
+  landuse_text                    z8–z14      仅保留少量大面积土地利用名称。        
+  pois_major_text                 z10–z14     重要 POI 名称。                       
+  pois_minor_text                 z12–z14     普通 POI 名称。                       
+  transport_text                  z10–z14     公交站/交通点名称。                   
+
+# 优化后设计
+# design
+  ### 几何图层（layers）— 16 层                                                                                                                  
+  ┌───────────┬─────────┬──────────────────────────────────────────────────────┐                                                                 
+  │ 图层名    │ zoom    │ 说明                                                 │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ admin     │ z0–z12  │ 行政边界（国家/省州/市县区）         │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ places    │ z0–z14  │ 地点（国家/城市/乡镇/村落）          │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ places_a  │ z7–z12  │ 城市面状边界                                         │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ roads     │ z8–z14  │ 道路（高速至步道）                   │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ railways  │ z8–z14  │ 铁路                                                 │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ waterways │ z8–z14  │ 水系（河流/运河/溪流）               │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ water     │ z4–z14  │ 湖泊、海洋、宽水体                                   │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ natural_a │ z4–z14  │ 自然面（森林/山地/冰川等）           │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ natural   │ z8–z14  │ 自然点（山峰/树等）                  │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ landuse   │ z8–z14  │ 土地利用（居住/商业/工业/农业/休闲） │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ protected │ z7–z12  │ 保护区                                               │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ pois      │ z10–z14 │ POI（按 fclass 区分重要/一般）                       │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ pofw      │ z10–z14 │ 宗教场所                                             │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ transport │ z10–z14 │ 公交站、地铁站、交通点                               │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ traffic   │ z12–z14 │ 信号灯                                               │                                                                 
+  ├───────────┼─────────┼──────────────────────────────────────────────────────┤                                                                 
+  │ buildings │ z13–z14 │ 建筑（地标/普通）                    │                                                                 
+  └───────────┴─────────┴──────────────────────────────────────────────────────┘
+  ### 文本图层（text_layers）— 8 层                                                                                                              
+  ┌───────────┬─────────┬───────────────────────────┐                                                                                            
+  │ 图层名    │ zoom    │ 说明                      │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ places    │ z0–z14  │ 国家/城市/乡镇/村落等名称 │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ roads     │ z8–z14  │ 道路编号与名称            │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ water     │ z4–z14  │ 湖泊/海洋名称             │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ waterways │ z8–z14  │ 河流/运河/溪流名称        │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ landuse   │ z8–z14  │ 少量大面积土地利用名称    │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ railways  │ z8–z14  │ 铁路名称                  │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ pois      │ z10–z14 │ POI 名称                  │                                                                                            
+  ├───────────┼─────────┼───────────────────────────┤                                                                                            
+  │ transport │ z10–z14 │ 公交站/交通点名称         │                                                                                            
+  └───────────┴─────────┴───────────────────────────┘ 
+
+# maplibre layers
+  layers: [
+      // ===== 渲染层 (source: localmap) =====
+      // ===== 背景 =====
+      {
+        id: 'background',
+        type: 'background',
+        paint: {
+          'background-color': '#f2efe9'
+        }
+      },
+      // ===== 自然要素 =====
+      // 水域面
+      {
+        id: 'water',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'water',
+        minzoom: 1,
+        paint: {
+          'fill-color': '#aad3df'
+        }
+      },
+      // 河流 / 溪流
+      {
+        id: 'waterways-river',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'waterways',
+        filter: ['match', ['get', 'fclass'], ['river', 'stream'], true, false],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#7bc8e5',
+          'line-width': ['interpolate', ['exponential', 1.4], ['zoom'],
+            7, 0.6,
+            10, 1.5,
+            14, 3,
+            18, 5
+          ]
+        }
+      },
+      // 渠道 / 排水
+      {
+        id: 'waterways-canal',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'waterways',
+        filter: ['match', ['get', 'fclass'], ['canal', 'drain', 'ditch'], true, false],
+        minzoom: 2,
+        layout: { 'line-cap': 'round' },
+        paint: {
+          'line-color': '#aad3df',
+          'line-width': ['interpolate', ['exponential', 1.3], ['zoom'],
+            8, 0.5,
+            14, 2,
+            18, 3.5
+          ]
+        }
+      },
+      // 公园 / 绿地
+      {
+        id: 'park',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'landuse',
+        filter: ['match', ['get', 'fclass'],
+          ['park', 'recreation_ground', 'garden', 'allotments', 'grass', 'village_green', 'common', 'playground'],
+          true, false
+        ],
+        minzoom: 4,
+        paint: { 'fill-color': '#c8e6c9' }
+      },
+      // 居住 / 工业 / 其他用地（排除已绘制的）
+      {
+        id: 'landuse-other',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'landuse',
+        filter: ['match', ['get', 'fclass'],
+          ['park', 'recreation_ground', 'allotments', 'grass', 'forest', 'scrub', 'farmland', 'farmyard', 'orchard', 'vineyard', 'meadow'],
+          false, true // 匹配排除列表返回 false，其他返回 true
+        ],
+        minzoom: 4,
+        paint: { 'fill-color': '#e8e4d9' }
+      },
+      // 林地
+      {
+        id: 'forest',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'landuse',
+        filter: ['match', ['get', 'fclass'], ['forest', 'scrub'], true, false],
+        minzoom: 4,
+        paint: { 'fill-color': '#88b378' }
+      },
+      // 农田
+      {
+        id: 'farmland',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'landuse',
+        filter: ['match', ['get', 'fclass'],
+          ['farmland', 'farmyard', 'orchard', 'vineyard', 'meadow'],
+          true, false
+        ],
+        minzoom: 4,
+        paint: { 'fill-color': '#eaf0d5' }
+      },
+      // 保护区
+      {
+        id: 'protected',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'protected',
+        minzoom: 6,
+        maxzoom: 12,
+        paint: {
+          'fill-color': '#88b378',
+          'fill-opacity': 0.5
+        }
+      },
+      // ===== 行政边界 =====
+      // 地级市界
+      {
+        id: 'admin-state',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'admin',
+        filter: ['==', ['get', 'fclass'], 'admin_level6'], // 优化：单值等值匹配
+        minzoom: 1,
+        maxzoom: 12,
+        paint: {
+          'line-color': '#b0b0b0',
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            4, 0.6,
+            10, 1.4
+          ],
+          'line-dasharray': [3, 2]
+        }
+      },
+      // 县 / 区 / 乡镇界
+      {
+        id: 'admin-other',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'admin',
+        filter: ['match', ['get', 'fclass'], ['admin_level7', 'admin_level8', 'admin_level10'], true, false],
+        minzoom: 1,
+        maxzoom: 12,
+        paint: {
+          'line-color': '#b0b0b0',
+          'line-width': 0.6,
+          'line-dasharray': [2, 1.5],
+          'line-opacity': 0.7
+        }
+      },
+
+      // =============================================
+      // ===== 道路层（按画家算法重排） =====
+      // =============================================
+
+      // ---- 支路 casing (最低等级) ----
+      {
+        id: 'minor-case',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['service', 'track', 'track_grade1', 'track_grade2', 'track_grade3', 'footway', 'path', 'cycleway', 'pedestrian', 'steps', 'bridleway', 'living_street', 'construction', 'raceway', 'rest_area'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#e0e0e0',
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            12, 0.4,
+            14, 2,
+            18, 3.5
+          ]
+        }
+      },
+      // ---- 次干道 casing ----
+      {
+        id: 'secondary-case',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['tertiary', 'tertiary_link', 'unclassified', 'residential', 'road'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#cccccc',
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            10, 0.8,
+            13, 2.5,
+            14, 4,
+            18, 6
+          ]
+        }
+      },
+      // ---- 主路 casing ----
+      {
+        id: 'primary-case',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['primary', 'primary_link', 'secondary', 'secondary_link'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#aaaaaa',
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            8, 1.5,
+            12, 3.5,
+            14, 6,
+            18, 9
+          ]
+        }
+      },
+      // ---- 高速 / 主干 casing ----
+      {
+        id: 'motorway-case',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['motorway', 'motorway_link', 'trunk', 'trunk_link'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#b86a14', // 优化：调深描边颜色，提供高清晰度的轮廓效果
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            5, 1.5,
+            9, 3,
+            14, 8,
+            18, 12
+          ]
+        }
+      },
+
+      // ---- 支路 fill (最低等级 fill) ----
+      {
+        id: 'minor-road',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['service', 'track', 'track_grade1', 'track_grade2', 'track_grade3', 'footway', 'path', 'cycleway', 'pedestrian', 'steps', 'bridleway', 'living_street', 'construction', 'raceway', 'rest_area'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#FAFAFA',
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            12, 0.3,
+            14, 1.4,
+            18, 2.5
+          ]
+        }
+      },
+      // ---- 次干道 fill ----
+      {
+        id: 'secondary-road',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['tertiary', 'tertiary_link', 'unclassified', 'residential', 'road'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#FFFFFF',
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            10, 0.5,
+            13, 1.8,
+            14, 3,
+            18, 4.5
+          ]
+        }
+      },
+      // ---- 主路 fill ----
+      {
+        id: 'primary',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['primary', 'primary_link', 'secondary', 'secondary_link'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#FFFFFF',
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            8, 1,
+            12, 2.6,
+            14, 4.5,
+            18, 6.5
+          ]
+        }
+      },
+      // ---- 高速 / 主干 fill ----
+      {
+        id: 'motorway',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match', ['get', 'fclass'],
+          ['motorway', 'motorway_link', 'trunk', 'trunk_link'],
+          true, false
+        ],
+        minzoom: 2,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': '#f0a848',
+          'line-width': ['interpolate', ['exponential', 1.5], ['zoom'],
+            5, 1,
+            9, 2.2,
+            14, 6,
+            18, 9
+          ]
+        }
+      },
+
+      // ===== 铁路 =====
+      // 修正：铁路黑白轨交替渲染规范，底层设为深灰色宽实线，顶层设为白色窄虚线
+      {
+        id: 'railway',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'railways',
+        minzoom: 4,
+        paint: {
+          'line-color': '#555555', // 深灰底色
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            10, 1.2, // 底层稍宽于顶层虚线
+            14, 2.6,
+            18, 4.0
+          ]
+        }
+      },
+      {
+        id: 'railway-core',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'railways',
+        minzoom: 4,
+        paint: {
+          'line-color': '#FFFFFF', // 白色虚线在上方叠加
+          'line-width': ['interpolate', ['linear'], ['zoom'],
+            10, 0.6,
+            14, 1.6,
+            18, 2.5
+          ],
+          'line-dasharray': [4, 4] // 完美的“枕木/铁轨”交替斑马线效果
+        }
+      },
+      // ===== 建筑 =====
+      {
+        id: 'building',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'buildings',
+        minzoom: 13,
+        paint: {
+          'fill-color': '#e0dcd0',
+          'fill-opacity': 0.85,
+          'fill-outline-color': '#c0b8a8'
+        }
+      },
+
+      // =============================================
+      // ===== 标注层 =====
+      // =============================================
+
+      // 城市 / 直辖市 / 省会
+      {
+        id: 'place-city',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['city', 'national_capital', 'region'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], ''] // 修正：安全过滤无名及缺失要素
+        ],
+        minzoom: 6,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            5, 12,
+            8, 14,
+            10, 16,
+            14, 18,
+            18, 22
+          ],
+          'text-max-width': 8,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'symbol-placement': 'point',
+          'text-padding': 2
+        },
+        paint: {
+          'text-color': '#333333',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.8,
+          'text-halo-blur': 0.3
+        }
+      },
+      // 区县
+      {
+        id: 'place-county',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['county', 'district'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 8,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            8, 10,
+            12, 13,
+            14, 14,
+            18, 17
+          ],
+          'text-max-width': 7,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'symbol-placement': 'point',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#555555',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.2,
+          'text-halo-blur': 0.2
+        }
+      },
+      // 镇
+      {
+        id: 'place-town',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+          ['==', ['get', 'fclass'], 'town'], // 优化：等值匹配
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 9,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            9, 10,
+            12, 14,
+            14, 15,
+            18, 18
+          ],
+          'text-max-width': 7,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'symbol-placement': 'point',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#555555',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.2,
+          'text-halo-blur': 0.2
+        }
+      },
+      // 村 / 小地名
+      {
+        id: 'place-village',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['village', 'hamlet', 'locality'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 12,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            12, 9,
+            14, 11,
+            18, 14
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'symbol-placement': 'point',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#777777',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.0,
+          'text-halo-blur': 0.2
+        }
+      },
+      // 街道 / 社区 / 郊区
+      {
+        id: 'place-suburb',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['suburb', 'neighbourhood', 'quarter'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 11,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            11, 10,
+            14, 12,
+            18, 15
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'symbol-placement': 'point',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#777777',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.0,
+          'text-halo-blur': 0.2
+        }
+      },
+
+      // ---- 道路标签 ----
+      // 高速 / 主干道名
+      {
+        id: 'road-label-motorway',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'roads_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['motorway', 'trunk', 'motorway_link', 'trunk_link'], true, false],
+          ['any',
+            ['!=', ['coalesce', ['get', 'name'], ''], ''],
+            ['has', 'ref']
+          ]
+        ],
+        minzoom: 8,
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': [
+            'case',
+            ['all', ['has', 'name'], ['!=', ['get', 'name'], '']],
+            ['get', 'name'],
+            ['get', 'ref']
+          ],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            7, 9,
+            10, 11,
+            14, 13,
+            18, 16
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'text-rotation-alignment': 'map',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#3b6ea5',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.5,
+          'text-halo-blur': 0.2
+        }
+      },
+      // 一级 / 二级公路名
+      {
+        id: 'road-label-primary',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'roads_text',
+        filter: ['all',
+          // 修正：移除了 motorway_link 和 trunk_link，避免与高速图层冲突产生重复渲染
+          ['match', ['get', 'fclass'], ['primary', 'primary_link', 'secondary', 'secondary_link'], true, false],
+          ['any',
+            ['!=', ['coalesce', ['get', 'name'], ''], ''],
+            ['has', 'ref']
+          ]
+        ],
+        minzoom: 9,
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': [
+            'case',
+            ['all', ['has', 'name'], ['!=', ['get', 'name'], '']],
+            ['get', 'name'],
+            ['get', 'ref']
+          ],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            9, 9,
+            12, 11,
+            14, 12,
+            18, 15
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'text-rotation-alignment': 'map',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#555555',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.3,
+          'text-halo-blur': 0.2
+        }
+      },
+      // 三级 / 普通道路名
+      {
+        id: 'road-label-tertiary',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'roads_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['tertiary', 'tertiary_link', 'residential', 'unclassified', 'living_street', 'pedestrian'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 12,
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            12, 9,
+            14, 11,
+            18, 14
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'text-rotation-alignment': 'map',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#777777',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.0,
+          'text-halo-blur': 0.2
+        }
+      },
+
+      // ---- 水系标签 ----
+      // 湖泊 / 水库名
+      {
+        id: 'water-label-lake',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'water_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['water', 'reservoir'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 8,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            8, 10,
+            11, 12,
+            14, 14,
+            18, 17
+          ],
+          'text-max-width': 8,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'symbol-placement': 'point',
+          'text-padding': 2
+        },
+        paint: {
+          'text-color': '#3b6ea5',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.2,
+          'text-halo-blur': 0.3
+        }
+      },
+      // 河流 / 运河名
+      {
+        id: 'water-label-river',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'waterways_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['river', 'stream', 'canal', 'drain'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 10,
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            10, 9,
+            12, 11,
+            14, 12,
+            18, 15
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'text-rotation-alignment': 'map',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#3b6ea5',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.2,
+          'text-halo-blur': 0.2
+        }
+      },
+
+      // ---- 用地标签 ----
+      {
+        id: 'landuse-label',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'landuse_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'],
+            ['park', 'forest', 'recreation_ground', 'commercial', 'retail', 'industrial', 'farmland', 'meadow', 'grass', 'orchard', 'cemetery'],
+            true, false
+          ],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 11,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            11, 9,
+            13, 11,
+            14, 12,
+            18, 15
+          ],
+          'text-max-width': 7,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'symbol-placement': 'point',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#4a6741',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.0,
+          'text-halo-blur': 0.2
+        }
+      },
+
+      // ---- 铁路标签 ----
+      {
+        id: 'railways-label',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'railways_text',
+        filter: ['all',
+          ['match', ['get', 'fclass'], ['rail', 'light_rail', 'monorail', 'funicular', 'tram'], true, false],
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 10,
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            10, 9,
+            12, 10,
+            14, 11,
+            18, 14
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'text-rotation-alignment': 'map',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#7a5a5a',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.0,
+          'text-halo-blur': 0.2
+        }
+      },
+      // 地铁名
+      {
+        id: 'subway-label',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'railways_text',
+        filter: ['all',
+          ['==', ['get', 'fclass'], 'subway'], // 优化：单值匹配
+          ['!=', ['coalesce', ['get', 'name'], ''], '']
+        ],
+        minzoom: 11,
+        layout: {
+          'symbol-placement': 'line',
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            11, 9,
+            13, 10,
+            14, 11,
+            18, 14
+          ],
+          'text-max-width': 6,
+          'text-anchor': 'center',
+          'text-justify': 'center',
+          'text-rotation-alignment': 'map',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#008080',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 1.0,
+          'text-halo-blur': 0.2
+        }
+      },
+
+      // ---- 交通设施 ----
+      {
+        id: 'transport-label',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'transport_text',
+        filter: ['!=', ['coalesce', ['get', 'name'], ''], ''], // 优化：强制规避 null 异常通过
+        minzoom: 12,
+        layout: {
+          'text-field': ['get', 'name'],
+          'text-font': ['Klokantech Noto Sans Regular'],
+          'text-size': ['interpolate', ['linear'], ['zoom'],
+            12, 9,
+            14, 11,
+            18, 14
+          ],
+          'text-max-width': 8,
+          'text-offset': [0, 1],
+          'text-anchor': 'bottom',
+          'symbol-placement': 'point',
+          'text-padding': 1
+        },
+        paint: {
+          'text-color': '#3A6FB0',
+          'text-halo-color': '#FFFFFF',
+          'text-halo-width': 0.8
+        }
+      }
+  ]

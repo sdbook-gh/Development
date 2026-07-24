@@ -1,0 +1,61 @@
+{
+  "global_gdal_args": [],
+  "layers": {
+    "places": {
+      "enabled": true,
+      "shapefilematch": ".*_places_f.*shp",
+      "select": "osm_id,fclass,population,name",
+      "where": "fclass IN ('city','national_capital','region','county','district','subcounty','town','village','hamlet','locality','farm','island','suburb','neighbourhood','quarter') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "places_a": {
+      "enabled": true,
+      "shapefilematch": ".*_places_a_.*shp",
+      "select": "osm_id,fclass,population,name",
+      "where": "fclass IN ('city','national_capital','region','county','district','subcounty','town','village','hamlet','locality','farm','island','suburb','neighbourhood','quarter') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "admin": {
+      "enabled": true,
+      "shapefilematch": ".*_adminareas_a_.*shp",
+      "select": "osm_id,fclass,name",
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "pois": {
+      "enabled": true,
+      "shapefilematch": ".*_pois_f.*shp",
+      "select": "osm_id,fclass,name",
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "pois_a": {
+      "enabled": true,
+      "shapefilematch": ".*_pois_a_.*shp",
+      "select": "osm_id,fclass,name",
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "transport": {
+      "enabled": true,
+      "shapefilematch": ".*_transport_f.*shp",
+      "select": "osm_id,fclass,name",
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "pofw": {
+      "enabled": true,
+      "shapefilematch": ".*_pofw_f.*shp",
+      "select": "osm_id,fclass,name",
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "landuse": {
+      "enabled": true,
+      "shapefilematch": ".*_landuse_a_.*shp",
+      "select": "osm_id,fclass,name",
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    }
+  }
+}

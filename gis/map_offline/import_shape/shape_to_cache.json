@@ -1,0 +1,19 @@
+{
+  "global_gdal_args": [
+    "-f",
+    "GeoJSONSeq",
+    "-lco",
+    "RS=YES",
+    "-lco",
+    "COORDINATE_PRECISION=7"
+  ],
+  "layers": {
+    "roads": {
+      "enabled": true,
+      "shapefilematch": ".*_roads_f.*shp",
+      "select": "osm_id,fclass,name,ref,oneway,maxspeed,layer,bridge,tunnel",
+      "where": "",
+      "gdal_args": []
+    }
+  }
+}

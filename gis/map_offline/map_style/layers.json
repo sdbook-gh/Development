@@ -1,0 +1,1179 @@
+layers: [
+    // ===== 背景 =====
+    {
+        id: 'background',
+        type: 'background',
+        paint: { 'background-color': '#f2efe9'
+        }
+    },
+    // ===== 自然要素 =====
+    // 水域面
+    {
+        id: 'water',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'water',
+        minzoom: 1,
+        paint: { 'fill-color': '#aad3df'
+        }
+    },
+    // 河流 / 溪流 (移动端线条加粗一点点，防止看不清)
+    {
+        id: 'waterways-river',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'waterways',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['river', 'stream'
+            ],
+            true,
+            false
+        ],
+        minzoom: 4, // 优化：延后加载
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#7bc8e5',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.4
+                ],
+                ['zoom'
+                ],
+                10,
+                1.2, // 移动端基础宽度增加
+                14,
+                3,
+                18,
+                5
+            ]
+        }
+    },
+    // 渠道 / 排水
+    {
+        id: 'waterways-canal',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'waterways',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['canal', 'drain', 'ditch'
+            ],
+            true,
+            false
+        ],
+        minzoom: 5, // 优化：延后加载
+        layout: { 'line-cap': 'round'
+        },
+        paint: {
+            'line-color': '#aad3df',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.3
+                ],
+                ['zoom'
+                ],
+                10,
+                1, // 移动端基础宽度增加
+                14,
+                2,
+                18,
+                3.5
+            ]
+        }
+    },
+    // ===== 用地类型 =====
+    // 农田
+    {
+        id: 'farmland',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'landuse',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['farmland', 'farmyard', 'orchard', 'vineyard', 'meadow'
+            ],
+            true,
+            false
+        ],
+        minzoom: 6, // 优化：延后加载
+        paint: { 'fill-color': '#eaf0d5'
+        }
+    },
+    // 林地
+    {
+        id: 'forest',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'landuse',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['forest', 'scrub'
+            ],
+            true,
+            false
+        ],
+        minzoom: 6, // 优化：延后加载
+        paint: { 'fill-color': '#88b378'
+        }
+    },
+    // 公园 / 绿地
+    {
+        id: 'park',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'landuse',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['park', 'recreation_ground', 'garden', 'allotments', 'grass', 'village_green', 'common', 'playground'
+            ],
+            true,
+            false
+        ],
+        minzoom: 6, // 优化：延后加载
+        paint: { 'fill-color': '#c8e6c9'
+        }
+    },
+    // 其他用地 (移动端建议隐藏，直接透出背景色，减少 Overdraw)
+    // {
+    //   id: 'landuse-other',
+    //   type: 'fill',
+    //   source: 'localmap',
+    //   'source-layer': 'landuse',
+    //   filter: [...],
+    //   minzoom: 6,
+    //   paint: { 'fill-color': '#e8e4d9' }
+    // },
+    // 保护区
+    {
+        id: 'protected',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'protected',
+        minzoom: 8, // 优化：延后加载
+        maxzoom: 12,
+        paint: { 'fill-color': '#88b378', 'fill-opacity': 0.5
+        }
+    },
+    // ===== 行政边界 =====
+    {
+        id: 'admin-state',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'admin',
+        filter: ['==',
+            ['get', 'fclass'
+            ], 'admin_level6'
+        ],
+        minzoom: 3, // 优化：延后加载
+        maxzoom: 12,
+        paint: {
+            'line-color': '#b0b0b0',
+            'line-width': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                6,
+                0.8,
+                10,
+                1.4
+            ],
+            'line-dasharray': [
+                3,
+                2
+            ]
+        }
+    },
+    {
+        id: 'admin-other',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'admin',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['admin_level7', 'admin_level8', 'admin_level10'
+            ],
+            true,
+            false
+        ],
+        minzoom: 4, // 优化：延后加载
+        maxzoom: 12,
+        paint: {
+            'line-color': '#b0b0b0',
+            'line-width': 0.6,
+            'line-dasharray': [
+                2,
+                1.5
+            ],
+            'line-opacity': 0.7
+        }
+    },
+    // =============================================
+    // ===== 道路层 (移动端核心优化：大幅减少绘制) =====
+    // =============================================
+    // ---- 高速 / 主干 casing ----
+    {
+        id: 'motorway-case',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['motorway', 'motorway_link', 'trunk', 'trunk_link'
+            ],
+            true,
+            false
+        ],
+        minzoom: 8, // 优化：极晚加载
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#b86a14',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.5
+                ],
+                ['zoom'
+                ],
+                8,
+                1.8,
+                14,
+                8,
+                18,
+                12
+            ]
+        }
+    },
+    // ---- 主路 casing ----
+    {
+        id: 'primary-case',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['primary', 'primary_link', 'secondary', 'secondary_link'
+            ],
+            true,
+            false
+        ],
+        minzoom: 11, // 优化：极晚加载
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#aaaaaa',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.5
+                ],
+                ['zoom'
+                ],
+                11,
+                2,
+                14,
+                6,
+                18,
+                9
+            ]
+        }
+    },
+    // ---- 次干道 casing (移动端可省略，直接画 Fill) ----
+    // {
+    //   id: 'secondary-case',
+    //   type: 'line',
+    //   source: 'localmap',
+    //   'source-layer': 'roads',
+    //   filter: [...],
+    //   minzoom: 13,
+    //   ...
+    // },
+    // ---- 支路 casing (移动端建议完全不画，太细了) ----
+    // {
+    //   id: 'minor-case',
+    //   ...
+    // },
+    // ---- 高速 / 主干 fill ----
+    {
+        id: 'motorway',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['motorway', 'motorway_link', 'trunk', 'trunk_link'
+            ],
+            true,
+            false
+        ],
+        minzoom: 8,
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#f0a848',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.5
+                ],
+                ['zoom'
+                ],
+                8,
+                1.2,
+                14,
+                6,
+                18,
+                9
+            ]
+        }
+    },
+    // ---- 主路 fill ----
+    {
+        id: 'primary',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['primary', 'primary_link', 'secondary', 'secondary_link'
+            ],
+            true,
+            false
+        ],
+        minzoom: 11,
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#FFFFFF',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.5
+                ],
+                ['zoom'
+                ],
+                11,
+                1.5,
+                14,
+                4.5,
+                18,
+                6.5
+            ]
+        }
+    },
+    // ---- 次干道 fill (合并 tertiary 等，减少判断) ----
+    {
+        id: 'secondary-road',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['tertiary', 'tertiary_link', 'unclassified', 'residential', 'road'
+            ],
+            true,
+            false
+        ],
+        minzoom: 13, // 优化：极晚加载
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#FFFFFF',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.5
+                ],
+                ['zoom'
+                ],
+                13,
+                1.5,
+                16,
+                3,
+                18,
+                4.5
+            ]
+        }
+    },
+    // ---- 支路 fill (仅保留主要步行道路，减少噪音) ----
+    {
+        id: 'minor-road',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'roads',
+        filter: ['match',
+            ['get', 'fclass'
+            ],
+            ['service', 'living_street', 'pedestrian'
+            ],
+            true,
+            false
+        ], // 移除了 track/path 等
+        minzoom: 15, // 优化：极晚加载
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#FAFAFA',
+            'line-width': ['interpolate',
+                ['exponential',
+                    1.5
+                ],
+                ['zoom'
+                ],
+                15,
+                1,
+                18,
+                2.5
+            ]
+        }
+    },
+    // ===== 铁路 =====
+    {
+        id: 'railway',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'railways',
+        minzoom: 12, // 优化：极晚加载
+        paint: {
+            'line-color': '#555555',
+            'line-width': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                12,
+                1.5,
+                18,
+                4.0
+            ]
+        }
+    },
+    {
+        id: 'railway-core',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'railways',
+        minzoom: 12,
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#FFFFFF',
+            'line-width': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                12,
+                0.8,
+                18,
+                2.5
+            ],
+            'line-dasharray': [
+                4,
+                4
+            ]
+        }
+    },
+    // ===== 建筑 =====
+    {
+        id: 'building-fill',
+        type: 'fill',
+        source: 'localmap',
+        'source-layer': 'buildings',
+        minzoom: 14, // 优化：延后加载
+        paint: {
+            'fill-color': '#e0dcd0',
+            'fill-opacity': 0.85
+        }
+    },
+    {
+        id: 'building-outline',
+        type: 'line',
+        source: 'localmap',
+        'source-layer': 'buildings',
+        minzoom: 14,
+        layout: { 'line-cap': 'round', 'line-join': 'round'
+        },
+        paint: {
+            'line-color': '#c0b8a8',
+            'line-width': 0.5
+        }
+    },
+    // =============================================
+    // ===== 标注层 (移动端：字大、描边粗) =====
+    // =============================================
+    // 城市 / 直辖市 / 省会
+    {
+        id: 'place-city',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['city', 'national_capital', 'region'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 7, // 优化：延后加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                7,
+                14,
+                10,
+                16,
+                14,
+                20,
+                18,
+                24
+            ], // 字号+2
+            'text-max-width': 8,
+            'text-anchor': 'center',
+            'text-padding': 3 // 增加间距
+        },
+        paint: {
+            'text-color': '#333333',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 2.2, // 描边加粗
+            'text-halo-blur': 0.3
+        }
+    },
+    // 区县
+    {
+        id: 'place-county',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['county', 'district'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 9, // 优化：延后加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                9,
+                12,
+                12,
+                14,
+                14,
+                16,
+                18,
+                19
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#555555',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.8, // 描边加粗
+            'text-halo-blur': 0.2
+        }
+    },
+    // 镇
+    {
+        id: 'place-town',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+            ['==',
+                ['get', 'fclass'
+                ], 'town'
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 11, // 优化：延后加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                11,
+                12,
+                14,
+                14,
+                18,
+                18
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#555555',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.8,
+            'text-halo-blur': 0.2
+        }
+    },
+    // 村 / 小地名
+    {
+        id: 'place-village',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['village', 'hamlet', 'locality'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 13, // 优化：延后加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                13,
+                11,
+                16,
+                13,
+                18,
+                15
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#777777',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5, // 描边加粗
+            'text-halo-blur': 0.2
+        }
+    },
+    // 街道 / 社区
+    {
+        id: 'place-suburb',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'places_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['suburb', 'neighbourhood', 'quarter'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 12, // 优化：延后加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                12,
+                11,
+                14,
+                13,
+                18,
+                16
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#777777',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5,
+            'text-halo-blur': 0.2
+        }
+    },
+    // ---- 道路标签 ----
+    {
+        id: 'road-label-motorway',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'roads_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['motorway', 'trunk'
+                ],
+                true,
+                false
+            ],
+            ['any',
+                ['!=',
+                    ['coalesce',
+                        ['get', 'name'
+                        ], ''
+                    ], ''
+                ],
+                ['has', 'ref'
+                ]
+            ]
+        ],
+        minzoom: 10, // 优化：延后加载
+        layout: {
+            'symbol-placement': 'line',
+            'text-field': ['case',
+                ['all',
+                    ['has', 'name'
+                    ],
+                    ['!=',
+                        ['get', 'name'
+                        ], ''
+                    ]
+                ],
+                ['get', 'name'
+                ],
+                ['get', 'ref'
+                ]
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                10,
+                12,
+                14,
+                14,
+                18,
+                18
+            ], // 字号+2
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#3b6ea5',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 2.0, // 描边加粗
+            'text-halo-blur': 0.2
+        }
+    },
+    {
+        id: 'road-label-primary',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'roads_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['primary', 'secondary'
+                ],
+                true,
+                false
+            ],
+            ['any',
+                ['!=',
+                    ['coalesce',
+                        ['get', 'name'
+                        ], ''
+                    ], ''
+                ],
+                ['has', 'ref'
+                ]
+            ]
+        ],
+        minzoom: 12, // 优化：延后加载
+        layout: {
+            'symbol-placement': 'line',
+            'text-field': ['case',
+                ['all',
+                    ['has', 'name'
+                    ],
+                    ['!=',
+                        ['get', 'name'
+                        ], ''
+                    ]
+                ],
+                ['get', 'name'
+                ],
+                ['get', 'ref'
+                ]
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                12,
+                11,
+                14,
+                13,
+                18,
+                16
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#555555',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.8,
+            'text-halo-blur': 0.2
+        }
+    },
+    {
+        id: 'road-label-tertiary',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'roads_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['tertiary', 'residential'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 14, // 优化：极晚加载
+        layout: {
+            'symbol-placement': 'line',
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                14,
+                11,
+                18,
+                14
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#777777',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5,
+            'text-halo-blur': 0.2
+        }
+    },
+    // ---- 水系标签 ----
+    {
+        id: 'water-label-lake',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'water_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['water', 'reservoir'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 10, // 优化：延后加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                10,
+                12,
+                14,
+                15,
+                18,
+                19
+            ],
+            'text-padding': 3
+        },
+        paint: {
+            'text-color': '#3b6ea5',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.8,
+            'text-halo-blur': 0.3
+        }
+    },
+    {
+        id: 'water-label-river',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'waterways_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['river', 'canal'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 12, // 优化：延后加载
+        layout: {
+            'symbol-placement': 'line',
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                12,
+                11,
+                14,
+                13,
+                18,
+                16
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#3b6ea5',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.8,
+            'text-halo-blur': 0.2
+        }
+    },
+    // ---- 用地标签 (移动端减少显示，防止遮挡) ----
+    {
+        id: 'landuse-label',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'landuse_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['park', 'forest', 'commercial', 'industrial'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 13, // 优化：极晚加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                13,
+                11,
+                16,
+                13,
+                18,
+                15
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#4a6741',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5,
+            'text-halo-blur': 0.2
+        }
+    },
+    // ---- 铁路标签 ----
+    {
+        id: 'railways-label',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'railways_text',
+        filter: ['all',
+            ['match',
+                ['get', 'fclass'
+                ],
+                ['rail', 'light_rail'
+                ],
+                true,
+                false
+            ],
+            ['!=',
+                ['coalesce',
+                    ['get', 'name'
+                    ], ''
+                ], ''
+            ]
+        ],
+        minzoom: 13, // 优化：极晚加载
+        layout: {
+            'symbol-placement': 'line',
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                13,
+                10,
+                16,
+                12,
+                18,
+                14
+            ],
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#7a5a5a',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5,
+            'text-halo-blur': 0.2
+        }
+    },
+    // ---- 交通设施 ----
+    {
+        id: 'transport-label',
+        type: 'symbol',
+        source: 'localmap',
+        'source-layer': 'transport_text',
+        filter: ['!=',
+            ['coalesce',
+                ['get', 'name'
+                ], ''
+            ], ''
+        ],
+        minzoom: 13, // 优化：极晚加载
+        layout: {
+            'text-field': ['get', 'name'
+            ],
+            'text-font': ['Klokantech Noto Sans Regular'
+            ],
+            'text-size': ['interpolate',
+                ['linear'
+                ],
+                ['zoom'
+                ],
+                13,
+                11,
+                16,
+                13,
+                18,
+                15
+            ],
+            'text-offset': [
+                0,
+                1.2
+            ], // 稍微拉开距离，方便手指点击
+            'text-anchor': 'bottom',
+            'text-padding': 2
+        },
+        paint: {
+            'text-color': '#3A6FB0',
+            'text-halo-color': '#FFFFFF',
+            'text-halo-width': 1.5
+        }
+    }
+]

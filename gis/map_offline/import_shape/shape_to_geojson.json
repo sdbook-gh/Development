@@ -1,0 +1,214 @@
+{
+  "global_gdal_args": [
+    "-f",
+    "GeoJSONSeq",
+    "-lco",
+    "RS=YES",
+    "-lco",
+    "COORDINATE_PRECISION=6"
+  ],
+  "layers": {
+    "admin": {
+      "shapefilematch": ".*_adminareas_a_.*shp",
+      "zoom_min": 0,
+      "zoom_max": 12,
+      "select": "fclass,name",
+      "simplify": 0.0005,
+      "where": "",
+      "gdal_args": []
+    },
+    "places": {
+      "shapefilematch": ".*_places_f.*shp",
+      "zoom_min": 0,
+      "zoom_max": 14,
+      "select": "fclass,population,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "places_a": {
+      "shapefilematch": ".*_places_a_.*shp",
+      "zoom_min": 7,
+      "zoom_max": 12,
+      "select": "fclass,population,name",
+      "simplify": 0.0001,
+      "where": "",
+      "gdal_args": []
+    },
+    "roads": {
+      "shapefilematch": ".*_roads_f.*shp",
+      "zoom_min": 8,
+      "zoom_max": 14,
+      "select": "fclass,name,ref,oneway,maxspeed,layer,bridge,tunnel",
+      "simplify": 0.0002,
+      "where": "",
+      "gdal_args": []
+    },
+    "railways": {
+      "shapefilematch": ".*_railways_f.*shp",
+      "zoom_min": 8,
+      "zoom_max": 14,
+      "select": "fclass,name,layer,bridge,tunnel",
+      "simplify": 0.0001,
+      "where": "",
+      "gdal_args": []
+    },
+    "waterways": {
+      "shapefilematch": ".*_waterways_f.*shp",
+      "zoom_min": 8,
+      "zoom_max": 14,
+      "select": "fclass,width,name",
+      "simplify": 0.0002,
+      "where": "",
+      "gdal_args": []
+    },
+    "water": {
+      "shapefilematch": ".*_water_a_.*shp",
+      "zoom_min": 4,
+      "zoom_max": 14,
+      "select": "fclass,name",
+      "simplify": 0.0001,
+      "where": "",
+      "gdal_args": []
+    },
+    "natural_a": {
+      "shapefilematch": ".*_natural_a_.*shp",
+      "zoom_min": 4,
+      "zoom_max": 14,
+      "select": "fclass,name",
+      "simplify": 0.0001,
+      "where": "",
+      "gdal_args": []
+    },
+    "natural": {
+      "shapefilematch": ".*_natural_f.*shp",
+      "zoom_min": 8,
+      "zoom_max": 14,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "landuse": {
+      "shapefilematch": ".*_landuse_a_.*shp",
+      "zoom_min": 8,
+      "zoom_max": 14,
+      "select": "fclass,name",
+      "simplify": 0.0001,
+      "where": "",
+      "gdal_args": []
+    },
+    "protected": {
+      "shapefilematch": ".*_protected_areas_a_.*shp",
+      "zoom_min": 7,
+      "zoom_max": 12,
+      "select": "fclass",
+      "simplify": 0.0001,
+      "where": "",
+      "gdal_args": []
+    },
+    "pois": {
+      "shapefilematch": ".*_pois_f.*shp",
+      "zoom_min": 10,
+      "zoom_max": 14,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "pofw": {
+      "shapefilematch": ".*_pofw_f.*shp",
+      "zoom_min": 10,
+      "zoom_max": 14,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "transport": {
+      "shapefilematch": ".*_transport_f.*shp",
+      "zoom_min": 10,
+      "zoom_max": 14,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "traffic": {
+      "shapefilematch": ".*_traffic_f.*shp",
+      "zoom_min": 12,
+      "zoom_max": 14,
+      "select": "fclass,name,calming",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "buildings": {
+      "shapefilematch": ".*_buildings_a_.*shp",
+      "zoom_min": 13,
+      "zoom_max": 14,
+      "select": "fclass,name,type",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    }
+  },
+  "text_layers": {
+    "places": {
+      "shapefilematch": ".*_places_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "fclass IN ('city','national_capital','region','county','district','subcounty','town','village','hamlet','locality','farm','island','suburb','neighbourhood','quarter') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "roads": {
+      "shapefilematch": ".*_roads_f.*shp",
+      "select": "fclass,name,ref",
+      "simplify": 0.0002,
+      "where": "fclass IN ('motorway','trunk','primary','primary_link','motorway_link','trunk_link','secondary','secondary_link','tertiary','tertiary_link','residential','unclassified','living_street','pedestrian') AND (name IS NOT NULL AND name != '' OR ref IS NOT NULL AND ref != '')",
+      "gdal_args": []
+    },
+    "water": {
+      "shapefilematch": ".*_water_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0.0001,
+      "where": "fclass IN ('water','reservoir','basin') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "waterways": {
+      "shapefilematch": ".*_waterways_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0.0002,
+      "where": "fclass IN ('river','stream','canal','drain') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "landuse": {
+      "shapefilematch": ".*_landuse_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0.0001,
+      "where": "fclass IN ('park','forest','recreation_ground','commercial','retail','industrial','farmland','meadow','grass','orchard','cemetery') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "railways": {
+      "shapefilematch": ".*_railways_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0.0001,
+      "where": "fclass IN ('rail','narrow_gauge','light_rail','monorail','funicular','tram','subway') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "pois": {
+      "shapefilematch": ".*_pois_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "transport": {
+      "shapefilematch": ".*_transport_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    }
+  }
+}
