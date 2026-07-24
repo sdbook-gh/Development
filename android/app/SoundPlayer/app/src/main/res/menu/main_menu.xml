@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/menu_seek_settings"
+        android:title="快进/快退秒数"
+        android:icon="@drawable/ic_settings">
+
+        <menu>
+            <group android:checkableBehavior="single">
+                <item
+                    android:id="@+id/seek_5"
+                    android:title="5 秒" />
+                <item
+                    android:id="@+id/seek_10"
+                    android:title="10 秒" />
+                <item
+                    android:id="@+id/seek_20"
+                    android:title="20 秒" />
+                <item
+                    android:id="@+id/seek_30"
+                    android:title="30 秒" />
+                <item
+                    android:id="@+id/seek_60"
+                    android:title="60 秒" />
+            </group>
+        </menu>
+
+    </item>
+
+</menu>
