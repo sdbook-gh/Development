@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高德地图 - 导航算路 & 轨迹导出</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; font-family: "Microsoft YaHei", "PingFang SC", sans-serif; }
+
+        #app { display: flex; height: 100vh; }
+
+        /* ── 侧边栏 ── */
+        #sidebar {
+            width: 380px;
+            min-width: 380px;
+            background: #f8f9fa;
+            border-right: 1px solid #e0e0e0;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        #sidebar h1 {
+            font-size: 18px;
+            color: #1a73e8;
+            text-align: center;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #1a73e8;
+        }
+
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .field-group > label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .field-group > label .hint {
+            font-weight: 400;
+            color: #999;
+            font-size: 12px;
+        }
+
+        input[type="text"], select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #d0d5dd;
+            border-radius: 6px;
+            font-size: 14px;
+            outline: none;
+            transition: border-color .2s;
+        }
+        input[type="text"]:focus, select:focus { border-color: #1a73e8; }
+
+        .coord-row { display: flex; gap: 8px; }
+        .coord-row input { flex: 1; }
+
+        .radio-group {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .radio-group label {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            color: #444;
+        }
+
+        .btn-group { display: flex; gap: 10px; }
+
+        button {
+            flex: 1;
+            padding: 10px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity .2s, transform .1s;
+        }
+        button:active { transform: scale(.97); }
+
+        .btn-primary  { background: #1a73e8; color: #fff; }
+        .btn-success  { background: #34a853; color: #fff; }
+        .btn-warn     { background: #fbbc04; color: #333; }
+        .btn-secondary{ background: #e8eaed;  color: #333; }
+        .btn-danger   { background: #ea4335; color: #fff; }
+
+        button:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* ── 结果信息卡 ── */
+        #result-card {
+            background: #fff;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 14px;
+            font-size: 13px;
+            display: none;
+        }
+        #result-card.visible { display: block; }
+        #result-card .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            border-bottom: 1px dashed #eee;
+        }
+        #result-card .row:last-child { border: none; }
+        #result-card .label { color: #888; }
+        #result-card .value { font-weight: 600; color: #333; }
+
+        /* ── 地图区 ── */
+        #map-container {
+            flex: 1;
+            position: relative;
+        }
+        #map { width: 100%; height: 100%; }
+
+        /* ── 浮动状态提示 ── */
+        #status-tip {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(26,115,232,.92);
+            color: #fff;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 13px;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,.2);
+        }
+        #status-tip.visible { display: block; }
+
+        /* ── Key 输入遮罩 ── */
+        #key-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,.55);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #key-overlay.hidden { display: none; }
+        #key-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 30px;
+            width: 420px;
+            text-align: center;
+        }
+        #key-box h2 { color: #1a73e8; margin-bottom: 8px; }
+        #key-box p { color: #888; font-size: 13px; margin-bottom: 16px; line-height: 1.6; }
+        #key-box input { margin-bottom: 12px; }
+        #key-box .link { color: #1a73e8; text-decoration: none; }
+        #key-box .link:hover { text-decoration: underline; }
+
+        /* 滚动条美化 */
+        #sidebar::-webkit-scrollbar { width: 6px; }
+        #sidebar::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+    </style>
+</head>
+<body>
+
+<!-- ═══════ Key 输入遮罩 ═══════ -->
+<div id="key-overlay">
+    <div id="key-box">
+        <h2>🔑 请输入高德地图 JS API 配置</h2>
+        <p>请输入你申请的高德 Web 端 (JS API) Key 和安全密钥以加载地图。<br>
+           申请地址：<a class="link" href="https://console.amap.com/dev/key/app" target="_blank">高德开放平台</a>
+        </p>
+        <input type="text" id="key-input" placeholder="JS API Key">
+        <input type="text" id="security-input" placeholder="安全密钥 (securityJsCode)">
+        <p style="font-size:12px;color:#999;text-align:left;margin-bottom:12px;line-height:1.6">
+            📌 安全密钥获取方式：<br>
+            高德控制台 → 应用管理 → 你的应用 → 点击「安全密钥」→ 复制<br>
+            2021年12月02日后申请的 Key 必须配置安全密钥
+        </p>
+        <button class="btn-primary" id="load-map-btn" style="width:100%">加载地图</button>
+    </div>
+</div>
+
+<!-- ═══════ 主界面 ═══════ -->
+<div id="app">
+
+    <!-- 侧边栏 -->
+    <div id="sidebar">
+        <h1>🚗 导航算路 & 轨迹导出</h1>
+
+        <!-- 算路类型 -->
+        <div class="field-group">
+            <label>算路类型</label>
+            <div class="radio-group">
+                <label><input type="radio" name="type" value="Driving"  checked> 驾车</label>
+                <label><input type="radio" name="type" value="Walking"> 步行</label>
+                <label><input type="radio" name="type" value="Riding">  骑行</label>
+            </div>
+        </div>
+
+        <!-- 驾车策略 -->
+        <div class="field-group" id="policy-group">
+            <label>驾车策略</label>
+            <select id="policy-select">
+                <option value="LEAST_TIME">最快路线</option>
+                <option value="LEAST_DISTANCE">最短距离</option>
+                <option value="LEAST_FEE">最少费用</option>
+                <option value="REAL_TRAFFIC">实时路况</option>
+            </select>
+        </div>
+
+        <!-- 选点模式 -->
+        <div class="field-group">
+            <label>选点方式</label>
+            <div class="radio-group">
+                <label><input type="radio" name="pickmode" value="click" checked> 地图点击</label>
+                <label><input type="radio" name="pickmode" value="manual"> 手动输入</label>
+            </div>
+        </div>
+
+        <!-- 起点 -->
+        <div class="field-group">
+            <label>起点 <span class="hint">（格式：经度在前，纬度在后）</span></label>
+            <div class="coord-row">
+                <input type="text" id="origin-lng" placeholder="起点经度 (如 103.8344)" disabled>
+                <input type="text" id="origin-lat" placeholder="起点纬度 (如 36.0611)" disabled>
+            </div>
+        </div>
+
+        <!-- 途经点 -->
+        <div class="field-group" id="waypoints-group" style="display:none">
+            <label>途经点 <span class="hint">（地图点击添加，可选）</span></label>
+            <div id="waypoints-list"></div>
+            <button class="btn-warn" id="add-waypoint-btn" style="margin-top:4px">+ 添加途经点</button>
+        </div>
+
+        <!-- 终点 -->
+        <div class="field-group">
+            <label>终点 <span class="hint">（格式：经度在前，纬度在后）</span></label>
+            <div class="coord-row">
+                <input type="text" id="dest-lng" placeholder="终点经度 (如 121.4737)" disabled>
+                <input type="text" id="dest-lat" placeholder="终点纬度 (如 31.2304)" disabled>
+            </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="btn-group">
+            <button class="btn-primary" id="calc-btn" disabled>开始算路</button>
+            <button class="btn-secondary" id="clear-btn">清空</button>
+        </div>
+
+        <!-- 结果信息 -->
+        <div id="result-card">
+            <div class="row"><span class="label">总距离</span><span class="value" id="r-distance">-</span></div>
+            <div class="row"><span class="label">总时间</span><span class="value" id="r-time">-</span></div>
+            <div class="row"><span class="label">轨迹点数</span><span class="value" id="r-count">-</span></div>
+            <div class="row"><span class="label">路线策略</span><span class="value" id="r-policy">-</span></div>
+        </div>
+
+        <!-- 导出按钮 -->
+        <div class="btn-group">
+            <button class="btn-success" id="export-btn" disabled>导出轨迹 JSON</button>
+        </div>
+
+        <!-- 使用说明 -->
+        <div style="margin-top:auto;padding-top:16px;border-top:1px solid #e0e0e0;font-size:12px;color:#aaa;line-height:1.8">
+            <b>使用说明</b><br>
+            1. 地图点击模式：点击地图依次设置起点 -> 途经点 -> 终点<br>
+            2. 手动输入模式：直接填写经纬度坐标<br>
+            3. <b style="color:#ea4335">⚠️ 坐标格式：经度在前，纬度在后</b><br>
+            　 如兰州：经度=103.8344, 纬度=36.0611<br>
+            4. 驾车类型支持途经点；步行/骑行不支持<br>
+            5. 算路完成后可导出轨迹为 JSON 文件<br>
+            6. 算路失败时按 F12 查看 Console 获取详细错误
+        </div>
+    </div>
+
+    <!-- 地图 -->
+    <div id="map-container">
+        <div id="status-tip"></div>
+        <div id="map"></div>
+    </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════
+   全局状态
+   ═══════════════════════════════════════════════ */
+var map          = null;        // 地图实例
+var driving      = null;         // 驾车路线规划
+var walking      = null;         // 步行路线规划
+var riding       = null;         // 骑行路线规划
+var currentRoute = null;         // 当前算路结果（route对象）
+var trackPoints  = null;         // 当前轨迹坐标点 [[lng,lat], ...]
+
+var markers      = [];           // 所有标记
+var polyline     = null;         // 轨迹线
+var pickStep     = 0;            // 0=待选起点, 1=选途经点, 2=选终点
+var waypoints    = [];           // 途经点 [[lng,lat], ...]
+var origin       = null;         // 起点 [lng,lat]
+var destination  = null;         // 终点 [lng,lat]
+
+var MARKER_ICONS = {
+    origin:  '<div style="background:#34a853;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">起</div>',
+    waypoint:'<div style="background:#fbbc04;color:#333;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">经</div>',
+    dest:    '<div style="background:#ea4335;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:bold;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.4)">终</div>'
+};
+
+/* ═══════════════════════════════════════════════
+   工具函数
+   ═══════════════════════════════════════════════ */
+function $(id) { return document.getElementById(id); }
+
+function showTip(msg, duration) {
+    var tip = $('status-tip');
+    tip.textContent = msg;
+    tip.classList.add('visible');
+    if (duration) setTimeout(function() { tip.classList.remove('visible'); }, duration);
+}
+
+function formatDistance(m) {
+    if (m >= 1000) return (m / 1000).toFixed(2) + ' 公里';
+    return m + ' 米';
+}
+
+function formatTime(s) {
+    var h = Math.floor(s / 3600);
+    var m = Math.floor((s % 3600) / 60);
+    if (h > 0) return h + ' 小时 ' + m + ' 分钟';
+    return m + ' 分钟';
+}
+
+function getPickMode() {
+    return document.querySelector('input[name="pickmode"]:checked').value;
+}
+
+function getRouteType() {
+    return document.querySelector('input[name="type"]:checked').value;
+}
+
+// 从坐标点中提取 [lng, lat]，兼容 LngLat 对象、{lng,lat} 对象、[lng,lat] 数组
+function extractCoord(p) {
+    if (!p) return null;
+    if (typeof p.getLng === 'function') return [p.getLng(), p.getLat()];
+    if (typeof p.lng === 'number')     return [p.lng, p.lat];
+    if (Array.isArray(p))              return [p[0], p[1]];
+    return null;
+}
+
+/* ═══════════════════════════════════════════════
+   加载地图
+   ═══════════════════════════════════════════════ */
+$('load-map-btn').addEventListener('click', function() {
+    var key = $('key-input').value.trim();
+    var securityCode = $('security-input').value.trim();
+    if (!key) { alert('请输入 Key'); return; }
+    if (!securityCode) {
+        if (!confirm('未填写安全密钥(securityJsCode)，可能导致地图加载失败！\n2021年12月02日后申请的Key必须配置安全密钥。\n\n是否继续尝试加载？')) return;
+    }
+
+    // ★ 配置安全密钥（必须在加载 JS API 之前设置）
+    if (securityCode) {
+        window._AMapSecurityConfig = {
+            securityJsCode: securityCode
+        };
+    }
+
+    // 禁用按钮，防止重复点击
+    $('load-map-btn').disabled = true;
+    $('load-map-btn').textContent = '加载中...';
+
+    // 动态加载高德 JS API
+    var script = document.createElement('script');
+    script.src = 'https://webapi.amap.com/maps?v=2.0&key=' + key + '&plugin=AMap.Driving,AMap.Walking,AMap.Riding,AMap.Geocoder';
+    script.onload = function() {
+        // 检查 AMap 是否真正可用
+        if (typeof AMap === 'undefined') {
+            alert('JS API 脚本已加载，但 AMap 对象未定义！\n请检查 Key 是否正确。');
+            $('load-map-btn').disabled = false;
+            $('load-map-btn').textContent = '加载地图';
+            return;
+        }
+        try {
+            initMap();
+        } catch(e) {
+            console.error('[高德地图] 初始化异常:', e);
+            alert('地图初始化失败：' + e.message + '\n\n请检查：\n1. Key 是否为 JS API 类型\n2. 安全密钥是否正确\n3. F12 查看 Console 获取详细信息');
+            $('load-map-btn').disabled = false;
+            $('load-map-btn').textContent = '加载地图';
+        }
+    };
+    script.onerror = function() {
+        alert('JS API 脚本加载失败！\n请检查：\n1. 网络是否正常\n2. Key 是否正确');
+        console.error('[高德地图] script.onerror 触发');
+        $('load-map-btn').disabled = false;
+        $('load-map-btn').textContent = '加载地图';
+    };
+    document.head.appendChild(script);
+});
+
+function initMap() {
+    $('key-overlay').classList.add('hidden');
+
+    map = new AMap.Map('map', {
+        zoom: 13,
+        center: [116.397428, 39.90923],  // 天安门
+        viewMode: '2D'
+    });
+
+    // 监听地图错误事件
+    map.on('error', function(e) {
+        console.error('[高德地图] 地图错误:', e);
+        showTip('地图错误: ' + (e.info || JSON.stringify(e)), 8000);
+    });
+
+    // 创建路线规划实例（不带 map 参数，不自动绘制）
+    driving = new AMap.Driving({ policy: AMap.DrivingPolicy.LEAST_TIME });
+    walking = new AMap.Walking();
+    riding  = new AMap.Riding();
+
+    // 地图点击事件
+    map.on('click', onMapClick);
+
+    // 启用控件
+    $('calc-btn').disabled = false;
+    $('origin-lng').disabled = false;
+    $('origin-lat').disabled = false;
+    $('dest-lng').disabled = false;
+    $('dest-lat').disabled = false;
+
+    showTip('地图加载成功！点击地图依次选择起点、途经点、终点', 4000);
+    updatePickHint();
+}
+
+/* ═══════════════════════════════════════════════
+   选点模式切换
+   ═══════════════════════════════════════════════ */
+document.querySelectorAll('input[name="pickmode"]').forEach(function(r) {
+    r.addEventListener('change', function() {
+        var manual = getPickMode() === 'manual';
+        ['origin-lng','origin-lat','dest-lng','dest-lat'].forEach(function(id) {
+            $(id).disabled = !manual;
+        });
+        $('add-waypoint-btn').disabled = !manual;
+        if (manual) {
+            showTip('手动输入模式：请填写经纬度坐标', 3000);
+        } else {
+            showTip('地图点击模式：点击地图选择点位', 3000);
+            updatePickHint();
+        }
+    });
+});
+
+/* 算路类型切换 - 步行/骑行隐藏途经点和策略 */
+document.querySelectorAll('input[name="type"]').forEach(function(r) {
+    r.addEventListener('change', function() {
+        var type = getRouteType();
+        var isDriving = type === 'Driving';
+        $('policy-group').style.display = isDriving ? '' : 'none';
+        $('waypoints-group').style.display = isDriving ? '' : 'none';
+    });
+});
+
+/* ═══════════════════════════════════════════════
+   地图点击选点
+   ═══════════════════════════════════════════════ */
+function onMapClick(e) {
+    if (getPickMode() !== 'click') return;
+
+    var lng = e.lnglat.getLng();
+    var lat = e.lnglat.getLat();
+    var type = getRouteType();
+    var isDriving = type === 'Driving';
+
+    if (pickStep === 0) {
+        // 选起点
+        origin = [lng, lat];
+        $('origin-lng').value = lng.toFixed(6);
+        $('origin-lat').value = lat.toFixed(6);
+        addMarker(lng, lat, 'origin');
+        pickStep = isDriving ? 1 : 2;
+    } else if (pickStep === 1 && isDriving) {
+        // 选途经点
+        waypoints.push([lng, lat]);
+        renderWaypoints();
+        addMarker(lng, lat, 'waypoint');
+        // 继续可以加途经点或选终点
+    } else if (pickStep === 2) {
+        // 选终点
+        destination = [lng, lat];
+        $('dest-lng').value = lng.toFixed(6);
+        $('dest-lat').value = lat.toFixed(6);
+        addMarker(lng, lat, 'dest');
+        pickStep = 3;
+        showTip('已选择终点！可点击"开始算路"', 3000);
+    } else if (pickStep === 3) {
+        // 重新开始
+        clearAll();
+        origin = [lng, lat];
+        $('origin-lng').value = lng.toFixed(6);
+        $('origin-lat').value = lat.toFixed(6);
+        addMarker(lng, lat, 'origin');
+        pickStep = isDriving ? 1 : 2;
+    }
+
+    updatePickHint();
+}
+
+function updatePickHint() {
+    if (getPickMode() !== 'click') return;
+    var isDriving = getRouteType() === 'Driving';
+    var hints = [];
+    hints[0] = '👉 点击地图选择 **起点**';
+    hints[1] = '👉 点击地图添加 **途经点**（可加多个），或继续选终点';
+    hints[2] = '👉 点击地图选择 **终点**';
+    hints[3] = '✅ 起点/终点已就绪，点击"开始算路"开始';
+
+    var msg = hints[pickStep] || hints[0];
+    if (pickStep === 1 && isDriving) {
+        msg += '  | 再点一次终点位置完成选点';
+        // 步骤1时：如果用户想直接选终点，下一步仍是2
+    }
+    showTip(msg);
+}
+
+/* ═══════════════════════════════════════════════
+   途经点管理
+   ═══════════════════════════════════════════════ */
+$('add-waypoint-btn').addEventListener('click', function() {
+    // 手动模式下增加途经点输入框
+    var idx = waypoints.length;
+    waypoints.push(null); // 占位
+
+    var div = document.createElement('div');
+    div.className = 'coord-row';
+    div.style.marginBottom = '4px';
+    div.innerHTML = '<input type="text" placeholder="途经点' + (idx+1) + ' 经度" data-wp-lng="' + idx + '">' +
+                    '<input type="text" placeholder="途经点' + (idx+1) + ' 纬度" data-wp-lat="' + idx + '">' +
+                    '<button class="btn-danger" style="flex:0 0 auto;width:32px;padding:8px" data-wp-del="' + idx + '">✕</button>';
+
+    $('waypoints-list').appendChild(div);
+
+    div.querySelector('[data-wp-del]').addEventListener('click', function() {
+        div.remove();
+    });
+    div.querySelector('[data-wp-lng]').addEventListener('input', function() { waypoints[idx] = updateWaypointFromInput(idx); });
+    div.querySelector('[data-wp-lat]').addEventListener('input', function() { waypoints[idx] = updateWaypointFromInput(idx); });
+});
+
+function updateWaypointFromInput(idx) {
+    var lngEl = document.querySelector('[data-wp-lng="' + idx + '"]');
+    var latEl = document.querySelector('[data-wp-lat="' + idx + '"]');
+    if (!lngEl || !latEl) return null;
+    var lng = parseFloat(lngEl.value);
+    var lat = parseFloat(latEl.value);
+    if (isNaN(lng) || isNaN(lat)) return null;
+    return [lng, lat];
+}
+
+function renderWaypoints() {
+    // 地图点击模式下在侧边栏显示途经点列表
+    $('waypoints-list').innerHTML = '';
+    waypoints.forEach(function(wp, idx) {
+        if (!wp) return;
+        var div = document.createElement('div');
+        div.className = 'coord-row';
+        div.style.marginBottom = '4px';
+        div.innerHTML = '<input type="text" value="' + wp[0].toFixed(6) + '" disabled>' +
+                        '<input type="text" value="' + wp[1].toFixed(6) + '" disabled>';
+        $('waypoints-list').appendChild(div);
+    });
+}
+
+/* ═══════════════════════════════════════════════
+   标记管理
+   ═══════════════════════════════════════════════ */
+function addMarker(lng, lat, type) {
+    var marker = new AMap.Marker({
+        position: [lng, lat],
+        content: MARKER_ICONS[type],
+        offset: new AMap.Pixel(-14, -14),
+        anchor: 'center'
+    });
+    map.add(marker);
+    markers.push(marker);
+}
+
+function clearMarkers() {
+    markers.forEach(function(m) { map.remove(m); });
+    markers = [];
+}
+
+/* ═══════════════════════════════════════════════
+   经纬度校验
+   ═══════════════════════════════════════════════ */
+function validateLng(lng) { return lng >= -180 && lng <= 180; }
+function validateLat(lat) { return lat >= -90  && lat <= 90;  }
+
+function validateCoord(lng, lat, label) {
+    if (isNaN(lng) || isNaN(lat)) {
+        alert(label + '：请输入有效的数字坐标');
+        return false;
+    }
+    if (!validateLng(lng)) {
+        alert(label + '：经度 ' + lng + ' 超出有效范围(-180~180)！\n\n' +
+              '请检查坐标顺序：高德使用 [经度, 纬度] 格式，不是 [纬度, 经度]。\n' +
+              '例如兰州应填：经度=103.8344, 纬度=36.0611（而非反过来）');
+        return false;
+    }
+    if (!validateLat(lat)) {
+        alert(label + '：纬度 ' + lat + ' 超出有效范围(-90~90)！\n\n' +
+              '请检查坐标顺序：高德使用 [经度, 纬度] 格式，不是 [纬度, 经度]。\n' +
+              '例如兰州应填：经度=103.8344, 纬度=36.0611（而非反过来）');
+        return false;
+    }
+    return true;
+}
+
+/* ═══════════════════════════════════════════════
+   算路
+   ═══════════════════════════════════════════════ */
+$('calc-btn').addEventListener('click', function() {
+    // 读取手动输入的坐标
+    if (getPickMode() === 'manual') {
+        var oLng = parseFloat($('origin-lng').value);
+        var oLat = parseFloat($('origin-lat').value);
+        var dLng = parseFloat($('dest-lng').value);
+        var dLat = parseFloat($('dest-lat').value);
+
+        // ★ 经纬度有效性校验
+        if (!validateCoord(oLng, oLat, '起点')) return;
+        if (!validateCoord(dLng, dLat, '终点')) return;
+
+        // 检查是否可能搞反了经纬度（如纬度>90说明把纬度填进了经度框）
+        if (Math.abs(oLat) > 85 || Math.abs(dLat) > 85) {
+            var tip = '检测到纬度值异常偏大(' + oLat + ', ' + dLat + ')，\n' +
+                      '请确认坐标顺序是否正确：经度在前，纬度在后。\n' +
+                      '例如兰州：经度=103.8344, 纬度=36.0611\n\n' +
+                      '仍要继续算路吗？';
+            if (!confirm(tip)) return;
+        }
+
+        origin = [oLng, oLat];
+        destination = [dLng, dLat];
+
+        // 过滤有效途经点
+        var validWaypoints = waypoints.filter(function(wp) { return wp && wp.length === 2; });
+
+        // 清除旧的标记和轨迹，重新标记
+        clearMarkers();
+        addMarker(oLng, oLat, 'origin');
+        validWaypoints.forEach(function(wp) { addMarker(wp[0], wp[1], 'waypoint'); });
+        addMarker(dLng, dLat, 'dest');
+
+        waypoints = validWaypoints;
+    }
+
+    if (!origin || !destination) {
+        alert('请先设置起点和终点');
+        return;
+    }
+
+    var type = getRouteType();
+    showTip('正在算路...');
+
+    // 清除旧轨迹
+    if (polyline) { map.remove(polyline); polyline = null; }
+
+    if (type === 'Driving') {
+        var policyValue = $('policy-select').value;
+        driving.setPolicy(AMap.DrivingPolicy[policyValue]);
+        doSearch(driving, origin, destination, waypoints, type, policyValue);
+    } else if (type === 'Walking') {
+        doSearch(walking, origin, destination, [], type, null);
+    } else if (type === 'Riding') {
+        doSearch(riding, origin, destination, [], type, null);
+    }
+});
+
+function doSearch(planner, origin, dest, wps, type, policyValue) {
+    var opts = {};
+    if (wps && wps.length > 0) {
+        opts.waypoints = wps.map(function(wp) { return new AMap.LngLat(wp[0], wp[1]); });
+    }
+
+    planner.search(
+        new AMap.LngLat(origin[0], origin[1]),
+        new AMap.LngLat(dest[0], dest[1]),
+        opts,
+        function(status, result) {
+            console.log('[高德算路] status:', status);
+            console.log('[高德算路] result:', result);
+
+            if (status !== 'complete') {
+                var errMsg = '未知错误';
+                if (result) {
+                    if (result.info) errMsg = result.info;
+                    else if (result.message) errMsg = result.message;
+                    else errMsg = JSON.stringify(result);
+                }
+                // 额外检查经纬度是否搞反
+                if (Math.abs(origin[1]) > 90) {
+                    errMsg += '\n\n⚠️ 检测到起点纬度=' + origin[1] + ' 超出范围(-90~90)，\n' +
+                              '很可能是经纬度顺序搞反了！\n' +
+                              '高德格式：[经度, 纬度]，例如兰州：经度=103.8344, 纬度=36.0611';
+                }
+                if (Math.abs(dest[1]) > 90) {
+                    errMsg += '\n\n⚠️ 检测到终点纬度=' + dest[1] + ' 超出范围(-90~90)，\n' +
+                              '很可能是经纬度顺序搞反了！\n' +
+                              '高德格式：[经度, 纬度]，例如上海：经度=121.4737, 纬度=31.2304';
+                }
+                showTip('算路失败: ' + errMsg, 8000);
+                console.error('[高德算路] 失败详情:', errMsg);
+                return;
+            }
+            if (!result.routes || result.routes.length === 0) {
+                showTip('未找到可用路线', 5000);
+                return;
+            }
+
+            // 取第一条路线
+            var route = result.routes[0];
+            currentRoute = route;
+
+            // ★ 提取轨迹坐标点
+            // JS API v2.0 中 route 没有 path 属性，需要从 steps[].path 中拼接
+            trackPoints = [];
+            if (route.path && route.path.length > 0) {
+                // 部分版本 route.path 直接存在
+                trackPoints = route.path.map(function(p) {
+                    return extractCoord(p);
+                });
+            } else if (route.steps && route.steps.length > 0) {
+                // v2.0 标准：从每个 step 的 path 中拼接完整轨迹
+                route.steps.forEach(function(step) {
+                    if (step.path) {
+                        step.path.forEach(function(p) {
+                            trackPoints.push(extractCoord(p));
+                        });
+                    }
+                });
+            }
+
+            if (trackPoints.length === 0) {
+                showTip('算路成功但未提取到轨迹点，请检查 Console', 5000);
+                console.error('[高德算路] route 结构:', route);
+                return;
+            }
+
+            // 显示结果信息
+            $('result-card').classList.add('visible');
+            $('r-distance').textContent = formatDistance(route.distance);
+            $('r-time').textContent = formatTime(route.time);
+            $('r-count').textContent = trackPoints.length + ' 个';
+            var policyText = {
+                'LEAST_TIME': '最快路线',
+                'LEAST_DISTANCE': '最短距离',
+                'LEAST_FEE': '最少费用',
+                'REAL_TRAFFIC': '实时路况'
+            };
+            $('r-policy').textContent = policyValue ? policyText[policyValue] : (type === 'Walking' ? '步行' : '骑行');
+
+            // 绘制轨迹线
+            drawTrack(trackPoints);
+
+            // 启用导出
+            $('export-btn').disabled = false;
+
+            // 自动缩放到路线范围
+            map.setFitView();
+
+            showTip('算路成功！轨迹点 ' + trackPoints.length + ' 个，可导出 JSON', 5000);
+        }
+    );
+}
+
+/* ═══════════════════════════════════════════════
+   绘制轨迹
+   ═══════════════════════════════════════════════ */
+function drawTrack(points) {
+    if (polyline) { map.remove(polyline); }
+
+    var path = points.map(function(p) {
+        return new AMap.LngLat(p[0], p[1]);
+    });
+
+    polyline = new AMap.Polyline({
+        path: path,
+        strokeColor: '#1a73e8',
+        strokeWeight: 6,
+        strokeOpacity: 0.9,
+        strokeStyle: 'solid',
+        showDir: true,            // 显示方向箭头
+        lineJoin: 'round',
+        lineCap: 'round'
+    });
+    map.add(polyline);
+}
+
+/* ═══════════════════════════════════════════════
+   导出 JSON
+   ═══════════════════════════════════════════════ */
+$('export-btn').addEventListener('click', function() {
+    if (!trackPoints || trackPoints.length === 0) {
+        alert('没有可导出的轨迹数据');
+        return;
+    }
+
+    var type = getRouteType();
+    var policyValue = $('policy-select').value;
+    var policyText = {
+        'LEAST_TIME': '最快路线',
+        'LEAST_DISTANCE': '最短距离',
+        'LEAST_FEE': '最少费用',
+        'REAL_TRAFFIC': '实时路况'
+    };
+
+    var exportData = {
+        meta: {
+            exportTime:   new Date().toISOString(),
+            routeType:    type,
+            policy:       type === 'Driving' ? policyText[policyValue] : (type === 'Walking' ? '步行' : '骑行'),
+            totalPoints:  trackPoints.length,
+            totalDistance: currentRoute ? currentRoute.distance : null,
+            totalTime:     currentRoute ? currentRoute.time : null,
+            distanceText:  formatDistance(currentRoute ? currentRoute.distance : 0),
+            timeText:      formatTime(currentRoute ? currentRoute.time : 0),
+        },
+        origin:      origin,
+        destination: destination,
+        waypoints:   waypoints.filter(function(wp) { return wp && wp.length === 2; }),
+        track: {
+            coordinates: trackPoints,           // [[lng, lat], [lng, lat], ...]
+            format: '[lng, lat]'
+        }
+    };
+
+    var jsonStr = JSON.stringify(exportData, null, 2);
+    var blob = new Blob([jsonStr], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+
+    var a = document.createElement('a');
+    a.href = url;
+    var ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    a.download = 'amap-track-' + type + '-' + ts + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showTip('轨迹 JSON 已导出！', 3000);
+});
+
+/* ═══════════════════════════════════════════════
+   清空
+   ═══════════════════════════════════════════════ */
+$('clear-btn').addEventListener('click', clearAll);
+
+function clearAll() {
+    clearMarkers();
+    if (polyline) { map.remove(polyline); polyline = null; }
+
+    origin = null;
+    destination = null;
+    waypoints = [];
+    trackPoints = null;
+    currentRoute = null;
+    pickStep = 0;
+
+    $('origin-lng').value = '';
+    $('origin-lat').value = '';
+    $('dest-lng').value = '';
+    $('dest-lat').value = '';
+    $('waypoints-list').innerHTML = '';
+    $('result-card').classList.remove('visible');
+    $('export-btn').disabled = true;
+
+    updatePickHint();
+    showTip('已清空', 2000);
+}
+</script>
+</body>
+</html>
