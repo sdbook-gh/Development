@@ -1,0 +1,4 @@
+common --enable_bzlmod=false
+build --noincremental_dexing
+build --extra_toolchains=//:custom_sdk_toolchain
+
