@@ -1,23 +1,37 @@
 #!/usr/bin/env python3
 """
 读取 shape_to_geojson.json，将各子目录下的 SHP 按 shapefilematch 匹配并转为 GeoJSONSeq。
-
-global_gdal_args：全局 ogr2ogr 参数（形式同 global_tippecanoe_args）
-每层 gdal_args：本层追加参数（形式同 tippecanoe_args）
-最终命令 = ogr2ogr + global_gdal_args + gdal_args + (-sql/-simplify/dst/src)
+使用 libgdal.so (通过 Python GDAL 绑定的 gdal.VectorTranslate) 代替 ogr2ogr 子进程。
 
 用法:
-    python shape_to_geojson.py -c shape_to_geojson.json -i ./ -o ./geojson_output -w 8
-    python shape_to_geojson.py -c shape_to_geojson.json --dry-run -l roads
+    python shape_to_geojson.py --gdal-lib /path/to/libgdal.so -c shape_to_geojson.json -i ./ -o ./geojson_output -w 8
+    python shape_to_geojson.py --gdal-lib /path/to/libgdal.so --dry-run -l roads
 """
 
 import argparse
+import ctypes
 import json
 import re
-import subprocess
 import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# 预解析 --gdal-lib，在导入 osgeo 之前加载指定的 libgdal.so
+# ---------------------------------------------------------------------------
+_gdal_lib_path = None
+if "--gdal-lib" in sys.argv:
+    idx = sys.argv.index("--gdal-lib")
+    if idx + 1 < len(sys.argv):
+        _gdal_lib_path = sys.argv[idx + 1]
+        del sys.argv[idx:idx + 2]
+
+if _gdal_lib_path:
+    ctypes.CDLL(_gdal_lib_path, mode=ctypes.RTLD_GLOBAL)
+
+from osgeo import gdal
+
+gdal.UseExceptions()
 
 
 def load_config(config_path: Path) -> dict:
@@ -41,8 +55,8 @@ def dedup_names(names: list[str]) -> dict[str, str]:
     """从子目录名中提取去重后的短名称.
 
     例: anhui-latest-free.shp, beijing-latest-free.shp
-      → 公共后缀 "-latest-free.shp"
-      → 去重后: anhui, beijing
+      -> 公共后缀 "-latest-free.shp"
+      -> 去重后: anhui, beijing
     """
     if len(names) <= 1:
         n = names[0]
@@ -63,11 +77,7 @@ def dedup_names(names: list[str]) -> dict[str, str]:
 
 
 def match_shapefile(subdir: Path, pattern: str, layer_name: str) -> Path | None:
-    """用正则匹配子目录下的 shape 文件，处理面/点冲突.
-
-    例: natural (非 _a) 和 natural_a 会同时被 .*_natural.*shp 匹配到，
-    需要根据图层名二次过滤: _a 结尾 → 取 _a_free 版本, 否则排除 _a_free.
-    """
+    """用正则匹配子目录下的 shape 文件，处理面/点冲突."""
     regex = re.compile(pattern)
     candidates = sorted(f for f in subdir.glob("*.shp") if regex.search(f.name))
 
@@ -77,7 +87,6 @@ def match_shapefile(subdir: Path, pattern: str, layer_name: str) -> Path | None:
         return None
 
     if len(candidates) > 1:
-        # 多匹配 → 报错
         names = ", ".join(c.name for c in candidates)
         print(f"  [WARN] {subdir.name}/{layer_name}: 多个匹配文件 [{names}], 正则={pattern}",
               file=sys.stderr)
@@ -86,12 +95,8 @@ def match_shapefile(subdir: Path, pattern: str, layer_name: str) -> Path | None:
     return candidates[0]
 
 
-def build_ogr_cmd(layer_cfg: dict, output_file: str, shp_path: str,
-                  global_gdal_args: list | None = None) -> list[str]:
-    """构建 ogr2ogr 命令.
-
-    argv = global_gdal_args + layer gdal_args + (-sql/-simplify/dst/src)
-    """
+def build_sql(layer_cfg: dict, shp_path: str) -> str:
+    """构建 SQL 语句."""
     select_fields = layer_cfg["select"]
     layer_name = Path(shp_path).stem
     where = layer_cfg.get("where", "")
@@ -99,24 +104,49 @@ def build_ogr_cmd(layer_cfg: dict, output_file: str, shp_path: str,
     sql = f'SELECT {select_fields} FROM "{layer_name}"'
     if where:
         sql += f" WHERE {where}"
+    return sql
 
-    cmd = ["ogr2ogr"]
-    cmd += [str(a) for a in (global_gdal_args or [])]
-    cmd += [str(a) for a in layer_cfg.get("gdal_args", [])]
-    cmd += ["-sql", sql]
-    simplify = layer_cfg.get("simplify", 0)
+
+def build_options(layer_cfg: dict, global_gdal_args: list | None) -> list[str]:
+    """构建 gdal.VectorTranslate options 列表."""
+    options = []
+    options += [str(a) for a in (global_gdal_args or [])]
+    options += [str(a) for a in layer_cfg.get("gdal_args", [])]
+    return options
+
+
+def run_vector_translate(
+    sql: str,
+    options: list[str],
+    output_file: str,
+    shp_path: str,
+    simplify: float,
+    dry_run: bool,
+) -> tuple[bool, str]:
+    """调用 gdal.VectorTranslate 执行转换.
+
+    返回 (ok, error_msg)
+    """
+    full_options = list(options)
+    full_options += ["-sql", sql]
     if simplify and float(simplify) > 0:
-        cmd += ["-simplify", str(simplify)]
-    cmd += [output_file, shp_path]
-    return cmd
+        full_options += ["-simplify", str(simplify)]
 
-
-def run_ogr(cmd: list[str], dry_run: bool) -> tuple[bool, str]:
     if dry_run:
-        print(f"[DRY-RUN] {' '.join(cmd)}")
+        # 模拟 ogr2ogr 命令行输出格式
+        cmd_str = "ogr2ogr " + " ".join(full_options) + f" {output_file} {shp_path}"
+        print(f"[DRY-RUN] {cmd_str}")
         return True, ""
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    return r.returncode == 0, r.stderr.strip()
+
+    try:
+        result = gdal.VectorTranslate(output_file, shp_path, options=full_options)
+        if result is None:
+            err = gdal.GetLastErrorMsg()
+            return False, err or "Unknown error"
+        result = None  # 关闭并刷新输出
+        return True, ""
+    except Exception as e:
+        return False, str(e)
 
 
 def apply_ogr_result(
@@ -173,10 +203,12 @@ def process_subdir(args_tuple: tuple) -> dict:
             continue
 
         output_file = str(out_dir / f"{layer_name}.geojson")
-        ok, err = run_ogr(
-            build_ogr_cmd(layer_cfg, output_file, str(shp_path), global_gdal_args),
-            dry_run,
-        )
+        sql = build_sql(layer_cfg, str(shp_path))
+        options = build_options(layer_cfg, global_gdal_args)
+        simplify = layer_cfg.get("simplify", 0)
+
+        ok, err = run_vector_translate(
+            sql, options, output_file, str(shp_path), simplify, dry_run)
         apply_ogr_result(stats, layer_name, output_file, ok, err, dry_run)
 
     # 处理文字图层 (如有)
@@ -190,17 +222,21 @@ def process_subdir(args_tuple: tuple) -> dict:
                 continue
 
             output_file = str(out_dir / f"{layer_name}_text.geojson")
-            ok, err = run_ogr(
-                build_ogr_cmd(layer_cfg, output_file, str(shp_path), global_gdal_args),
-                dry_run,
-            )
+            sql = build_sql(layer_cfg, str(shp_path))
+            options = build_options(layer_cfg, global_gdal_args)
+            simplify = layer_cfg.get("simplify", 0)
+
+            ok, err = run_vector_translate(
+                sql, options, output_file, str(shp_path), simplify, dry_run)
             apply_ogr_result(stats, f"{layer_name}_text", output_file, ok, err, dry_run)
 
     return stats
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SHP → GeoJSONSeq 按省份分目录转换")
+    parser = argparse.ArgumentParser(description="SHP -> GeoJSONSeq 按省份分目录转换 (使用 libgdal.so)")
+    parser.add_argument("--gdal-lib", required=True,
+                        help="指定 libgdal.so 路径 (在导入 osgeo 前预加载)")
     parser.add_argument("-c", "--config", default="shape_to_geojson.json",
                         help="JSON 配置文件路径, 默认 shape_to_geojson.json")
     parser.add_argument("-i", "--input", default=None,
@@ -271,6 +307,9 @@ def main():
     if not args.dry_run:
         output_root.mkdir(parents=True, exist_ok=True)
 
+    gdal_ver = gdal.__version__
+    print(f"[INFO] GDAL version: {gdal_ver}")
+    print(f"[INFO] libgdal: {_gdal_lib_path}")
     print(f"[INFO] 配置: {config_path}")
     print(f"[INFO] 输入: {input_dir} ({len(subdirs)} 个子目录)")
     print(f"[INFO] 输出: {output_root}")

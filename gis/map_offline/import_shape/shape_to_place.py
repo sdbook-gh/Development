@@ -5,18 +5,32 @@
 与 Android PlacesDbBuilder 使用相同 schema 与字段映射；通过 OGR 要素游标直读 shape（无 GeoJSON 中间文件）。
 
 用法:
-    python shape_to_place.py -c shape_to_place.json -i ./beijing_hebei -o ./place.db
-    python shape_to_place.py -c shape_to_place.json -i ./ -o ./place.db --merge
+    python shape_to_place.py --gdal-lib /path/to/libgdal.so -c shape_to_place.json -i ./beijing_hebei -o ./place.db
+    python shape_to_place.py --gdal-lib /path/to/libgdal.so -c shape_to_place.json -i ./ -o ./place.db --merge
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 import re
 import sqlite3
 import sys
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# 预解析 --gdal-lib，在导入 osgeo 之前加载指定的 libgdal.so
+# ---------------------------------------------------------------------------
+_gdal_lib_path = None
+if "--gdal-lib" in sys.argv:
+    idx = sys.argv.index("--gdal-lib")
+    if idx + 1 < len(sys.argv):
+        _gdal_lib_path = sys.argv[idx + 1]
+        del sys.argv[idx:idx + 2]
+
+if _gdal_lib_path:
+    ctypes.CDLL(_gdal_lib_path, mode=ctypes.RTLD_GLOBAL)
 
 try:
     from osgeo import ogr, osr
@@ -260,6 +274,8 @@ def collect_tasks(config: dict, input_dir: Path) -> list[tuple[Path, str, str, d
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="从 shapefile 构建 place.db")
+    parser.add_argument("--gdal-lib", required=True,
+                        help="指定 libgdal.so 路径 (在导入 osgeo 前预加载)")
     parser.add_argument("-c", "--config", default="shape_to_place.json", help="JSON 配置文件")
     parser.add_argument("-i", "--input", default=".", help="含省级子目录或根 .shp 的输入目录")
     parser.add_argument("-o", "--output", required=True, help="输出 place.db 路径")
@@ -270,6 +286,8 @@ def main() -> int:
     input_dir = Path(args.input)
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"[INFO] libgdal: {_gdal_lib_path}")
 
     tasks = collect_tasks(config, input_dir)
     if not tasks:

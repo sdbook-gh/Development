@@ -7,7 +7,7 @@
       "tiles": [
         ""
       ],
-      "minzoom": 0,
+      "minzoom": 3,
       "maxzoom": 14
     }
   },
@@ -655,7 +655,7 @@
           ""
         ]
       ],
-      "minzoom": 7,
+      "minzoom": 3,
       "layout": {
         "text-field": [
           "get",
@@ -672,6 +672,8 @@
           [
             "zoom"
           ],
+          3,
+          10,
           7,
           14,
           10,
@@ -725,7 +727,7 @@
           ""
         ]
       ],
-      "minzoom": 9,
+      "minzoom": 6,
       "layout": {
         "text-field": [
           "get",
@@ -742,6 +744,8 @@
           [
             "zoom"
           ],
+          6,
+          10,
           9,
           12,
           12,
@@ -788,7 +792,7 @@
           ""
         ]
       ],
-      "minzoom": 11,
+      "minzoom": 8,
       "layout": {
         "text-field": [
           "get",
@@ -805,6 +809,8 @@
           [
             "zoom"
           ],
+          8,
+          11,
           11,
           12,
           14,
@@ -1245,7 +1251,7 @@
           ""
         ]
       ],
-      "minzoom": 10,
+      "minzoom": 5,
       "layout": {
         "text-field": [
           "get",
@@ -1262,6 +1268,8 @@
           [
             "zoom"
           ],
+          5,
+          11,
           10,
           12,
           14,

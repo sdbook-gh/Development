@@ -1,0 +1,11 @@
+{
+  "port": 8080,
+  "cache_dir": "fonts/.cache",
+  "fontnik_script": "fonts/generate_range.js",
+  "stacks": {
+    "Klokantech Noto Sans Regular": {
+      "pbf_dir": "fonts/Klokantech Noto Sans Regular",
+      "ttf": "NotoSansSC.ttf"
+    }
+  }
+}

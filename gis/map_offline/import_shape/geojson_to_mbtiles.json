@@ -105,10 +105,16 @@
     }
   },
   "text_layers": {
-    "places_text": {
-      "geojson": "places_text.geojson",
+    "places_overview_text": {
+      "geojson": "places_overview_text.geojson",
       "zoom_min": 0,
-      "zoom_max": 14,
+      "zoom_max": 3,
+      "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
+    },
+    "places_detail_text": {
+      "geojson": "places_detail_text.geojson",
+      "zoom_min": 4,
+      "zoom_max": 6,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "roads_text": {

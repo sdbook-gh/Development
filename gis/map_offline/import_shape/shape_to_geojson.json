@@ -154,12 +154,19 @@
     }
   },
   "text_layers": {
-    "places": {
+    "places_overview": {
       "shapefilematch": ".*_places_f.*shp",
       "select": "fclass,name",
       "simplify": 0,
-      "where": "fclass IN ('city','national_capital','region','county','district','subcounty','town','village','hamlet','locality','farm','island','suburb','neighbourhood','quarter') AND name IS NOT NULL AND name != ''",
+      "where": "fclass IN ('city','national_capital') AND name IS NOT NULL AND name != '' ORDER BY population DESC LIMIT 1",
       "gdal_args": []
+    },
+    "places_detail": {
+      "shapefilematch": ".*_places_f.*shp",
+      "select": "fclass,name,\"GEOMETRY\"",
+      "simplify": 0,
+      "where": "fclass IN ('city','national_capital','region','county','district','subcounty','town','village','hamlet','locality','farm','island','suburb','neighbourhood','quarter') AND name IS NOT NULL AND name != '' AND osm_id NOT IN (SELECT osm_id FROM {ogr_layer} WHERE fclass IN ('city','national_capital') AND name IS NOT NULL AND name != '' ORDER BY population DESC LIMIT 1)",
+      "gdal_args": ["-dialect", "SQLite", "-sql-subst"]
     },
     "roads": {
       "shapefilematch": ".*_roads_f.*shp",
