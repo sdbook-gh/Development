@@ -40,7 +40,14 @@ def load_config(config_path: Path) -> dict:
 
 
 def scan_subdirs(input_dir: Path) -> list[Path]:
-    """扫描 input_dir 下所有包含 .shp 的子目录."""
+    """扫描 input_dir 下所有包含 .shp 的子目录.
+
+    若 input_dir 自身直接包含 .shp 文件，则将其视为单个子目录返回。
+    """
+    # 若 input_dir 自身直接包含 .shp 文件，视为单省份目录
+    if list(input_dir.glob("*.shp")):
+        return [input_dir]
+
     subdirs = sorted(
         d for d in input_dir.iterdir()
         if d.is_dir() and list(d.glob("*.shp"))
@@ -76,19 +83,19 @@ def dedup_names(names: list[str]) -> dict[str, str]:
     return {n: n for n in names}
 
 
-def match_shapefile(subdir: Path, pattern: str, layer_name: str) -> Path | None:
+def match_shapefile(subdir: Path, pattern: str, layer_name: str, config_name: str) -> Path | None:
     """用正则匹配子目录下的 shape 文件，处理面/点冲突."""
     regex = re.compile(pattern)
     candidates = sorted(f for f in subdir.glob("*.shp") if regex.search(f.name))
 
     if not candidates:
-        print(f"  [WARN] {subdir.name}/{layer_name}: 无匹配文件, 正则={pattern}",
+        print(f"  [WARN] [{config_name}] {subdir.name}/{layer_name}: 无匹配文件, 正则={pattern}",
               file=sys.stderr)
         return None
 
     if len(candidates) > 1:
         names = ", ".join(c.name for c in candidates)
-        print(f"  [WARN] {subdir.name}/{layer_name}: 多个匹配文件 [{names}], 正则={pattern}",
+        print(f"  [WARN] [{config_name}] {subdir.name}/{layer_name}: 多个匹配文件 [{names}], 正则={pattern}",
               file=sys.stderr)
         return None
 
@@ -177,6 +184,113 @@ def apply_ogr_result(
     stats["layers"][layer_key] = round(size / (1024 * 1024), 2)
 
 
+# ── 文字图层质心转换 ──────────────────────────────────
+# text_layers 用于标注，Polygon/MultiPolygon 跨瓦片会产生重复标签。
+# 转为质心 Point 后标签只出现在单一瓦片中。
+
+def _ring_centroid(ring: list) -> tuple[list[float] | None, float]:
+    """单个闭合环的面积加权质心.
+
+    ring: [[x, y], ...]（首尾点相同）
+    返回 (centroid[x, y], abs_area)，退化时 area=0
+    """
+    n = len(ring)
+    if n < 3:
+        return None, 0.0
+    a2 = 0.0
+    cx = 0.0
+    cy = 0.0
+    for i in range(n - 1):
+        x0, y0 = ring[i]
+        x1, y1 = ring[i + 1]
+        cross = x0 * y1 - x1 * y0
+        a2 += cross
+        cx += (x0 + x1) * cross
+        cy += (y0 + y1) * cross
+    area = a2 * 0.5
+    if abs(area) < 1e-15:
+        # 退化（共线/零面积）：回退到 bounding box 中心
+        xs = [p[0] for p in ring]
+        ys = [p[1] for p in ring]
+        return [sum(xs) / len(xs), sum(ys) / len(ys)], 0.0
+    cx /= (6.0 * area)
+    cy /= (6.0 * area)
+    return [cx, cy], abs(area)
+
+
+def _polygon_centroid(coords: list) -> tuple[list[float] | None, float]:
+    """Polygon: coords = [exterior_ring, hole1, ...]. 仅用 exterior ring."""
+    if not coords:
+        return None, 0.0
+    return _ring_centroid(coords[0])
+
+
+def _multipolygon_centroid(coords: list) -> list[float] | None:
+    """MultiPolygon: coords = [poly1, poly2, ...]. 各子多边形质心按面积加权平均."""
+    total_area = 0.0
+    wcx = 0.0
+    wcy = 0.0
+    for poly in coords:
+        centroid, area = _polygon_centroid(poly)
+        if centroid is None:
+            continue
+        total_area += area
+        wcx += centroid[0] * area
+        wcy += centroid[1] * area
+    if total_area > 1e-15:
+        return [wcx / total_area, wcy / total_area]
+    # 全部退化：取所有顶点算术平均
+    pts = [p for poly in coords if poly for p in poly[0]]
+    if pts:
+        return [sum(p[0] for p in pts) / len(pts),
+                sum(p[1] for p in pts) / len(pts)]
+    return None
+
+
+def convert_text_layer_to_centroid(output_file: str) -> bool:
+    """将 text_layer 的 GeoJSONSeq 中 Polygon/MultiPolygon 转为质心 Point.
+
+    Point/LineString 等非面几何保持不变。
+    原地重写文件（保持 RS=YES 的 0x1E 前缀格式）。
+    返回 True 表示有要素被转换。
+    """
+    try:
+        with open(output_file, "rb") as f:
+            data = f.read()
+    except OSError:
+        return False
+
+    # GeoJSONSeq (RS=YES): 每条记录以 0x1E 开头
+    records = data.split(b"\x1e")
+    if records and records[0] == b"":
+        records = records[1:]
+
+    converted = False
+    out_chunks: list[bytes] = []
+    for raw in records:
+        text = raw.strip()
+        if not text:
+            continue
+        feat = json.loads(text.decode("utf-8"))
+        geom = feat.get("geometry")
+        if geom and geom.get("type") in ("Polygon", "MultiPolygon"):
+            gcoords = geom.get("coordinates")
+            if geom["type"] == "Polygon":
+                centroid, _ = _polygon_centroid(gcoords)
+            else:
+                centroid = _multipolygon_centroid(gcoords)
+            if centroid is not None:
+                feat["geometry"] = {"type": "Point", "coordinates": centroid}
+                converted = True
+        out_text = json.dumps(feat, ensure_ascii=False, separators=(",", ":"))
+        out_chunks.append(b"\x1e" + out_text.encode("utf-8") + b"\n")
+
+    if converted:
+        with open(output_file, "wb") as f:
+            f.writelines(out_chunks)
+    return converted
+
+
 def process_subdir(args_tuple: tuple) -> dict:
     """处理单个子目录: 先处理 layers，再处理 text_layers (如有).
 
@@ -184,7 +298,7 @@ def process_subdir(args_tuple: tuple) -> dict:
     text_layers 输出: {layer}_text.geojson
     """
     (subdir, short_name, layers_cfg, text_layers_cfg,
-     output_root, global_gdal_args, dry_run) = args_tuple
+     output_root, global_gdal_args, dry_run, config_name) = args_tuple
 
     subdir_name = subdir.name
     stats = {"subdir": subdir_name, "layers": {}, "errors": []}
@@ -196,7 +310,7 @@ def process_subdir(args_tuple: tuple) -> dict:
     # 处理全量图层
     for layer_name, layer_cfg in layers_cfg.items():
         pattern = layer_cfg["shapefilematch"]
-        shp_path = match_shapefile(subdir, pattern, layer_name)
+        shp_path = match_shapefile(subdir, pattern, layer_name, config_name)
 
         if shp_path is None:
             stats["layers"][layer_name] = "not_found"
@@ -215,7 +329,7 @@ def process_subdir(args_tuple: tuple) -> dict:
     if text_layers_cfg:
         for layer_name, layer_cfg in text_layers_cfg.items():
             pattern = layer_cfg["shapefilematch"]
-            shp_path = match_shapefile(subdir, pattern, layer_name)
+            shp_path = match_shapefile(subdir, pattern, layer_name, config_name)
 
             if shp_path is None:
                 stats["layers"][f"{layer_name}_text"] = "not_found"
@@ -228,6 +342,9 @@ def process_subdir(args_tuple: tuple) -> dict:
 
             ok, err = run_vector_translate(
                 sql, options, output_file, str(shp_path), simplify, dry_run)
+            # text_layers: 将 Polygon/MultiPolygon 转为质心 Point
+            if ok and not dry_run:
+                convert_text_layer_to_centroid(output_file)
             apply_ogr_result(stats, f"{layer_name}_text", output_file, ok, err, dry_run)
 
     return stats
@@ -324,7 +441,7 @@ def main():
 
     tasks = [
         (sd, name_map.get(sd.name, sd.name), layers, text_layers,
-         output_root, global_gdal_args, args.dry_run)
+         output_root, global_gdal_args, args.dry_run, config_path.name)
         for sd in subdirs
     ]
 

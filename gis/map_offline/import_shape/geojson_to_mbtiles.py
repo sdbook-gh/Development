@@ -251,6 +251,10 @@ def load_config(config_path: Path) -> dict:
 
 
 def scan_subdirs(input_dir: Path) -> list[Path]:
+    # input_dir 本身就包含 .geojson -> 直接作为唯一子目录
+    if list(input_dir.glob("*.geojson")):
+        return [input_dir]
+    # 否则扫描子目录
     subdirs = sorted(
         d for d in input_dir.iterdir()
         if d.is_dir() and list(d.glob("*.geojson"))
@@ -284,16 +288,20 @@ def run_tippecanoe(args_tuple: tuple) -> dict:
     """执行单个 tippecanoe 任务 (一个省份的一个图层)。"""
     (subdir, short_name, layer_name, layer_cfg,
      temp_dir, global_args, dry_run,
-     tippecanoe_lib) = args_tuple
+     tippecanoe_lib, config_name) = args_tuple
 
     province = subdir.name
     geojson_file = layer_cfg["geojson"]
     geojson_path = subdir / geojson_file
 
     if not geojson_path.exists():
+        print(f"  [WARN] [{config_name}] {province}/{layer_name}: geojson 文件不存在: {geojson_file}",
+              file=sys.stderr)
         return {"province": province, "short_name": short_name,
                 "layer": layer_name, "status": "geojson_not_found"}
     if geojson_path.stat().st_size == 0:
+        print(f"  [WARN] [{config_name}] {province}/{layer_name}: geojson 文件为空: {geojson_file}",
+              file=sys.stderr)
         return {"province": province, "short_name": short_name,
                 "layer": layer_name, "status": "geojson_empty"}
 
@@ -432,10 +440,10 @@ def main():
         if not output_root.is_absolute():
             output_root = (config_path.parent / output_root).resolve()
 
-    # 临时目录
+    # 临时目录（相对于当前工作目录解析）
     temp_root = Path(cfg.get("temp_dir", "./mbtiles_temp"))
     if not temp_root.is_absolute():
-        temp_root = (config_path.parent / temp_root).resolve()
+        temp_root = (Path.cwd() / temp_root).resolve()
 
     global_args = cfg.get("global_tippecanoe_args", ["--force"])
     join_args = cfg.get("tile_join_args", ["--force", "--no-tile-compression"])
@@ -464,7 +472,7 @@ def main():
     print(f"[INFO] 输出: {output_root}")
     print(f"[INFO] 临时: {temp_root}")
     print(f"[INFO] libtippecanoe: {args.tippecanoe_lib}")
-    print(f"[INFO] libtile-join-ext: {args.tile_join_lib}")
+    print(f"[INFO] libtile-join-ext: {args.tile_join_ext_lib}")
     print(f"[INFO] 图层: {len(layers_cfg)} 个 ({', '.join(layers_cfg.keys())})")
     if text_layers_cfg:
         print(f"[INFO] 文字图层: {len(text_layers_cfg)} 个 ({', '.join(text_layers_cfg.keys())})")
@@ -483,11 +491,11 @@ def main():
         for layer_name, layer_cfg in layers_cfg.items():
             all_tasks.append((sd, short_name, layer_name, layer_cfg,
                               temp_dir, global_args, args.dry_run,
-                              args.tippecanoe_lib))
+                              args.tippecanoe_lib, config_path.name))
         for layer_name, layer_cfg in text_layers_cfg.items():
             all_tasks.append((sd, short_name, layer_name, layer_cfg,
                               temp_dir, global_args, args.dry_run,
-                              args.tippecanoe_lib))
+                              args.tippecanoe_lib, config_path.name))
 
     total_per_province = len(layers_cfg) + len(text_layers_cfg)
 
@@ -545,8 +553,8 @@ def main():
                     print(f"  [tippecanoe] {r['province']}/{r['layer']} ERROR: "
                           f"{r.get('error', '')[:100]}")
                 elif r["status"] in ("geojson_not_found", "geojson_empty"):
-                    print(f"  [tippecanoe] {r['province']}/{r['layer']} "
-                          f"skip ({r['status']})")
+                    # warning 已在 run_tippecanoe 中输出
+                    pass
 
                 # 该省所有图层完成 -> 提交 tile-join
                 if province_done[province] == total_per_province:
@@ -563,7 +571,7 @@ def main():
                         fut = join_executor.submit(
                             tile_join_worker, short_name, temp_dir,
                             output_root, join_args, ok_count, total_per_province,
-                            args.tile_join_lib)
+                            args.tile_join_ext_lib)
                         join_futures[fut] = short_name
                         print(f"  [{province}] {ok_count}/{total_per_province} ok "
                               f"-> tile-join 已提交")

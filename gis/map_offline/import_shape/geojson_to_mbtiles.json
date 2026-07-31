@@ -1,4 +1,5 @@
 {
+  "temp_dir": "./temp",
   "global_tippecanoe_args": [
     "--force"
   ],
@@ -105,16 +106,28 @@
     }
   },
   "text_layers": {
-    "places_overview_text": {
-      "geojson": "places_overview_text.geojson",
+    "places_province_text": {
+      "geojson": "places_province_text.geojson",
       "zoom_min": 0,
-      "zoom_max": 3,
+      "zoom_max": 6,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
-    "places_detail_text": {
-      "geojson": "places_detail_text.geojson",
+    "places_city_text": {
+      "geojson": "places_city_text.geojson",
       "zoom_min": 4,
-      "zoom_max": 6,
+      "zoom_max": 7,
+      "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
+    },
+    "places_county_text": {
+      "geojson": "places_county_text.geojson",
+      "zoom_min": 5,
+      "zoom_max": 9,
+      "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
+    },
+    "places_other_text": {
+      "geojson": "places_other_text.geojson",
+      "zoom_min": 6,
+      "zoom_max": 14,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "roads_text": {

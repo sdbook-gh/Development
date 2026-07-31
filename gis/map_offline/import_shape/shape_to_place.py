@@ -88,15 +88,15 @@ def dedup_names(names: list[str]) -> dict[str, str]:
     return {n: n for n in names}
 
 
-def match_shapefile(subdir: Path, pattern: str, layer_name: str) -> Path | None:
+def match_shapefile(subdir: Path, pattern: str, layer_name: str, config_name: str) -> Path | None:
     regex = re.compile(pattern)
     candidates = sorted(f for f in subdir.glob("*.shp") if regex.search(f.name))
     if not candidates:
-        print(f"  [WARN] {subdir.name}/{layer_name}: 无匹配文件, 正则={pattern}", file=sys.stderr)
+        print(f"  [WARN] [{config_name}] {subdir.name}/{layer_name}: 无匹配文件, 正则={pattern}", file=sys.stderr)
         return None
     if len(candidates) > 1:
         names = ", ".join(c.name for c in candidates)
-        print(f"  [WARN] {subdir.name}/{layer_name}: 多个匹配 [{names}], 跳过", file=sys.stderr)
+        print(f"  [WARN] [{config_name}] {subdir.name}/{layer_name}: 多个匹配 [{names}], 跳过", file=sys.stderr)
         return None
     return candidates[0]
 
@@ -251,7 +251,7 @@ def ingest_shape(
     return count
 
 
-def collect_tasks(config: dict, input_dir: Path) -> list[tuple[Path, str, str, dict, str]]:
+def collect_tasks(config: dict, input_dir: Path, config_name: str) -> list[tuple[Path, str, str, dict, str]]:
     root_has, subdirs = scan_subdirs(input_dir)
     short_map = dedup_names([d.name for d in subdirs]) if subdirs else {}
     tasks: list[tuple[Path, str, str, dict, str]] = []
@@ -266,7 +266,7 @@ def collect_tasks(config: dict, input_dir: Path) -> list[tuple[Path, str, str, d
         for layer_key, layer_cfg in layers.items():
             if not layer_cfg.get("enabled", True):
                 continue
-            shp = match_shapefile(subdir, layer_cfg["shapefilematch"], layer_key)
+            shp = match_shapefile(subdir, layer_cfg["shapefilematch"], layer_key, config_name)
             if shp is not None:
                 tasks.append((shp, layer_key, province, layer_cfg, subdir.name))
     return tasks
@@ -289,7 +289,7 @@ def main() -> int:
 
     print(f"[INFO] libgdal: {_gdal_lib_path}")
 
-    tasks = collect_tasks(config, input_dir)
+    tasks = collect_tasks(config, input_dir, Path(args.config).name)
     if not tasks:
         print("[WARN] 无 places 入库任务", file=sys.stderr)
         return 1
