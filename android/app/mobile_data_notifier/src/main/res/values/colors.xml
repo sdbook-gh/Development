@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="bg_main">#FFF5F5F5</color>
+    <color name="card_bg">#FFFFFFFF</color>
+    <color name="overlay_bg">#CC1A1A1A</color>
+    <color name="overlay_text">#FFFFFFFF</color>
+    <color name="accent">#FF1976D2</color>
+    <color name="accent_dark">#FF0D47A1</color>
+    <color name="danger">#FFD32F2F</color>
+    <color name="text_primary">#FF212121</color>
+    <color name="text_secondary">#FF757575</color>
+    <color name="divider">#FFE0E0E0</color>
+</resources>

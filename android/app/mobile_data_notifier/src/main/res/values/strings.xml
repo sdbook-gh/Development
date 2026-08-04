@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">移动数据通知器</string>
+
+    <!-- 主界面 -->
+    <string name="status_title">当前状态</string>
+    <string name="data_state_on">移动数据：已开启</string>
+    <string name="data_state_off">移动数据：已关闭</string>
+    <string name="data_state_unknown">移动数据：未知</string>
+    <string name="usage_since_boot">开机以来：--</string>
+    <string name="usage_this_session">本次统计：--</string>
+    <string name="reset_usage">重置流量统计</string>
+
+    <string name="overlay_title">悬浮窗</string>
+    <string name="show_overlay">显示悬浮窗</string>
+    <string name="hide_overlay">隐藏悬浮窗</string>
+    <string name="grant_overlay">授予悬浮窗权限</string>
+    <string name="start_service">启动保活服务</string>
+    <string name="stop_service">停止保活服务</string>
+
+    <string name="keepalive_title">保活</string>
+    <string name="battery_whitelist">加入电池优化白名单</string>
+
+    <string name="schedule_title">定时关闭</string>
+    <string name="schedule_note">说明：本机未 Root，系统不允许 App 直接开关移动数据。\n到点时将弹出带声音与震动的提醒通知，您可在通知里点\"关闭数据\"跳转设置页手动关闭。</string>
+    <string name="add_period">+ 添加时段</string>
+    <string name="period_start">开始</string>
+    <string name="period_end">结束</string>
+    <string name="delete">删除</string>
+    <string name="no_periods">尚未添加任何时段</string>
+
+    <!-- 悬浮窗 -->
+    <string name="overlay_data_on">数据开启</string>
+    <string name="overlay_data_off">数据关闭</string>
+    <string name="overlay_traffic_fmt">流量 %1$s</string>
+    <string name="overlay_close_data">关闭流量</string>
+
+    <!-- 通知 -->
+    <string name="channel_fg_name">保活服务</string>
+    <string name="channel_fg_desc">保持悬浮窗与数据监控运行（静音）</string>
+    <string name="channel_reminder_name">定时提醒</string>
+    <string name="channel_reminder_desc">到点提醒关闭/开启移动数据（带声音与震动）</string>
+    <string name="fg_notification_title">移动数据通知器运行中</string>
+    <string name="fg_notification_text">悬浮窗与流量监控已开启</string>
+    <string name="reminder_close_title">到关闭时间，请关闭移动数据</string>
+    <string name="reminder_close_text">点击\"关闭数据\"跳转设置页手动关闭</string>
+    <string name="reminder_open_title">到开启时间</string>
+    <string name="reminder_open_text">如需要，可重新开启移动数据</string>
+    <string name="action_close_data">关闭数据</string>
+    <string name="action_open_settings">打开设置</string>
+    <string name="action_show_overlay">显示悬浮窗</string>
+
+    <!-- 权限/提示 -->
+    <string name="perm_overlay_rationale">需要在屏幕顶部显示悬浮窗，请授予\"显示在其他应用上层\"权限。</string>
+    <string name="perm_phone_rationale">需要读取移动数据开关状态，请授予电话权限。</string>
+    <string name="perm_notif_rationale">需要发送提醒通知，请允许通知权限。</string>
+</resources>

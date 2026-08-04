@@ -1,0 +1,24 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 圆角背景 -->
+    <path
+        android:fillColor="@color/accent"
+        android:pathData="M14,0 L94,0 A14,14 0 0 1 108,14 L108,94 A14,14 0 0 1 94,108 L14,108 A14,14 0 0 1 0,94 L0,14 A14,14 0 0 1 14,0 Z" />
+
+    <!-- 信号波纹 + 下行箭头（表示移动数据） -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M40,30 A24,24 0 0 1 84,54 L78,54 A18,18 0 0 0 46,36 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M52,44 A10,10 0 0 1 70,54 L64,54 A4,4 0 0 0 58,50 Z" />
+
+    <!-- 下行箭头 -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M62,56 L62,80 L54,72 L50,76 L66,92 L82,76 L78,72 L70,80 L70,56 Z" />
+</vector>

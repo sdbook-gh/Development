@@ -1,0 +1,50 @@
+load("@io_bazel_rules_kotlin//kotlin:android.bzl", "kt_android_library")
+load("//tools:d8_wrapper.bzl", "d8_wrapper")
+
+# ── Wrapper for d8_compat_dx ────────────────────────────────
+# Workaround: Bazel 7.2.1's OptionsParser doesn't convert underscores to dashes,
+# but android_binary passes --min_sdk_version (underscores).
+# CompatDx expects --min-sdk-version (dashes).
+d8_wrapper(name = "d8_wrapper")
+
+# ── Custom Android SDK with patched dexer ───────────────────
+android_sdk(
+    name = "custom_sdk",
+    aapt = "@androidsdk//:aapt_binary",
+    aapt2 = "@androidsdk//:aapt2_binary",
+    adb = "@androidsdk//:adb",
+    aidl = "@androidsdk//:aidl_binary",
+    android_jar = "@androidsdk//:platforms/android-35/android.jar",
+    apksigner = "@androidsdk//:apksigner",
+    build_tools_version = "34.0.0",
+    dx = ":d8_wrapper",
+    framework_aidl = "@androidsdk//:platforms/android-35/framework.aidl",
+    legacy_main_dex_list_generator = "@androidsdk//:generate_main_dex_list",
+    main_dex_classes = "@androidsdk//:build-tools/34.0.0/mainDexClasses.rules",
+    proguard = "@bazel_tools//tools/jdk:proguard",
+    shrinked_android_jar = "@androidsdk//:platforms/android-35/android.jar",
+    zipalign = "@androidsdk//:zipalign_binary",
+)
+
+toolchain(
+    name = "custom_sdk_toolchain",
+    toolchain = ":custom_sdk",
+    toolchain_type = "@bazel_tools//tools/android:sdk_toolchain_type",
+)
+
+# ── Kotlin Android Library ──────────────────────────────────
+kt_android_library(
+    name = "app_lib",
+    srcs = glob(["src/main/java/com/example/mobiledatanotifier/*.kt"]),
+    manifest = "src/main/AndroidManifest.xml",
+    resource_files = glob(["src/main/res/**"]),
+)
+
+# ── Android Binary ──────────────────────────────────────────
+android_binary(
+    name = "mobile_data_notifier",
+    manifest = "src/main/AndroidManifest.xml",
+    resource_files = glob(["src/main/res/**"]),
+    min_sdk_version = 26,
+    deps = [":app_lib"],
+)
