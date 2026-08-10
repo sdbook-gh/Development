@@ -1,0 +1,3 @@
+# install to
+.pi/extensions/
+
