@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import hashlib
 import json
 import re
 import sqlite3
@@ -220,7 +221,8 @@ def ingest_shape(
 
         osm_id = fields[field_index["osm_id"]].strip() if "osm_id" in field_index else ""
         if not osm_id:
-            osm_id = f"{layer_key}_{hash(name)}"
+            # Python 内置 hash() 带随机盐、跨进程不稳定，重建/合并库会产生重复行
+            osm_id = f"{layer_key}_{hashlib.md5(name.encode('utf-8')).hexdigest()[:12]}"
         fclass = fields[field_index["fclass"]].strip() if "fclass" in field_index else ""
         population = 0
         if "population" in field_index:

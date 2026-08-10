@@ -15,8 +15,10 @@ OUTPUT_HTML = os.path.join(SCRIPT_DIR, "style_localmap.html")
 # ── 从 index.html 提取的配置 ──────────────────────────
 TILES_URL = "http://127.0.0.1:3000/tiles/{z}/{x}/{y}"
 GLYPHS_URL = "http://localhost:8080/fonts/{fontstack}/{range}.pbf"
+SPRITE_URL = "http://127.0.0.1:3000/sprites/ofm_f384/ofm"
+# 必须与 glyph_font/fonts/font_config.json 的 stacks key 一致
 FONT_OLD = "Noto Sans Regular"
-FONT_NEW = "Klokantech Noto Sans Regular"
+FONT_NEW = "Noto Sans Regular"
 LOCAL_FONTS = "['Noto Sans SC', 'Microsoft YaHei', 'sans-serif']"
 CENTER_LNG = 116.4074
 CENTER_LAT = 39.9042
@@ -31,8 +33,9 @@ def patch_style(style: dict) -> dict:
         if src.get("type") == "vector" and src.get("tiles"):
             src["tiles"] = [TILES_URL]
 
-    # 2. glyphs
+    # 2. glyphs / sprite
     style["glyphs"] = GLYPHS_URL
+    style["sprite"] = SPRITE_URL
 
     # 3. 字体名称替换
     for layer in style.get("layers", []):
@@ -292,6 +295,7 @@ def main():
     print(f"[OK] 已生成: {OUTPUT_HTML}")
     print(f"     瓦片源: {TILES_URL}")
     print(f"     字体源: {GLYPHS_URL}")
+    print(f"     图标源: {SPRITE_URL}")
     print(f"     字体名: {FONT_OLD} -> {FONT_NEW}")
     print(f"     图层数: {len(style['layers'])}")
 

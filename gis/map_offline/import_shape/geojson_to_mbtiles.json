@@ -1,7 +1,8 @@
 {
   "temp_dir": "./temp",
   "global_tippecanoe_args": [
-    "--force"
+    "--force",
+    "--generate-ids"
   ],
   "tile_join_args": [
     "--force",
@@ -12,12 +13,12 @@
       "geojson": "admin.geojson",
       "zoom_min": 0,
       "zoom_max": 12,
-      "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
+      "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping", "--detect-shared-borders"]
     },
     "places": {
       "geojson": "places.geojson",
       "zoom_min": 0,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "places_a": {
@@ -26,46 +27,52 @@
       "zoom_max": 12,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
+    "roads_low": {
+      "geojson": "roads_low.geojson",
+      "zoom_min": 5,
+      "zoom_max": 10,
+      "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
+    },
     "roads": {
       "geojson": "roads.geojson",
-      "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_min": 10,
+      "zoom_max": 15,
       "tippecanoe_args": ["--no-feature-limit"]
     },
     "railways": {
       "geojson": "railways.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--no-feature-limit"]
     },
     "waterways": {
       "geojson": "waterways.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--no-feature-limit"]
     },
     "water": {
       "geojson": "water.geojson",
       "zoom_min": 4,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "natural_a": {
       "geojson": "natural_a.geojson",
       "zoom_min": 4,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "natural": {
       "geojson": "natural.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "landuse": {
       "geojson": "landuse.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "protected": {
@@ -77,31 +84,31 @@
     "pois": {
       "geojson": "pois.geojson",
       "zoom_min": 10,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "pofw": {
       "geojson": "pofw.geojson",
       "zoom_min": 10,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "transport": {
       "geojson": "transport.geojson",
       "zoom_min": 10,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "traffic": {
       "geojson": "traffic.geojson",
       "zoom_min": 12,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     },
     "buildings": {
       "geojson": "buildings.geojson",
       "zoom_min": 13,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["--drop-densest-as-needed", "--extend-zooms-if-still-dropping"]
     }
   },
@@ -127,49 +134,49 @@
     "places_other_text": {
       "geojson": "places_other_text.geojson",
       "zoom_min": 6,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "roads_text": {
       "geojson": "roads_text.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "water_text": {
       "geojson": "water_text.geojson",
       "zoom_min": 4,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "waterways_text": {
       "geojson": "waterways_text.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "landuse_text": {
       "geojson": "landuse_text.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "railways_text": {
       "geojson": "railways_text.geojson",
       "zoom_min": 8,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "pois_text": {
       "geojson": "pois_text.geojson",
       "zoom_min": 10,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     },
     "transport_text": {
       "geojson": "transport_text.geojson",
       "zoom_min": 10,
-      "zoom_max": 14,
+      "zoom_max": 15,
       "tippecanoe_args": ["-r1", "--no-feature-limit", "--no-tile-size-limit"]
     }
   }

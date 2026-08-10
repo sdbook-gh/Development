@@ -29,7 +29,9 @@
 import argparse
 import ctypes
 import os
+import signal
 import sqlite3
+import struct
 import subprocess
 import sys
 import time
@@ -79,6 +81,27 @@ CREATE UNIQUE INDEX name ON metadata (name);
 CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB);
 CREATE UNIQUE INDEX tile_index ON tiles (zoom_level, tile_column, tile_row);
 """
+
+
+# ============== Ctrl+C 安全退出 ==============
+# 收到 SIGINT 时用 killpg 杀掉整个进程组 (主进程 + 所有子孙进程)。
+# 子进程可能卡在 C 代码 (.so / 外部二进制) 里, SIGINT 默认动作无法生效
+# (Python 的 SIGINT handler 要回到字节码才执行, 信号会一直挂起),
+# 必须用 SIGKILL; killpg 一次性清除所有子孙进程 (含孙进程), 无残留。
+
+_MAIN_PID = None     # 主进程 pid; worker 子进程据此静默退出, 避免重复打印
+
+
+def _sigint_handler(signum, frame):
+    if _MAIN_PID is not None and os.getpid() != _MAIN_PID:
+        # worker 子进程: 静默退出, 由主进程的 killpg 兜底
+        os._exit(2)
+    print("\n收到 Ctrl-C, 正在终止所有子进程...", flush=True)
+    try:
+        os.killpg(os.getpgrp(), signal.SIGKILL)
+    except OSError:
+        pass
+    os._exit(130)
 
 
 # ============== libtile-join-ext.so ctypes 绑定 ==============
@@ -144,6 +167,39 @@ def call_tile_join_ext(lib_path, input_paths, output_path,
     sys.stdout.flush()
 
 
+def _fork_call_tile_join_ext(lib_path, input_paths, output_path,
+                             min_zoom=None, max_zoom=None):
+    """在 fork 子进程中调用 call_tile_join_ext, 使其可被 Ctrl+C 中断。
+
+    .so 若在主进程的 C 代码中执行, SIGINT handler 会一直挂起到 .so 返回,
+    导致 Ctrl+C 无效。放到 fork 子进程后, 主进程在 waitpid 处可被信号中断,
+    由 _sigint_handler 的 killpg 用 SIGKILL 杀掉子进程。"""
+    result_r, result_w = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        # ---- 子进程 ----
+        os.close(result_r)
+        try:
+            call_tile_join_ext(lib_path, input_paths, output_path, min_zoom, max_zoom)
+            os.write(result_w, struct.pack("i", 0))
+        except BaseException:
+            os.write(result_w, struct.pack("i", -1))
+        os._exit(0)
+    # ---- 主进程 ----
+    os.close(result_w)
+    _, status = os.waitpid(pid, 0)   # 在此可被 SIGINT 中断
+    buf = os.read(result_r, 4)
+    os.close(result_r)
+    if buf and len(buf) == 4:
+        rc = struct.unpack("i", buf)[0]
+    elif os.WIFEXITED(status):
+        rc = os.WEXITSTATUS(status)
+    else:
+        rc = -1
+    if rc != 0:
+        raise RuntimeError(f"tile_join_ext 失败, code={rc}")
+
+
 def call_tile_join(input_paths, output_path, min_zoom, max_zoom):
     """标准 tippecanoe tile-join: 全量合并指定 zoom 范围 (用于 overview.mbtiles)."""
     cmd = [
@@ -155,10 +211,21 @@ def call_tile_join(input_paths, output_path, min_zoom, max_zoom):
         "-o", output_path,
     ]
     cmd += list(input_paths)
-    r = subprocess.run(cmd, capture_output=True, text=True)
-    if r.returncode != 0:
-        err = (r.stderr or r.stdout or "").strip()[-500:]
-        raise RuntimeError(f"tile-join 失败, code={r.returncode}: {err}")
+    # 输出实时显示到屏幕 (stderr 合并进 stdout, 逐行转发), 同时累积供报错
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    lines = []
+    try:
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            lines.append(line)
+        proc.wait()
+    except KeyboardInterrupt:
+        proc.kill()
+        raise
+    if proc.returncode != 0:
+        out = "".join(lines).strip()[-500:]
+        raise RuntimeError(f"tile-join 失败, code={proc.returncode}: {out}")
     sys.stdout.flush()
 
 
@@ -396,8 +463,8 @@ def phase3_build_boundary(input_files, output_dir, workers, lib_path, db_path,
     boundary_min_zoom = overview_max_zoom + 1
 
     if workers <= 1:
-        call_tile_join_ext(lib_path, input_files, boundary_path,
-                           min_zoom=boundary_min_zoom)
+        _fork_call_tile_join_ext(lib_path, input_files, boundary_path,
+                                 min_zoom=boundary_min_zoom)
         log("Phase 3", f"完成 (单 worker, 库内部多线程) 耗时 {time.time()-t0:.1f}s")
         return boundary_path
 
@@ -410,8 +477,8 @@ def phase3_build_boundary(input_files, output_dir, workers, lib_path, db_path,
         return boundary_path
     if len(bins) <= 1:
         print(f"  zoom 范围无法拆成 {workers} 段 (边界瓦片集中度过高), 回退单 worker")
-        call_tile_join_ext(lib_path, input_files, boundary_path,
-                           min_zoom=boundary_min_zoom)
+        _fork_call_tile_join_ext(lib_path, input_files, boundary_path,
+                                 min_zoom=boundary_min_zoom)
         log("Phase 3", f"完成 (回退单 worker) 耗时 {time.time()-t0:.1f}s")
         return boundary_path
 
@@ -727,4 +794,6 @@ def main():
 
 
 if __name__ == "__main__":
+    _MAIN_PID = os.getpid()
+    signal.signal(signal.SIGINT, _sigint_handler)
     main()

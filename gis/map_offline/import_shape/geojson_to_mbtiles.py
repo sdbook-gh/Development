@@ -17,10 +17,10 @@ import argparse
 import ctypes
 import json
 import os
+import signal
 import shutil
 import struct
 import sys
-import tempfile
 import threading
 import time
 from collections import defaultdict
@@ -33,6 +33,29 @@ _inflight_lock = threading.Lock()
 
 
 # ---------------------------------------------------------------------------
+# Ctrl+C 安全退出
+# 收到 SIGINT 时用 killpg 杀掉整个进程组 (主进程 + 所有子孙进程)。
+# 子进程可能卡在 .so 的 C 代码里, SIGINT 无法让其退出 (Python handler 要回到
+# 字节码才执行, 信号会一直挂起), 必须用 SIGKILL; killpg 一次性清除所有子孙进程
+# (含 ProcessPoolExecutor worker fork 出的孙进程), 无残留。
+# ---------------------------------------------------------------------------
+
+_MAIN_PID: int | None = None    # 主进程 pid; worker 子进程据此静默退出
+
+
+def _sigint_handler(signum, frame):
+    if _MAIN_PID is not None and os.getpid() != _MAIN_PID:
+        # worker 子进程: 静默退出, 由主进程的 killpg 兜底
+        os._exit(2)
+    print("\n收到 Ctrl-C, 正在终止所有子进程...", flush=True)
+    try:
+        os.killpg(os.getpgrp(), signal.SIGKILL)
+    except OSError:
+        pass
+    os._exit(130)
+
+
+# ---------------------------------------------------------------------------
 # fork 隔离调用 .so
 # ---------------------------------------------------------------------------
 
@@ -42,17 +65,19 @@ def _fork_and_call(lib_path: str, entry_call, need_stderr: bool = True
 
     entry_call(lib) 接收 CDLL 对象，返回 int 退出码。
     若库内部调用 exit()，子进程直接退出，父进程通过 waitpid 获取退出码。
-    """
+    子进程的 stderr 实时转发到屏幕 (同时累积供报错)。"""
     result_r, result_w = os.pipe()
-    stderr_tmp = tempfile.TemporaryFile() if need_stderr else None
+    # stderr 用管道: 父进程一边实时转发到终端, 一边累积供报错
+    stderr_r, stderr_w = os.pipe() if need_stderr else (None, None)
 
     pid = os.fork()
     if pid == 0:
         # ---- 子进程 ----
         os.close(result_r)
-        if stderr_tmp:
-            os.dup2(stderr_tmp.fileno(), 2)
-
+        if stderr_w is not None:
+            os.dup2(stderr_w, 2)
+            os.close(stderr_w)
+            os.close(stderr_r)
         try:
             lib = ctypes.CDLL(lib_path)
             code = entry_call(lib)
@@ -63,7 +88,29 @@ def _fork_and_call(lib_path: str, entry_call, need_stderr: bool = True
 
     # ---- 父进程 ----
     os.close(result_w)
+    if stderr_w is not None:
+        os.close(stderr_w)
+
+    stderr_chunks: list[bytes] = []
+    pumper = None
+    if stderr_r is not None:
+        def _pump():
+            while True:
+                data = os.read(stderr_r, 4096)
+                if not data:
+                    break
+                sys.stderr.buffer.write(data)
+                sys.stderr.flush()
+                stderr_chunks.append(data)
+        pumper = threading.Thread(target=_pump, daemon=True)
+        pumper.start()
+
     _, status = os.waitpid(pid, 0)
+
+    if pumper is not None:
+        pumper.join()
+    if stderr_r is not None:
+        os.close(stderr_r)
 
     buf = os.read(result_r, 4)
     os.close(result_r)
@@ -76,11 +123,8 @@ def _fork_and_call(lib_path: str, entry_call, need_stderr: bool = True
         exit_code = -1
 
     stderr_text = ""
-    if stderr_tmp:
-        stderr_tmp.seek(0)
-        stderr_text = stderr_tmp.read().decode("utf-8", errors="replace")
-        stderr_tmp.close()
-
+    if need_stderr:
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
     return exit_code, stderr_text
 
 
@@ -622,4 +666,6 @@ def main():
 
 
 if __name__ == "__main__":
+    _MAIN_PID = os.getpid()
+    signal.signal(signal.SIGINT, _sigint_handler)
     main()
