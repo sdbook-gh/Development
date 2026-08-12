@@ -64,6 +64,8 @@ class OverlayService : Service() {
     private lateinit var handler: Handler
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     private var colorAnimator: ValueAnimator? = null
+    // 用户是否主动隐藏了悬浮窗；为 false 时开机/被杀重建后可自愈重新挂载
+    private var overlayHiddenByUser = false
 
     override fun onCreate() {
         super.onCreate()
@@ -81,7 +83,7 @@ class OverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_HIDE_OVERLAY -> removeOverlay()
+            ACTION_HIDE_OVERLAY -> { overlayHiddenByUser = true; removeOverlay() }
             ACTION_SHOW_OVERLAY -> addOverlay()
             ACTION_STOP -> {
                 shutdown()
@@ -171,6 +173,7 @@ class OverlayService : Service() {
             @Suppress("DEPRECATION") WindowManager.LayoutParams.TYPE_PHONE
 
     private fun addOverlay() {
+        overlayHiddenByUser = false
         if (overlayView != null) return
         if (!PermUtil.canDrawOverlays(this)) return
         val v = LayoutInflater.from(this).inflate(R.layout.view_overlay, null, false)
@@ -245,6 +248,10 @@ class OverlayService : Service() {
 
     private val updateRunnable = object : Runnable {
         override fun run() {
+            // 自愈：开机后/被杀重建后若悬浮窗未挂载且未被用户主动隐藏，则重新添加
+            if (overlayView == null && !overlayHiddenByUser && PermUtil.canDrawOverlays(this@OverlayService)) {
+                addOverlay()
+            }
             refreshOverlay()
             handler.postDelayed(this, 3000)
         }
