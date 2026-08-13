@@ -558,7 +558,9 @@ def main():
     parser.add_argument("-w", "--workers", type=int, default=4,
                         help="并发 worker 数, 默认 4")
     parser.add_argument("-l", "--layers", nargs="+", default=None,
-                        help="指定图层 (空格分隔), 默认全部")
+                        help="指定图层 (空格分隔)，同时过滤 layers 和 text_layers，默认全部")
+    parser.add_argument("--list-layers", action="store_true",
+                        help="打印所有图层名称并退出")
     parser.add_argument("-p", "--province", default=None,
                         help="指定子目录名 (如 jiangxi-latest-free.shp), 用于测试单省")
     parser.add_argument("--dry-run", action="store_true",
@@ -592,13 +594,27 @@ def main():
     text_layers = cfg.get("text_layers", {})
     global_gdal_args = cfg.get("global_gdal_args", [])
 
+    if args.list_layers:
+        print(f"{'layer':25} | {'type':12} | shapefilematch")
+        print("-" * 70)
+        for name, lc in all_layers.items():
+            print(f"{name:25} | {'layer':12} | {lc.get('shapefilematch', '')}")
+        for name, tc in text_layers.items():
+            print(f"{name:25} | {'text_layer':12} | {tc.get('shapefilematch', '')}")
+        return
+
     if args.layers:
-        layers = {k: all_layers[k] for k in args.layers if k in all_layers}
-        if not layers:
+        # 支持空格分隔和逗号分隔
+        wanted = set()
+        for item in args.layers:
+            wanted.update(s.strip() for s in item.split(",") if s.strip())
+        layers = {k: all_layers[k] for k in wanted if k in all_layers}
+        text_layers = {k: text_layers[k] for k in wanted if k in text_layers}
+        if not layers and not text_layers:
             print(f"[ERROR] 无效图层: {args.layers}", file=sys.stderr)
-            print(f"  可用: {', '.join(all_layers.keys())}", file=sys.stderr)
+            print(f"  可用 layers: {', '.join(all_layers.keys())}", file=sys.stderr)
+            print(f"  可用 text_layers: {', '.join(cfg.get('text_layers', {}).keys())}", file=sys.stderr)
             sys.exit(1)
-        # -l 只影响全量图层，不影响 text_layers
     else:
         layers = all_layers
 

@@ -2,13 +2,18 @@
 """
 Generate MapLibre Glyph PBF files from a TTF font using pure Python.
 
-Uses TinySDF-style approach: render at 4x with anti-aliasing, 
-subsample to target size. Fast and produces good SDF-like results.
+Renders at 4x, downsamples coverage, then encodes a real SDF matching
+TinySDF / fontnik (cutoff=0.25, radius=8, edge ~192). Bitmap padding stays
+3px (MapLibre glyph atlas convention). Variable fonts are pinned to Regular
+(wght=400); Noto Sans SC VF defaults to Thin otherwise.
 
 Usage:
-    python3 fonts/generate_pbf.py NotoSansSC.ttf "fonts/Klokantech Noto Sans Regular"
+    python3 fonts/generate_pbf.py NotoSansSC.ttf fonts/data
+    python3 fonts/generate_pbf.py NotoSansSC.ttf fonts/data 0-255
+    python3 fonts/generate_pbf.py NotoSansSC.ttf fonts/data 0-255 256-511
 """
 
+import math
 import os
 import sys
 from fontTools.ttLib import TTFont
@@ -16,9 +21,13 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
 FONT_SIZE = 24
-SDF_BORDER = 3
-SCALE = 4                     # TinySDF upscale factor
-RENDER_SIZE = (FONT_SIZE + SDF_BORDER * 2) * SCALE  # 120px
+SDF_BORDER = 3          # PBF bitmap padding; MapLibre atlas convention
+SDF_RADIUS = 8          # TinySDF / fontnik distance encoding range
+SDF_CUTOFF = 0.25
+VARIATION_NAME = "Regular"
+SCALE = 4
+RENDER_SIZE = FONT_SIZE * SCALE  # 96px; must match 24px metrics * SCALE
+INF = 1e20
 
 
 # ---------------------------------------------------------------------------
@@ -44,8 +53,8 @@ def _build_glyph_pbf(gid, bitmap, w, h, left, top, advance):
     buf += b'\x08' + _varint(gid)           # 1: id
     if bitmap and len(bitmap) > 0:
         buf += b'\x12' + _varint(len(bitmap)) + bitmap  # 2: SDF bitmap
-    buf += b'\x18' + _varint(w)             # 3: rendered width
-    buf += b'\x20' + _varint(h)             # 4: rendered height
+    buf += b'\x18' + _varint(w)             # 3: rendered width (no border)
+    buf += b'\x20' + _varint(h)             # 4: rendered height (no border)
     buf += b'\x28' + _signed_varint(left)   # 5: left (signed)
     buf += b'\x30' + _signed_varint(top)    # 6: top (signed)
     buf += b'\x38' + _varint(advance)       # 7: advance
@@ -66,119 +75,155 @@ def _build_range_pbf(fontstack_name, range_str, glyphs):
 
 
 # ---------------------------------------------------------------------------
-# TinySDF – render hi-res anti-aliased, subsample to target
+# TinySDF-compatible squared Euclidean distance transform
 # ---------------------------------------------------------------------------
 
-def _make_sdf_24(hi_res_arr, hi_res_w, hi_res_h, scale=SCALE):
-    """Convert hi-res anti-aliased rendering to SDF via subsampling.
-    
-    Adapted from MapLibre TinySDF approach:
-    - The hi-res image is rendered at (target_size + 2*border) * scale
-    - Each output pixel takes the center pixel from the corresponding scale×scale block
-    - Resulting SDF values are 0–255 where ~128 = edge
-    """
-    # The hi_res_arr covers the glyph with border at hi-res
-    # Subsample: pick every `scale`-th pixel
-    # Align to center of blocks
-    h_aligned = (hi_res_h // scale) * scale
-    w_aligned = (hi_res_w // scale) * scale
-    if h_aligned == 0 or w_aligned == 0:
-        return None
-    
-    # Take center pixel of each block
-    # Center offset within each block: scale // 2
-    off = scale // 2
-    sampled = hi_res_arr[off:h_aligned:scale, off:w_aligned:scale].astype(np.uint8)
-    
-    # Map anti-aliased 0-255 to SDF-like 0-255
-    # 128 originally = edge of glyph in anti-aliased rendering
-    # We keep it as-is; the TinySDF paper uses the raw coverage as SDF
-    return sampled
+def _edt_1d(grid, offset, stride, length, f, v, z):
+    v[0] = 0
+    z[0] = -INF
+    z[1] = INF
+    f[0] = grid[offset]
+    k = 0
+    for q in range(1, length):
+        f[q] = grid[offset + q * stride]
+        q2 = q * q
+        while True:
+            r = int(v[k])
+            s = (f[q] - f[r] + q2 - r * r) / (2.0 * (q - r))
+            if s > z[k]:
+                break
+            k -= 1
+            if k < 0:
+                break
+        k += 1
+        v[k] = q
+        z[k] = s
+        z[k + 1] = INF
+    k = 0
+    for q in range(length):
+        while z[k + 1] < q:
+            k += 1
+        r = int(v[k])
+        qr = q - r
+        grid[offset + q * stride] = f[r] + qr * qr
 
 
-def render_glyph_tinysdf(pil_font, font24, codepoint):
-    """Render glyph using TinySDF approach.
-    
-    Returns (sdf_24bitmap, rendered_w, rendered_h, left, top, advance)
-    All metrics at FONT_SIZE (24px) resolution.
+def _edt_2d(grid):
+    """In-place squared Euclidean distance transform on a C-contiguous 2D array."""
+    h, w = grid.shape
+    flat = grid.ravel()
+    max_len = max(h, w)
+    f = np.empty(max_len, dtype=np.float64)
+    v = np.empty(max_len, dtype=np.int32)
+    z = np.empty(max_len + 1, dtype=np.float64)
+    for x in range(w):
+        _edt_1d(flat, x, w, h, f, v, z)
+    for y in range(h):
+        _edt_1d(flat, y * w, 1, w, f, v, z)
+
+
+def _coverage_to_sdf(coverage):
+    """Encode TinySDF / fontnik SDF. Edge ~192 (cutoff=0.25), radius=SDF_RADIUS."""
+    alpha = coverage.astype(np.float64) / 255.0
+    grid_outer = np.where(
+        alpha >= 1.0, 0.0,
+        np.where(alpha <= 0.0, INF, np.maximum(0.0, 0.5 - alpha) ** 2),
+    ).astype(np.float64, copy=False)
+    grid_inner = np.where(
+        alpha >= 1.0, INF,
+        np.where(alpha <= 0.0, 0.0, np.maximum(0.0, alpha - 0.5) ** 2),
+    ).astype(np.float64, copy=False)
+    _edt_2d(grid_outer)
+    _edt_2d(grid_inner)
+    dist = np.sqrt(grid_outer) - np.sqrt(grid_inner)
+    encoded = np.clip(
+        np.round(255.0 - 255.0 * (dist / SDF_RADIUS + SDF_CUTOFF)),
+        0, 255,
+    ).astype(np.uint8)
+    return encoded
+
+
+def _downsample_coverage(hi_res, out_h, out_w):
+    """Area-average SCALE x SCALE blocks to target coverage."""
+    need_h = out_h * SCALE
+    need_w = out_w * SCALE
+    canvas = np.zeros((need_h, need_w), dtype=np.float64)
+    h = min(hi_res.shape[0], need_h)
+    w = min(hi_res.shape[1], need_w)
+    canvas[:h, :w] = hi_res[:h, :w]
+    return canvas.reshape(out_h, SCALE, out_w, SCALE).mean(axis=(1, 3))
+
+
+# ---------------------------------------------------------------------------
+# Glyph raster + metrics
+# ---------------------------------------------------------------------------
+
+def _metrics_24(font24, char):
+    """Baseline-relative metrics at 24px (Pillow anchor='ls')."""
+    draw = ImageDraw.Draw(Image.new('L', (1, 1)))
+    bbox = draw.textbbox((0, 0), char, font=font24, anchor='ls')
+    advance = max(1, int(round(font24.getlength(char))))
+    left = int(math.floor(bbox[0]))
+    right = int(math.ceil(bbox[2]))
+    top_y = int(math.floor(bbox[1]))
+    bot_y = int(math.ceil(bbox[3]))
+    width = max(0, right - left)
+    height = max(0, bot_y - top_y)
+    top = -top_y
+    return width, height, left, top, advance
+
+
+def render_glyph_sdf(pil_hi, font24, codepoint):
+    """Render one glyph to an SDF bitmap.
+
+    Returns (sdf_bytes, width, height, left, top, advance).
+    width/height exclude the 3px SDF border; bitmap includes it.
     """
     char = chr(codepoint)
-    
-    # Get metrics at target size
-    bbox24 = ImageDraw.Draw(Image.new('L', (1,1))).textbbox((0, 0), char, font=font24)
-    advance24 = round(font24.getlength(char))
-    ascent24 = font24.getmetrics()[0]
-    
-    bw = bbox24[2] - bbox24[0]
-    bh = bbox24[3] - bbox24[1]
-    left24 = bbox24[0]
-    
-    if bw <= 0 or bh <= 0:
-        return None, 0, 0, 0, -FONT_SIZE, max(1, advance24)
-    
-    # Render at hi-res for TinySDF
-    # Need to render a region covering the glyph + SDF_BORDER at SCALE resolution
-    hr_w = (bw + SDF_BORDER * 2) * SCALE
-    hr_h = (bh + SDF_BORDER * 2) * SCALE
-    
+    width, height, left, top, advance = _metrics_24(font24, char)
+
+    if width <= 0 or height <= 0:
+        return None, 0, 0, 0, 0, advance
+
+    out_w = width + SDF_BORDER * 2
+    out_h = height + SDF_BORDER * 2
+    hr_w = out_w * SCALE
+    hr_h = out_h * SCALE
+
     canvas = Image.new('L', (hr_w, hr_h), 0)
     draw = ImageDraw.Draw(canvas)
-    
-    # Position: the ascender point should be at (border*scale, 0) in hi-res coords
-    # In Pillow: glyph at (0,0) has ascender at (0,0)
-    # We want: ascender at (SDF_BORDER * SCALE, 0) on canvas
-    # The bbox is relative to (0,0)
-    # So: text position = (SDF_BORDER * SCALE - bbox24[0] * SCALE, -bbox24[1] * SCALE)
-    tx = (SDF_BORDER * SCALE) - (bbox24[0] * SCALE)
-    ty = (SDF_BORDER * SCALE) - (bbox24[1] * SCALE)
-    
-    draw.text((tx, ty), char, font=pil_font, fill=255)
-    
-    arr = np.array(canvas, dtype=np.uint8)
-    
-    # Subsample to get SDF
-    sampled = _make_sdf_24(arr, hr_w, hr_h)
-    if sampled is None:
-        return None, 0, 0, 0, -FONT_SIZE, max(1, advance24)
-    
-    h_sdf, w_sdf = sampled.shape
-    
-    # The expected dimensions: (bh+6) x (bw+6) at 24px
-    expected_h = bh + SDF_BORDER * 2
-    expected_w = bw + SDF_BORDER * 2
-    
-    # Resize if needed (should be close)
-    if h_sdf != expected_h or w_sdf != expected_w:
-        # Pad or trim to match
-        import warnings
-        warnings.warn(f"Size mismatch: got {w_sdf}x{h_sdf}, expected {expected_w}x{expected_h} for U+{codepoint:04X}")
-        # Create target-sized array
-        result = np.zeros((expected_h, expected_w), dtype=np.uint8)
-        rh = min(h_sdf, expected_h)
-        rw = min(w_sdf, expected_w)
-        result[:rh, :rw] = sampled[:rh, :rw]
-        sampled = result
-    
-    bitmap_data = sampled.tobytes()
-    
-    # Metrics: rendered size WITHOUT border
-    rendered_w = bw
-    rendered_h = bh
-    
-    # left bearing at 24px
-    left = left24
-    
-    # top: in Pillow y-down coords, bbox[1] is top of glyph from ascender
-    # In FreeType y-up: top_of_glyph = ascent24 - bbox24[1]
-    # fontnik top = top_of_glyph - ascent24 = -bbox24[1]
-    top = -bbox24[1]
-    
-    return bitmap_data, rendered_w, rendered_h, left, top, max(1, advance24)
+    tx = (SDF_BORDER - left) * SCALE
+    ty = (SDF_BORDER + top) * SCALE
+    draw.text((tx, ty), char, font=pil_hi, fill=255, anchor='ls')
+
+    coverage = _downsample_coverage(np.array(canvas, dtype=np.uint8), out_h, out_w)
+    sdf = _coverage_to_sdf(coverage)
+    return sdf.tobytes(), width, height, left, top, advance
 
 
 # ---------------------------------------------------------------------------
 # Font helpers
 # ---------------------------------------------------------------------------
+
+def _apply_regular_instance(font):
+    """Pin a variable font to Regular (wght=400). Default VF instance may be Thin."""
+    try:
+        names = font.get_variation_names()
+    except Exception:
+        return None
+    if not names:
+        return None
+    for name in names:
+        label = name.decode("utf-8", errors="replace") if isinstance(name, (bytes, bytearray)) else str(name)
+        if label == VARIATION_NAME:
+            font.set_variation_by_name(name)
+            return VARIATION_NAME
+    try:
+        font.set_variation_by_axes([400])
+        return "wght=400"
+    except Exception:
+        return None
+
 
 def get_font_name(ttf_path):
     """Extract font name from TTF (family + style)."""
@@ -207,64 +252,87 @@ def get_font_name(ttf_path):
     return name
 
 
+def _parse_range_specs(specs):
+    """Parse CLI range args like '0-255' or '256' into (start, end) inclusive."""
+    ranges = []
+    for spec in specs:
+        if '-' in spec:
+            a, b = spec.split('-', 1)
+            ranges.append((int(a), int(b)))
+        else:
+            start = int(spec)
+            ranges.append((start, start + 255))
+    return ranges
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
-def generate_all_pbf(ttf_path, output_dir):
+def generate_all_pbf(ttf_path, output_dir, range_specs=None):
     os.makedirs(output_dir, exist_ok=True)
-    
+
     font = TTFont(ttf_path)
     cmap = font.getBestCmap()
     all_codepoints = sorted(set(cmap.keys()))
     fontstack_name = get_font_name(ttf_path)
     font.close()
-    
-    pil_font_120 = ImageFont.truetype(ttf_path, RENDER_SIZE)
-    pil_font_120.path = ttf_path
-    pil_font_24 = ImageFont.truetype(ttf_path, FONT_SIZE)
-    
-    max_cp = max(all_codepoints) if all_codepoints else 0
-    max_range = (max_cp // 256) * 256
-    
-    # Build a lookup: which codepoints belong to which range
+
+    pil_hi = ImageFont.truetype(ttf_path, RENDER_SIZE)
+    font24 = ImageFont.truetype(ttf_path, FONT_SIZE)
+    variation = _apply_regular_instance(pil_hi)
+    _apply_regular_instance(font24)
+
     range_glyphs = {}
     for cp in all_codepoints:
         r = (cp // 256) * 256
         range_glyphs.setdefault(r, []).append(cp)
-    
-    total_ranges = max_range // 256 + 1
+
+    if range_specs:
+        wanted = set()
+        for start, end in range_specs:
+            wanted.add((start // 256) * 256)
+            wanted.add((end // 256) * 256)
+        range_starts = sorted(wanted)
+    else:
+        max_cp = max(all_codepoints) if all_codepoints else 0
+        range_starts = list(range(0, (max_cp // 256) * 256 + 1, 256))
+
+    total_ranges = len(range_starts)
     print(f"Font: {fontstack_name}")
+    if variation:
+        print(f"Variation: {variation}")
     print(f"Total codepoints: {len(all_codepoints)}")
-    print(f"Range: 0 to {max_range} ({total_ranges} ranges)")
+    print(f"Generating {total_ranges} range(s)")
     print()
-    
-    for i in range(0, max_range + 1, 256):
-        rs = i
-        re = min(i + 255, max_cp)
+
+    for idx, rs in enumerate(range_starts, 1):
+        re = rs + 255
         range_str = f"{rs}-{re}"
         fname = f"{rs}-{re}.pbf"
         out_path = os.path.join(output_dir, fname)
-        
-        cps = sorted(range_glyphs.get(rs, []))
-        
+
+        if range_specs:
+            lo = min(s for s, _ in range_specs)
+            hi = max(e for _, e in range_specs)
+            cps = [cp for cp in range_glyphs.get(rs, []) if lo <= cp <= hi]
+        else:
+            cps = sorted(range_glyphs.get(rs, []))
+
         glyphs_data = []
         for cp in cps:
-            result = render_glyph_tinysdf(pil_font_120, pil_font_24, cp)
-            if result:
-                bmp, rw, rh, lf, tp, adv = result
-                glyphs_data.append((cp, bmp, rw, rh, lf, tp, adv))
-        
+            bmp, rw, rh, lf, tp, adv = render_glyph_sdf(pil_hi, font24, cp)
+            glyphs_data.append((cp, bmp, rw, rh, lf, tp, adv))
+
         pbf = _build_range_pbf(fontstack_name, range_str, glyphs_data)
         with open(out_path, 'wb') as f:
             f.write(pbf)
-        
-        if (i // 256 + 1) % 40 == 0 or i == 0:
-            n = len(glyphs_data)
-            print(f"  [{i//256+1}/{total_ranges}] {fname}: {n} glyphs, {len(pbf):,}B")
-    
+
+        if idx == 1 or idx == total_ranges or idx % 40 == 0 or total_ranges <= 8:
+            print(f"  [{idx}/{total_ranges}] {fname}: {len(glyphs_data)} glyphs, {len(pbf):,}B")
+
     print(f"  [{total_ranges}/{total_ranges}] done.")
-    
+
     total_bytes = sum(os.path.getsize(os.path.join(output_dir, f))
                       for f in os.listdir(output_dir) if f.endswith('.pbf'))
     total_files = sum(1 for f in os.listdir(output_dir) if f.endswith('.pbf'))
@@ -273,7 +341,9 @@ def generate_all_pbf(ttf_path, output_dir):
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
-        print(f"Usage: python3 {sys.argv[0]} <ttf_path> <output_dir>")
-        print(f"Example: python3 {sys.argv[0]} NotoSansSC.ttf 'fonts/Klokantech Noto Sans Regular'")
+        print(f"Usage: python3 {sys.argv[0]} <ttf_path> <output_dir> [range ...]")
+        print(f"Example: python3 {sys.argv[0]} NotoSansSC.ttf fonts/data")
+        print(f"Example: python3 {sys.argv[0]} NotoSansSC.ttf fonts/data 0-255")
         sys.exit(1)
-    generate_all_pbf(sys.argv[1], sys.argv[2])
+    specs = _parse_range_specs(sys.argv[3:]) if len(sys.argv) > 3 else None
+    generate_all_pbf(sys.argv[1], sys.argv[2], specs)
