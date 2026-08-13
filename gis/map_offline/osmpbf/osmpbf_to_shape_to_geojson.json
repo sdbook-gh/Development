@@ -1,0 +1,292 @@
+{
+  "global_gdal_args": [
+    "-f",
+    "GeoJSONSeq",
+    "-lco",
+    "RS=YES",
+    "-lco",
+    "COORDINATE_PRECISION=6"
+  ],
+  "layers": {
+    "admin": {
+      "shapefilematch": ".*_adminareas_a_.*shp",
+      "zoom_min": 0,
+      "zoom_max": 12,
+      "select": "fclass,name",
+      "simplify": 0.0005,
+      "where": "",
+      "gdal_args": []
+    },
+    "places": {
+      "shapefilematch": ".*_places_f.*shp",
+      "zoom_min": 0,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "places_a": {
+      "shapefilematch": ".*_places_a_.*shp",
+      "zoom_min": 7,
+      "zoom_max": 12,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "roads_low": {
+      "shapefilematch": ".*_roads_f.*shp",
+      "zoom_min": 5,
+      "zoom_max": 10,
+      "select": "fclass,name,ref",
+      "simplify": 0,
+      "where": "fclass IN ('motorway','motorway_link','trunk','trunk_link','primary','primary_link')",
+      "gdal_args": []
+    },
+    "roads": {
+      "shapefilematch": ".*_roads_f.*shp",
+      "zoom_min": 10,
+      "zoom_max": 15,
+      "select": "fclass,name,ref,oneway,bridge,tunnel",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "railways": {
+      "shapefilematch": ".*_railways_f.*shp",
+      "zoom_min": 8,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "waterways": {
+      "shapefilematch": ".*_waterways_f.*shp",
+      "zoom_min": 8,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "water": {
+      "shapefilematch": ".*_water_a_.*shp",
+      "zoom_min": 4,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "natural_a": {
+      "shapefilematch": ".*_natural_a_.*shp",
+      "zoom_min": 4,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "natural": {
+      "shapefilematch": ".*_natural_f.*shp",
+      "zoom_min": 8,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "landuse": {
+      "shapefilematch": ".*_landuse_a_.*shp",
+      "zoom_min": 8,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "protected": {
+      "shapefilematch": ".*_protected_areas_a_.*shp",
+      "zoom_min": 7,
+      "zoom_max": 12,
+      "select": "fclass",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "pois": {
+      "shapefilematch": ".*_pois_f.*shp",
+      "zoom_min": 10,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "pofw": {
+      "shapefilematch": ".*_pofw_f.*shp",
+      "zoom_min": 10,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "transport": {
+      "shapefilematch": ".*_transport_f.*shp",
+      "zoom_min": 10,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "traffic": {
+      "shapefilematch": ".*_traffic_f.*shp",
+      "zoom_min": 12,
+      "zoom_max": 15,
+      "select": "fclass,name,calming",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "buildings": {
+      "shapefilematch": ".*_buildings_a_.*shp",
+      "zoom_min": 13,
+      "zoom_max": 15,
+      "select": "fclass,name,type",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "pofw_a": {
+      "shapefilematch": ".*_pofw_a_.*shp",
+      "zoom_min": 10,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "pois_a": {
+      "shapefilematch": ".*_pois_a_.*shp",
+      "zoom_min": 10,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "traffic_a": {
+      "shapefilematch": ".*_traffic_a_.*shp",
+      "zoom_min": 12,
+      "zoom_max": 15,
+      "select": "fclass,name,calming",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    },
+    "transport_a": {
+      "shapefilematch": ".*_transport_a_.*shp",
+      "zoom_min": 10,
+      "zoom_max": 15,
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "",
+      "gdal_args": []
+    }
+  },
+  "text_layers": {
+    "places_province": {
+      "shapefilematch": ".*_adminareas_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "fclass IN ('4') AND name IS NOT NULL AND name != ''",
+      "gdal_args": [],
+      "fallbacks": [
+        {
+          "shapefilematch": ".*_places_f.*shp",
+          "where": "fclass IN ('state') AND name IS NOT NULL AND name != ''"
+        }
+      ]
+    },
+    "places_city": {
+      "shapefilematch": ".*_adminareas_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "fclass IN ('5') AND name IS NOT NULL AND name != ''",
+      "gdal_args": [],
+      "fallbacks": [
+        {
+          "shapefilematch": ".*_places_f.*shp",
+          "where": "fclass IN ('city', 'national_capital') AND name IS NOT NULL AND name != ''"
+        }
+      ]
+    },
+    "places_county": {
+      "shapefilematch": ".*_adminareas_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "fclass IN ('6') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "places_other": {
+      "shapefilematch": ".*_adminareas_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "fclass NOT IN ('4', '5', '6') AND name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "roads": {
+      "shapefilematch": ".*_roads_f.*shp",
+      "select": "fclass,name,ref",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != '' OR ref IS NOT NULL AND ref != ''",
+      "gdal_args": []
+    },
+    "water": {
+      "shapefilematch": ".*_water_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "waterways": {
+      "shapefilematch": ".*_waterways_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "landuse": {
+      "shapefilematch": ".*_landuse_a_.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "railways": {
+      "shapefilematch": ".*_railways_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "pois": {
+      "shapefilematch": ".*_pois_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    },
+    "transport": {
+      "shapefilematch": ".*_transport_f.*shp",
+      "select": "fclass,name",
+      "simplify": 0,
+      "where": "name IS NOT NULL AND name != ''",
+      "gdal_args": []
+    }
+  }
+}

@@ -1,0 +1,150 @@
+{
+  "workers": 4,
+  "osmconf": "osmpbf_to_shp_keymap.ini",
+  "skip_layers": [
+    "other_relations"
+  ],
+  "layers": [
+    {
+      "name": "admin",
+      "output": "gis_osm_adminareas_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, admin_level AS fclass, name",
+      "where": "boundary = 'administrative'"
+    },
+    {
+      "name": "buildings",
+      "output": "gis_osm_buildings_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, building AS fclass, name, type",
+      "where": "building IS NOT NULL"
+    },
+    {
+      "name": "landuse",
+      "output": "gis_osm_landuse_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, COALESCE(landuse, \"natural\", leisure) AS fclass, name",
+      "where": "landuse IS NOT NULL OR \"natural\" IN ('wood','forest','scrub','heath','meadow') OR leisure = 'park'"
+    },
+    {
+      "name": "natural_a",
+      "output": "gis_osm_natural_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, \"natural\" AS fclass, name",
+      "where": "\"natural\" IN ('beach','cliff','cave_entrance','glacier','spring')"
+    },
+    {
+      "name": "natural",
+      "output": "gis_osm_natural_free_1",
+      "source_layer": "points",
+      "select": "osm_id, \"natural\" AS fclass, name",
+      "where": "\"natural\" IN ('beach','cave_entrance','cliff','peak','spring','tree','volcano')"
+    },
+    {
+      "name": "places_a",
+      "output": "gis_osm_places_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, place AS fclass, population, name",
+      "where": "place IS NOT NULL"
+    },
+    {
+      "name": "places",
+      "output": "gis_osm_places_free_1",
+      "source_layer": "points",
+      "select": "osm_id, place AS fclass, population, name",
+      "where": "place IS NOT NULL"
+    },
+    {
+      "name": "pofw_a",
+      "output": "gis_osm_pofw_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, amenity AS fclass, name",
+      "where": "amenity = 'place_of_worship'"
+    },
+    {
+      "name": "pofw",
+      "output": "gis_osm_pofw_free_1",
+      "source_layer": "points",
+      "select": "osm_id, amenity AS fclass, name",
+      "where": "amenity = 'place_of_worship'"
+    },
+    {
+      "name": "pois_a",
+      "output": "gis_osm_pois_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, COALESCE(amenity, shop, tourism, leisure, historic, man_made) AS fclass, name",
+      "where": "amenity IS NOT NULL OR shop IS NOT NULL OR tourism IS NOT NULL OR leisure IS NOT NULL OR historic IS NOT NULL OR man_made IS NOT NULL"
+    },
+    {
+      "name": "pois",
+      "output": "gis_osm_pois_free_1",
+      "source_layer": "points",
+      "select": "osm_id, COALESCE(amenity, shop, tourism, leisure, historic, man_made) AS fclass, name",
+      "where": "amenity IS NOT NULL OR shop IS NOT NULL OR tourism IS NOT NULL OR leisure IS NOT NULL OR historic IS NOT NULL OR man_made IS NOT NULL"
+    },
+    {
+      "name": "protected",
+      "output": "gis_osm_protected_areas_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, COALESCE(boundary, leisure) AS fclass, name",
+      "where": "boundary IN ('protected_area','national_park') OR leisure = 'nature_reserve'"
+    },
+    {
+      "name": "railways",
+      "output": "gis_osm_railways_free_1",
+      "source_layer": "lines",
+      "select": "osm_id, railway AS fclass, name, layer, bridge, tunnel",
+      "where": "railway IN ('rail','light_rail','subway','tram','monorail','narrow_gauge','miniature','funicular')"
+    },
+    {
+      "name": "roads",
+      "output": "gis_osm_roads_free_1",
+      "source_layer": "lines",
+      "select": "osm_id, highway AS fclass, name, ref, oneway, maxspeed, layer, bridge, tunnel",
+      "where": "highway IS NOT NULL"
+    },
+    {
+      "name": "traffic_a",
+      "output": "gis_osm_traffic_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, COALESCE(amenity, highway) AS fclass, name, calming",
+      "where": "amenity IN ('fuel','parking','bicycle_parking','bicycle_repair_station','marina')"
+    },
+    {
+      "name": "traffic",
+      "output": "gis_osm_traffic_free_1",
+      "source_layer": "points",
+      "select": "osm_id, COALESCE(highway, railway, amenity, waterway, man_made) AS fclass, name, calming",
+      "where": "highway IN ('traffic_signals','crossing','stop','mini_roundabout','turning_circle','motorway_junction','speed_camera','street_lamp') OR railway IN ('crossing','level_crossing') OR amenity IN ('fuel','parking','bicycle_parking','bicycle_repair_station','marina') OR waterway IN ('dam','weir','waterfall','lock_gate','slipway') OR man_made = 'pier'"
+    },
+    {
+      "name": "transport_a",
+      "output": "gis_osm_transport_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, COALESCE(aeroway, amenity, railway, highway) AS fclass, name",
+      "where": "aeroway IS NOT NULL OR amenity IN ('bus_station','ferry_terminal','taxi') OR railway IN ('station','halt') OR highway = 'platform'"
+    },
+    {
+      "name": "transport",
+      "output": "gis_osm_transport_free_1",
+      "source_layer": "points",
+      "select": "osm_id, COALESCE(aeroway, railway, highway, amenity) AS fclass, name",
+      "where": "aeroway IS NOT NULL OR railway IN ('station','halt','tram_stop','subway_entrance','platform','stop_position') OR highway IN ('bus_stop','platform') OR amenity IN ('bus_station','ferry_terminal','taxi') OR public_transport = 'platform'"
+    },
+    {
+      "name": "water",
+      "output": "gis_osm_water_a_free_1",
+      "source_layer": "multipolygons",
+      "select": "osm_id, COALESCE(\"natural\", landuse, waterway) AS fclass, name",
+      "where": "\"natural\" IN ('water','wetland','glacier') OR landuse = 'reservoir' OR waterway IN ('riverbank','dock')"
+    },
+    {
+      "name": "waterways",
+      "output": "gis_osm_waterways_free_1",
+      "source_layer": "lines",
+      "select": "osm_id, waterway AS fclass, width, name",
+      "where": "waterway IN ('river','stream','canal','drain')"
+    }
+  ],
+  "sql_dialect": "SQLITE"
+}

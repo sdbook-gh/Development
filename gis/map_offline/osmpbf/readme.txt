@@ -1,0 +1,3 @@
+python3 generate_osmpbf_to_shp_keymap.py --shape-json /mnt/extdisk/map/app/map-offline-navigation/import_shape/shape_to_geojson.json --osmpbf-config osmpbf_to_shp.json --pbf-dir province.osm.pbf --output osmpbf_to_shp_keymap.ini --template osmconf.ini --lib-dir /mnt/extdisk/map/app/bundle/scripts/output/x86_64/
+python3 osmpbf_to_shp.py --config osmpbf_to_shp.json --lib-dir /mnt/extdisk/map/app/bundle/scripts/output/x86_64/ --input-dir province.osm.pbf/ --output-dir shp --restart
+python3 osmpbf_to_shp.py --config osmpbf_to_shp.json --lib-dir /mnt/extdisk/map/app/bundle/scripts/output/x86_64/ --input-dir province.osm.pbf/ --output-dir shp --resume
