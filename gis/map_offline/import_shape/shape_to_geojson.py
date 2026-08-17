@@ -126,12 +126,12 @@ def scan_subdirs(input_dir: Path) -> list[Path]:
     若 input_dir 自身直接包含 .shp 文件，则将其视为单个子目录返回。
     """
     # 若 input_dir 自身直接包含 .shp 文件，视为单省份目录
-    if list(input_dir.glob("*.shp")):
+    if any(f.is_file() for f in input_dir.glob("*.shp")):
         return [input_dir]
 
     subdirs = sorted(
         d for d in input_dir.iterdir()
-        if d.is_dir() and list(d.glob("*.shp"))
+        if d.is_dir() and any(f.is_file() for f in d.glob("*.shp"))
     )
     if not subdirs:
         print(f"[ERROR] {input_dir} 下没有找到包含 .shp 的子目录", file=sys.stderr)
@@ -167,7 +167,7 @@ def dedup_names(names: list[str]) -> dict[str, str]:
 def match_shapefile(subdir: Path, pattern: str, layer_name: str, config_name: str) -> Path | None:
     """用正则匹配子目录下的 shape 文件，处理面/点冲突."""
     regex = re.compile(pattern)
-    candidates = sorted(f for f in subdir.glob("*.shp") if regex.search(f.name))
+    candidates = sorted(f for f in subdir.glob("*.shp") if f.is_file() and regex.search(f.name))
 
     if not candidates:
         print(f"  [WARN] [{config_name}] {subdir.name}/{layer_name}: 无匹配文件, 正则={pattern}",
