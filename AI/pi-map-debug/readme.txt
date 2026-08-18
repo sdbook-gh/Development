@@ -1,3 +1,2 @@
 # install to
-.pi/extensions/
-
+.pi/extensions/map-debug
