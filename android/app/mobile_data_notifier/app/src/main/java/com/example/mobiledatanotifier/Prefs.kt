@@ -11,6 +11,7 @@ object Prefs {
     private const val KEY_BASELINE = "usage_baseline"
     private const val KEY_BASELINE_TIME = "usage_baseline_time"
     private const val KEY_NEXT_PERIOD_ID = "next_period_id"
+    private const val KEY_CUMULATIVE_USAGE = "cumulative_usage"
 
     private fun sp(ctx: Context): SharedPreferences =
         ctx.applicationContext.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -46,4 +47,14 @@ object Prefs {
     fun getUsageBaseline(ctx: Context): Long = sp(ctx).getLong(KEY_BASELINE, 0L)
 
     fun getUsageBaselineTime(ctx: Context): Long = sp(ctx).getLong(KEY_BASELINE_TIME, 0L)
+
+    fun getCumulativeUsage(ctx: Context): Long = sp(ctx).getLong(KEY_CUMULATIVE_USAGE, 0L)
+
+    fun setCumulativeUsage(ctx: Context, bytes: Long) {
+        sp(ctx).edit().putLong(KEY_CUMULATIVE_USAGE, bytes).apply()
+    }
+
+    fun resetCumulativeUsage(ctx: Context) {
+        sp(ctx).edit().remove(KEY_CUMULATIVE_USAGE).apply()
+    }
 }

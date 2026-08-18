@@ -9,11 +9,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.app.AlertDialog
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.Switch
 import android.widget.TextView
@@ -30,7 +32,9 @@ class MainActivity : Activity() {
 
     private lateinit var tvDataState: TextView
     private lateinit var tvUsageBoot: TextView
-    private lateinit var tvUsageSession: TextView
+    private lateinit var tvUsageCumulative: TextView
+    private lateinit var btnEditCumulative: Button
+    private lateinit var btnResetCumulative: Button
     private lateinit var btnResetUsage: Button
     private lateinit var btnStartService: Button
     private lateinit var btnStopService: Button
@@ -55,7 +59,9 @@ class MainActivity : Activity() {
 
         tvDataState = findViewById(R.id.tv_data_state)
         tvUsageBoot = findViewById(R.id.tv_usage_boot)
-        tvUsageSession = findViewById(R.id.tv_usage_session)
+        tvUsageCumulative = findViewById(R.id.tv_usage_cumulative)
+        btnEditCumulative = findViewById(R.id.btn_edit_cumulative)
+        btnResetCumulative = findViewById(R.id.btn_reset_cumulative)
         btnResetUsage = findViewById(R.id.btn_reset_usage)
         btnStartService = findViewById(R.id.btn_start_service)
         btnStopService = findViewById(R.id.btn_stop_service)
@@ -68,6 +74,14 @@ class MainActivity : Activity() {
         periodsContainer = findViewById(R.id.periods_container)
         btnAddPeriod = findViewById(R.id.btn_add_period)
 
+        btnEditCumulative.setOnClickListener {
+            showEditCumulativeDialog()
+        }
+        btnResetCumulative.setOnClickListener {
+            Prefs.resetCumulativeUsage(this)
+            refreshStatus()
+            toast("累计流量已重置")
+        }
         btnResetUsage.setOnClickListener {
             Prefs.setUsageBaseline(this, DataMonitor.mobileBytesSinceBoot())
             refreshStatus()
@@ -107,6 +121,10 @@ class MainActivity : Activity() {
         requestRuntimePermissions()
         // 调度兜底保活心跳（首次打开即注册，设备重启后依然生效）
         try { KeepAliveJob.schedule(this) } catch (_: Exception) {}
+        try { WatchdogJob.schedule(this) } catch (_: Exception) {}
+        try { AlarmKeeper.register(this) } catch (_: Exception) {}
+        try { ScheduleManager.rescheduleAll(this) } catch (_: Exception) {}
+        try { if (!GuardService.isRunning) GuardService.start(this) } catch (_: Exception) {}
     }
 
     private fun sendServiceAction(action: String) {
@@ -122,12 +140,19 @@ class MainActivity : Activity() {
         val justStarted = !OverlayService.isRunning
         if (justStarted) {
             try { OverlayService.start(this) } catch (_: Exception) {}
+            try { GuardService.start(this) } catch (_: Exception) {}
+            toast("服务已自动恢复")
         }
         // 服务已在运行但悬浮窗未显示（如曾被隐藏），且具备悬浮窗权限时，补发显示指令
         if (!justStarted && OverlayService.isRunning &&
             !OverlayService.isOverlayShown && PermUtil.canDrawOverlays(this)) {
             sendServiceAction(OverlayService.ACTION_SHOW_OVERLAY)
         }
+        // 无论如何都重新注册所有保活组件，确保无遗漏
+        try { KeepAliveJob.schedule(this) } catch (_: Exception) {}
+        try { WatchdogJob.schedule(this) } catch (_: Exception) {}
+        try { AlarmKeeper.register(this) } catch (_: Exception) {}
+        try { ScheduleManager.rescheduleAll(this) } catch (_: Exception) {}
         handler.post(refreshRunnable)
     }
 
@@ -145,9 +170,10 @@ class MainActivity : Activity() {
         tvDataState.setTextColor(
             getColor(if (on) R.color.danger else R.color.accent)
         )
+        DataMonitor.autoUpdateCumulative(this)
         val boot = DataMonitor.mobileBytesSinceBoot()
         tvUsageBoot.text = "开机以来：" + DataMonitor.formatBytes(boot)
-        tvUsageSession.text = "本次统计：" + DataMonitor.formatBytes(DataMonitor.mobileBytesThisSession(this))
+        tvUsageCumulative.text = "累计流量：" + DataMonitor.formatBytes(Prefs.getCumulativeUsage(this))
     }
 
     private fun refreshPermStatus() {
@@ -239,6 +265,35 @@ class MainActivity : Activity() {
     /** 24 小时制时间选择器（is24HourView=true 强制 24h）。 */
     private fun show24hTimePicker(hour: Int, minute: Int, onSet: (Int, Int) -> Unit) {
         TimePickerDialog(this, { _, h, m -> onSet(h, m) }, hour, minute, true).show()
+    }
+
+    private fun showEditCumulativeDialog() {
+        val current = DataMonitor.formatBytes(Prefs.getCumulativeUsage(this))
+        val input = EditText(this).apply {
+            hint = getString(R.string.edit_cumulative_hint)
+            setRawInputType(android.text.InputType.TYPE_CLASS_NUMBER or
+                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS)
+            setText(current)
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("修改累计流量")
+            .setMessage("当前累计：$current\n支持输入：纯数字=字节，或带 m/M、k/K、g/G（支持小数）")
+            .setView(input)
+            .setPositiveButton("确认") { _, _ ->
+                val text = input.text.toString().trim()
+                val bytes = DataMonitor.parseCumulativeInput(text)
+                if (bytes < 0) {
+                    toast("输入不合法，请检查单位")
+                } else {
+                    Prefs.setCumulativeUsage(this, bytes)
+                    refreshStatus()
+                    toast("累计流量已更新：" + DataMonitor.formatBytes(bytes))
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun toast(msg: String) {

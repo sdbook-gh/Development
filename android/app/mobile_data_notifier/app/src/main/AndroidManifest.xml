@@ -72,6 +72,43 @@
             </intent-filter>
         </receiver>
 
+        <!-- 多广播监听兜底：借系统广播机会检查并拉起服务 -->
+        <receiver
+            android:name=".MultiBroadcastReceiver"
+            android:exported="true">
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.SCREEN_ON" />
+                <action android:name="android.intent.action.SCREEN_OFF" />
+                <action android:name="android.intent.action.USER_PRESENT" />
+                <action android:name="android.intent.action.NETWORK_CONNECTED" />
+                <action android:name="android.intent.action.NETWORK_DISCONNECTED" />
+                <action android:name="android.net.wifi.WIFI_STATE_CHANGED" />
+                <action android:name="android.intent.action.SIM_STATE_CHANGED" />
+                <action android:name="android.intent.action.BATTERY_LOW" />
+                <action android:name="android.intent.action.BATTERY_OKAY" />
+                <action android:name="android.intent.action.POWER_CONNECTED" />
+                <action android:name="android.intent.action.HEADSET_PLUG" />
+                <action android:name="android.intent.action.DOCK_EVENT" />
+                <action android:name="android.intent.action.TIME_TICK" />
+                <action android:name="com.example.mobiledatanotifier.KEEP_ALIVE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 第二前台服务：与 OverlayService 互保，防止单边被杀 -->
+        <service
+            android:name=".GuardService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="secondary_keepalive_guard" />
+        </service>
+
+        <!-- 第二道兜底：独立 JobService，与 KeepAliveJob 互为双保险 -->
+        <service
+            android:name=".WatchdogJob"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <!-- 定时提醒接收器 -->
         <receiver
             android:name=".ScheduleReceiver"

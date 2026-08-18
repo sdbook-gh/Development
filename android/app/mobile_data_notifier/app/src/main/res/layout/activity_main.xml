@@ -47,12 +47,38 @@
                 android:textColor="@color/text_secondary" />
 
             <TextView
-                android:id="@+id/tv_usage_session"
+                android:id="@+id/tv_usage_cumulative"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/usage_this_session"
+                android:text="@string/usage_cumulative"
                 android:layout_marginTop="4dp"
-                android:textColor="@color/text_secondary" />
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/text_primary" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="12dp">
+
+                <Button
+                    android:id="@+id/btn_edit_cumulative"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:text="@string/edit_cumulative"
+                    android:textAllCaps="false" />
+
+                <Button
+                    android:id="@+id/btn_reset_cumulative"
+                    android:layout_width="0dp"
+                    android:layout_weight="1"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="8dp"
+                    android:text="@string/reset_cumulative"
+                    android:textAllCaps="false" />
+            </LinearLayout>
 
             <Button
                 android:id="@+id/btn_reset_usage"

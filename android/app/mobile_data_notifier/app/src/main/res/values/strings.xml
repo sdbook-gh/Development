@@ -9,6 +9,10 @@
     <string name="data_state_unknown">移动数据：未知</string>
     <string name="usage_since_boot">开机以来：--</string>
     <string name="usage_this_session">本次统计：--</string>
+    <string name="usage_cumulative">累计流量：0 B</string>
+    <string name="edit_cumulative">修改累计流量</string>
+    <string name="reset_cumulative">重置累计流量</string>
+    <string name="edit_cumulative_hint">输入流量，单位可省（字节），或带 m/M、k/K、g/G，例如 1048576、1m、1.5m、2.3g</string>
     <string name="reset_usage">重置流量统计</string>
 
     <string name="overlay_title">悬浮窗</string>

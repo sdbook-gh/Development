@@ -19,6 +19,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.provider.Settings
+import android.telephony.PhoneStateListener
+import android.telephony.ServiceState
+import android.telephony.TelephonyManager
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -63,6 +66,7 @@ class OverlayService : Service() {
     private var overlayView: View? = null
     private lateinit var handler: Handler
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
+    private var phoneStateListener: PhoneStateListener? = null
     private var colorAnimator: ValueAnimator? = null
     // 用户是否主动隐藏了悬浮窗；为 false 时开机/被杀重建后可自愈重新挂载
     private var overlayHiddenByUser = false
@@ -74,6 +78,7 @@ class OverlayService : Service() {
         createChannels()
         startForeground(1, buildFgNotification())
         registerConnectivity()
+        registerPhoneState()
         addOverlay()
         handler.post(updateRunnable)
         isRunning = true
@@ -90,10 +95,22 @@ class OverlayService : Service() {
                 return START_NOT_STICKY
             }
         }
+        // 无论以何种方式被拉起，都重新确保所有保活组件生效
+        ensureKeepAlive()
         return START_STICKY
     }
 
+    /** 确保所有保活组件已注册。失败时通过 AlarmKeeper 兜底。 */
+    private fun ensureKeepAlive() {
+        try { KeepAliveJob.schedule(this) } catch (_: Exception) {}
+        try { WatchdogJob.schedule(this) } catch (_: Exception) {}
+        try { AlarmKeeper.register(this) } catch (_: Exception) {}
+        try { ScheduleManager.rescheduleAll(this) } catch (_: Exception) {}
+        try { if (!GuardService.isRunning) GuardService.start(this) } catch (_: Exception) {}
+    }
+
     private fun shutdown() {
+        unregisterPhoneState()
         handler.removeCallbacks(updateRunnable)
         unregisterConnectivity()
         removeOverlay()
@@ -103,6 +120,7 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterPhoneState()
         handler.removeCallbacks(updateRunnable)
         unregisterConnectivity()
         removeOverlay()
@@ -259,12 +277,13 @@ class OverlayService : Service() {
 
     private fun refreshOverlay() {
         val v = overlayView ?: return
+        DataMonitor.autoUpdateCumulative(this)
         val on = DataMonitor.isMobileDataEnabled(this)
         val tvState = v.findViewById<TextView>(R.id.tv_state)
         tvState.text = getString(if (on) R.string.overlay_data_on else R.string.overlay_data_off)
         if (on) startColorAnimation(tvState) else stopColorAnimation(tvState)
         v.findViewById<TextView>(R.id.tv_usage).text =
-            getString(R.string.overlay_traffic_fmt, DataMonitor.formatCompact(DataMonitor.mobileBytesSinceBoot()))
+            getString(R.string.overlay_traffic_fmt, DataMonitor.formatCompact(Prefs.getCumulativeUsage(this)))
     }
 
     /** 数据开启时：状态文字不断变色（醒目提醒）。 */
@@ -315,5 +334,41 @@ class OverlayService : Service() {
             } catch (_: Exception) {}
         }
         connectivityCallback = null
+    }
+
+    private fun registerPhoneState() {
+        try {
+            val tm = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+            val listener = object : PhoneStateListener() {
+                override fun onServiceStateChanged(state: ServiceState?) {
+                    ensureKeepAlive()
+                    handler.post { refreshOverlay() }
+                }
+
+                override fun onDataActivity(direction: Int) {
+                    ensureKeepAlive()
+                }
+
+                override fun onDataConnectionStateChanged(state: Int, reason: Int) {
+                    ensureKeepAlive()
+                    handler.post { refreshOverlay() }
+                }
+            }
+            tm.listen(listener,
+                PhoneStateListener.LISTEN_SERVICE_STATE or
+                    PhoneStateListener.LISTEN_DATA_ACTIVITY or
+                    PhoneStateListener.LISTEN_DATA_CONNECTION_STATE)
+            phoneStateListener = listener
+        } catch (_: Exception) {}
+    }
+
+    private fun unregisterPhoneState() {
+        phoneStateListener?.let {
+            try {
+                val tm = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+                tm.listen(it, PhoneStateListener.LISTEN_NONE)
+            } catch (_: Exception) {}
+        }
+        phoneStateListener = null
     }
 }

@@ -1,3 +1,31 @@
-bazel-*
-.bazel_output
-bazel
+# Built application files
+*.apk
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Gradle
+.gradle/
+local.properties
+*.log
+
+# IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Android Studio
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+app/build/
