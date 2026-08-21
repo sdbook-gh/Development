@@ -1,13 +1,14 @@
 package com.example.mobiledatanotifier
 
-import android.animation.ValueAnimator
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.PixelFormat
 import android.media.AudioAttributes
 import android.net.ConnectivityManager
@@ -33,7 +34,7 @@ import android.widget.TextView
 /**
  * 保活前台服务 + 顶部悬浮窗。
  * - 前台服务通知走低优先级渠道（静音、不震动）。
- * - 悬浮窗显示移动数据开关状态、已用流量，含"关闭流量"按钮（跳转系统设置）。
+ * - 悬浮窗显示移动数据开关状态、已用流量，含"关闭流量"按钮（打开 OPPO SIM 设置页）。
  * - START_STICKY：被杀后系统尝试重建。
  */
 class OverlayService : Service() {
@@ -43,6 +44,7 @@ class OverlayService : Service() {
         const val CH_REMINDER = "ch_reminder"
         const val ACTION_SHOW_OVERLAY = "com.example.mobiledatanotifier.SHOW_OVERLAY"
         const val ACTION_HIDE_OVERLAY = "com.example.mobiledatanotifier.HIDE_OVERLAY"
+        const val ACTION_REFRESH_OVERLAY = "com.example.mobiledatanotifier.REFRESH_OVERLAY"
         const val ACTION_STOP = "com.example.mobiledatanotifier.STOP"
 
         /** 保活服务是否在运行（供 MainActivity / KeepAliveJob 按需判断） */
@@ -60,6 +62,67 @@ class OverlayService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ctx.startForegroundService(i)
             else ctx.startService(i)
         }
+
+        fun startIfEnabled(ctx: Context) {
+            if (!Prefs.isServiceEnabled(ctx)) return
+            start(ctx)
+        }
+
+        /**
+         * 打开 OPPO SIM/双卡设置（可关移动数据）。
+         * 第三方通常无法直接启动 OplusSimSettingsActivity（resolve 成功但 start 会抛），
+         * 因此优先返回系统公开的 NETWORK_OPERATOR_SETTINGS / GEMINI_MANAGEMENT。
+         */
+        fun createMobileDataSettingsIntent(ctx: Context): Intent {
+            val pm = ctx.packageManager
+            for (intent in simSettingsIntents(includePrivilegedExplicit = false)) {
+                if (pm.resolveActivity(intent, 0) != null) return intent
+            }
+            return Intent(Settings.ACTION_DATA_USAGE_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        /** ColorOS 设置首页进入 SIM 页时用的 identifier。 */
+        private const val OPLUS_FROM_SETTINGS = "oplus.intent.category.START_FROM_SETTINGS_MAIN_PAGE"
+
+        private fun simSettingsIntents(includePrivilegedExplicit: Boolean): List<Intent> {
+            val flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            val list = mutableListOf<Intent>()
+            if (includePrivilegedExplicit) {
+                val explicit = Intent(Intent.ACTION_MAIN)
+                    .setClassName(
+                        "com.android.phone",
+                        "com.android.simsettings.activity.OplusSimSettingsActivity"
+                    )
+                    .addCategory(Intent.CATEGORY_DEFAULT)
+                    .addFlags(flags)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    explicit.identifier = OPLUS_FROM_SETTINGS
+                }
+                list.add(explicit)
+            }
+            list.add(
+                Intent(Settings.ACTION_NETWORK_OPERATOR_SETTINGS)
+                    .addCategory(Intent.CATEGORY_DEFAULT)
+                    .addFlags(flags)
+            )
+            list.add(
+                Intent("android.settings.MANAGE_ALL_SIM_PROFILES_SETTINGS")
+                    .addCategory(Intent.CATEGORY_DEFAULT)
+                    .addFlags(flags)
+            )
+            list.add(
+                Intent("android.settings.GEMINI_MANAGEMENT")
+                    .addCategory(Intent.CATEGORY_DEFAULT)
+                    .addFlags(flags)
+            )
+            list.add(
+                Intent("com.android.settings.MULTI_SIM_SETTINGS")
+                    .addCategory(Intent.CATEGORY_DEFAULT)
+                    .addFlags(flags)
+            )
+            return list
+        }
     }
 
     private lateinit var wm: WindowManager
@@ -67,7 +130,23 @@ class OverlayService : Service() {
     private lateinit var handler: Handler
     private var connectivityCallback: ConnectivityManager.NetworkCallback? = null
     private var phoneStateListener: PhoneStateListener? = null
-    private var colorAnimator: ValueAnimator? = null
+    private var colorFlashing = false
+    private var flashOnRed = true
+    private val flashRunnable = object : Runnable {
+        override fun run() {
+            val tv = overlayView?.findViewById<TextView>(R.id.tv_state)
+            if (tv == null) {
+                colorFlashing = false
+                return
+            }
+            flashOnRed = !flashOnRed
+            tv.setTextColor(if (flashOnRed) 0xFFFF0000.toInt() else 0xFF00FF00.toInt())
+            tv.invalidate()
+            handler.postDelayed(this, 400L)
+        }
+    }
+    // 动态注册的系统事件接收器（SCREEN_ON/OFF、USER_PRESENT、TIME_TICK 无法 Manifest 静态注册）
+    private var systemEventReceiver: BroadcastReceiver? = null
     // 用户是否主动隐藏了悬浮窗；为 false 时开机/被杀重建后可自愈重新挂载
     private var overlayHiddenByUser = false
 
@@ -79,7 +158,9 @@ class OverlayService : Service() {
         startForeground(1, buildFgNotification())
         registerConnectivity()
         registerPhoneState()
-        addOverlay()
+        overlayHiddenByUser = Prefs.isOverlayHiddenByUser(this)
+        if (!overlayHiddenByUser) addOverlay()
+        registerSystemEvents()
         handler.post(updateRunnable)
         isRunning = true
         // 调度兜底心跳：被系统杀后由 JobScheduler 拉起
@@ -88,10 +169,22 @@ class OverlayService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_HIDE_OVERLAY -> { overlayHiddenByUser = true; removeOverlay() }
-            ACTION_SHOW_OVERLAY -> addOverlay()
+            ACTION_HIDE_OVERLAY -> {
+                overlayHiddenByUser = true
+                Prefs.setOverlayHiddenByUser(this, true)
+                removeOverlay()
+            }
+            ACTION_SHOW_OVERLAY -> {
+                overlayHiddenByUser = false
+                Prefs.setOverlayHiddenByUser(this, false)
+                addOverlay()
+            }
+            ACTION_REFRESH_OVERLAY -> handler.post { refreshOverlay() }
             ACTION_STOP -> {
+                Prefs.setServiceEnabled(this, false)
+                try { AlarmKeeper.cancel(this) } catch (_: Exception) {}
                 shutdown()
+                try { GuardService.stop(this) } catch (_: Exception) {}
                 return START_NOT_STICKY
             }
         }
@@ -100,18 +193,23 @@ class OverlayService : Service() {
         return START_STICKY
     }
 
-    /** 确保所有保活组件已注册。失败时通过 AlarmKeeper 兜底。 */
+    /** 确保所有保活组件已注册。失败时通过 AlarmKeeper 兜底。用户主动停止后不再拉起。 */
     private fun ensureKeepAlive() {
+        if (!Prefs.isServiceEnabled(this)) return
         try { KeepAliveJob.schedule(this) } catch (_: Exception) {}
         try { WatchdogJob.schedule(this) } catch (_: Exception) {}
         try { AlarmKeeper.register(this) } catch (_: Exception) {}
+        try { AlarmKeeper.scheduleRolling(this) } catch (_: Exception) {}
         try { ScheduleManager.rescheduleAll(this) } catch (_: Exception) {}
-        try { if (!GuardService.isRunning) GuardService.start(this) } catch (_: Exception) {}
+        try { if (!ProcessUtil.isGuardAlive(this)) GuardService.start(this) } catch (_: Exception) {}
     }
 
     private fun shutdown() {
+        unregisterSystemEvents()
         unregisterPhoneState()
         handler.removeCallbacks(updateRunnable)
+        handler.removeCallbacks(flashRunnable)
+        colorFlashing = false
         unregisterConnectivity()
         removeOverlay()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -120,18 +218,33 @@ class OverlayService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterSystemEvents()
         unregisterPhoneState()
         handler.removeCallbacks(updateRunnable)
+        handler.removeCallbacks(flashRunnable)
+        colorFlashing = false
         unregisterConnectivity()
         removeOverlay()
         isRunning = false
+        scheduleRestartIfEnabled()
         super.onDestroy()
     }
 
-    /** 任务被从最近列表划掉时，立即重启保活服务。 */
+    /**
+     * 任务被从最近列表划掉时：直接 start 自己会随进程一起消亡，无效。
+     * 改为通过 AlarmManager 安排 1 秒后延迟重启（闹钟由系统持有），并调度一次性 Job。
+     */
     override fun onTaskRemoved(rootIntent: Intent?) {
-        try { OverlayService.start(this) } catch (_: Exception) {}
+        scheduleRestartIfEnabled()
+        try { if (Prefs.isServiceEnabled(this) && !ProcessUtil.isGuardAlive(this)) GuardService.start(this) } catch (_: Exception) {}
         super.onTaskRemoved(rootIntent)
+    }
+
+    private fun scheduleRestartIfEnabled() {
+        if (!Prefs.isServiceEnabled(this)) return
+        try { AlarmKeeper.scheduleRestart(this, 1000L) } catch (_: Exception) {}
+        try { AlarmKeeper.scheduleRolling(this) } catch (_: Exception) {}
+        try { WatchdogJob.scheduleImmediate(this) } catch (_: Exception) {}
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -171,6 +284,7 @@ class OverlayService : Service() {
         val showPi = PendingIntent.getService(this, 0, showIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val mainIntent = Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val mainPi = PendingIntent.getActivity(this, 0, mainIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         return Notification.Builder(this, CH_FG)
@@ -219,8 +333,8 @@ class OverlayService : Service() {
     }
 
     private fun removeOverlay() {
-        colorAnimator?.cancel()
-        colorAnimator = null
+        handler.removeCallbacks(flashRunnable)
+        colorFlashing = false
         overlayView?.let {
             try { wm.removeView(it) } catch (_: Exception) {}
         }
@@ -251,16 +365,14 @@ class OverlayService : Service() {
     }
 
     private fun openDataSettings() {
-        val i = Intent(Settings.ACTION_DATA_USAGE_SETTINGS)
-        i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        try {
-            startActivity(i)
-        } catch (e: Exception) {
+        val fallback = Intent(Settings.ACTION_DATA_USAGE_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        for (intent in simSettingsIntents(includePrivilegedExplicit = true) + fallback) {
             try {
-                val fallback = Intent(Settings.ACTION_SETTINGS)
-                fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                startActivity(fallback)
-            } catch (_: Exception) {}
+                startActivity(intent)
+                return
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -271,6 +383,7 @@ class OverlayService : Service() {
                 addOverlay()
             }
             refreshOverlay()
+            try { AlarmKeeper.scheduleRolling(this@OverlayService) } catch (_: Exception) {}
             handler.postDelayed(this, 3000)
         }
     }
@@ -282,40 +395,71 @@ class OverlayService : Service() {
         val tvState = v.findViewById<TextView>(R.id.tv_state)
         tvState.text = getString(if (on) R.string.overlay_data_on else R.string.overlay_data_off)
         if (on) startColorAnimation(tvState) else stopColorAnimation(tvState)
+        val scope = Prefs.getTrafficScope(this)
         v.findViewById<TextView>(R.id.tv_usage).text =
-            getString(R.string.overlay_traffic_fmt, DataMonitor.formatCompact(Prefs.getCumulativeUsage(this)))
+            getString(
+                R.string.overlay_traffic_fmt,
+                scope.overlayPrefix,
+                DataMonitor.formatCompact(Prefs.getCumulativeUsage(this))
+            )
     }
 
-    /** 数据开启时：状态文字不断变色（醒目提醒）。 */
+    /** 数据开启时：状态文字红绿硬切闪烁。用 Handler 定时切色，不受系统动画缩放影响。 */
     private fun startColorAnimation(tv: TextView) {
-        if (colorAnimator != null) return
-        val colors = intArrayOf(
-            0xFFFF0000.toInt(), 0xFFFF6600.toInt(), 0xFFFFFF00.toInt(),
-            0xFF00FF00.toInt(), 0xFF00FFFF.toInt(), 0xFF0000FF.toInt(), 0xFFFF00FF.toInt()
-        )
-        val anim = ValueAnimator.ofArgb(*colors).apply {
-            duration = 2000
-            repeatCount = ValueAnimator.INFINITE
-            repeatMode = ValueAnimator.RESTART
-            addUpdateListener { tv.setTextColor(it.animatedValue as Int) }
-        }
-        anim.start()
-        colorAnimator = anim
+        if (colorFlashing) return
+        colorFlashing = true
+        flashOnRed = true
+        tv.setTextColor(0xFFFF0000.toInt())
+        tv.invalidate()
+        handler.postDelayed(flashRunnable, 400L)
     }
 
     private fun stopColorAnimation(tv: TextView) {
-        colorAnimator?.cancel()
-        colorAnimator = null
+        handler.removeCallbacks(flashRunnable)
+        colorFlashing = false
         tv.setTextColor(0xFFCCCCCC.toInt())
+    }
+
+    // ---------- 动态注册系统事件（Android 8.0+ 这些广播无法 Manifest 静态接收） ----------
+    private fun registerSystemEvents() {
+        if (systemEventReceiver != null) return
+        val r = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_OFF -> ensureKeepAlive()
+                    Intent.ACTION_SCREEN_ON,
+                    Intent.ACTION_USER_PRESENT,
+                    Intent.ACTION_TIME_TICK -> {
+                        ensureKeepAlive()
+                        handler.post { refreshOverlay() }
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+            addAction(Intent.ACTION_TIME_TICK)
+        }
+        try {
+            registerReceiver(r, filter)
+            systemEventReceiver = r
+        } catch (_: Exception) {}
+    }
+
+    private fun unregisterSystemEvents() {
+        systemEventReceiver?.let {
+            try { unregisterReceiver(it) } catch (_: Exception) {}
+        }
+        systemEventReceiver = null
     }
 
     // ---------- 监听网络变化 ----------
     private fun registerConnectivity() {
         try {
             val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-            val req = NetworkRequest.Builder()
-                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
-                .build()
+            val req = NetworkRequest.Builder().build()
             val cb = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) { handler.post { refreshOverlay() } }
                 override fun onLost(network: Network) { handler.post { refreshOverlay() } }
@@ -347,6 +491,9 @@ class OverlayService : Service() {
 
                 override fun onDataActivity(direction: Int) {
                     ensureKeepAlive()
+                    if (direction != TelephonyManager.DATA_ACTIVITY_NONE) {
+                        handler.post { refreshOverlay() }
+                    }
                 }
 
                 override fun onDataConnectionStateChanged(state: Int, reason: Int) {

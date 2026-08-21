@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.example.mobiledatanotifier"
     android:compileSdkVersion="35"
     android:compileSdkVersionCodename="15">
@@ -27,6 +28,37 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- 闹钟唤醒 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 使用情况访问：系统「使用情况访问」列表只显示声明了此权限的应用 -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- 解析并打开 OPPO SIM 设置页、ColorOS 自启动/后台页（Android 11+ 包可见性） -->
+    <queries>
+        <package android:name="com.android.phone" />
+        <intent>
+            <action android:name="android.settings.NETWORK_OPERATOR_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.MANAGE_ALL_SIM_PROFILES_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.GEMINI_MANAGEMENT" />
+        </intent>
+        <intent>
+            <action android:name="com.android.settings.MULTI_SIM_SETTINGS" />
+        </intent>
+        <intent>
+            <action android:name="android.settings.USAGE_ACCESS_SETTINGS" />
+        </intent>
+        <package android:name="com.android.settings" />
+        <package android:name="com.oplus.safecenter" />
+        <package android:name="com.coloros.safecenter" />
+        <package android:name="com.oplus.battery" />
+        <package android:name="com.coloros.oppoguardelf" />
+        <package android:name="com.oplusos.startup" />
+        <package android:name="com.coloros.phonemanager" />
+    </queries>
 
     <application
         android:label="@string/app_name"
@@ -48,6 +80,7 @@
         <service
             android:name=".OverlayService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
@@ -77,27 +110,22 @@
             android:name=".MultiBroadcastReceiver"
             android:exported="true">
             <intent-filter android:priority="1000">
-                <action android:name="android.intent.action.SCREEN_ON" />
-                <action android:name="android.intent.action.SCREEN_OFF" />
-                <action android:name="android.intent.action.USER_PRESENT" />
-                <action android:name="android.intent.action.NETWORK_CONNECTED" />
-                <action android:name="android.intent.action.NETWORK_DISCONNECTED" />
-                <action android:name="android.net.wifi.WIFI_STATE_CHANGED" />
-                <action android:name="android.intent.action.SIM_STATE_CHANGED" />
+                <!-- 仅保留 Android 8.0+ 仍允许静态注册接收的系统广播；
+                     SCREEN_ON/OFF、USER_PRESENT、TIME_TICK 等已改为
+                     OverlayService 内动态注册 -->
                 <action android:name="android.intent.action.BATTERY_LOW" />
                 <action android:name="android.intent.action.BATTERY_OKAY" />
                 <action android:name="android.intent.action.POWER_CONNECTED" />
-                <action android:name="android.intent.action.HEADSET_PLUG" />
-                <action android:name="android.intent.action.DOCK_EVENT" />
-                <action android:name="android.intent.action.TIME_TICK" />
                 <action android:name="com.example.mobiledatanotifier.KEEP_ALIVE" />
             </intent-filter>
         </receiver>
 
-        <!-- 第二前台服务：与 OverlayService 互保，防止单边被杀 -->
+        <!-- 第二前台服务：独立 :guard 进程，主进程被杀时仍可拉回悬浮窗 -->
         <service
             android:name=".GuardService"
             android:exported="false"
+            android:process=":guard"
+            android:stopWithTask="false"
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"

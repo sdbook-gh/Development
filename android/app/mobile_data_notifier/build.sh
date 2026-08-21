@@ -423,7 +423,6 @@ write_gradle_properties() {
 # 自动生成 by build.sh - 项目缓存隔离与构建优化
 org.gradle.projectcachedir=$GRADLE_CACHE/project-cache
 org.gradle.daemon=true
-org.gradle.configuration-cache=true
 android.builder.sdkDownload=false
 $proj_jvmargs
 $proj_parallel

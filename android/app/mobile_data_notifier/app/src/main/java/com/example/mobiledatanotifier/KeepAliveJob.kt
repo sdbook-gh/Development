@@ -31,9 +31,14 @@ class KeepAliveJob : JobService() {
     }
 
     override fun onStartJob(params: JobParameters?): Boolean {
-        if (!OverlayService.isRunning) {
+        if (!Prefs.isServiceEnabled(this)) return false
+        if (!ProcessUtil.isOverlayAlive(this)) {
             try { OverlayService.start(this) } catch (_: Exception) {}
         }
+        if (!ProcessUtil.isGuardAlive(this)) {
+            try { GuardService.start(this) } catch (_: Exception) {}
+        }
+        try { AlarmKeeper.scheduleRolling(this) } catch (_: Exception) {}
         return false  // 任务已同步完成，无需后台线程
     }
 

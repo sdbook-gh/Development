@@ -7,9 +7,15 @@
     <string name="data_state_on">移动数据：已开启</string>
     <string name="data_state_off">移动数据：已关闭</string>
     <string name="data_state_unknown">移动数据：未知</string>
+    <string name="traffic_scope_title">统计范围</string>
+    <string name="traffic_scope_mobile">移动</string>
+    <string name="traffic_scope_wifi">WiFi</string>
+    <string name="traffic_scope_all">全部</string>
     <string name="usage_since_boot">开机以来：--</string>
+    <string name="usage_since_boot_fmt">开机以来（%1$s）：%2$s</string>
     <string name="usage_this_session">本次统计：--</string>
     <string name="usage_cumulative">累计流量：0 B</string>
+    <string name="usage_cumulative_fmt">累计流量：%1$s</string>
     <string name="edit_cumulative">修改累计流量</string>
     <string name="reset_cumulative">重置累计流量</string>
     <string name="edit_cumulative_hint">输入流量，单位可省（字节），或带 m/M、k/K、g/G，例如 1048576、1m、1.5m、2.3g</string>
@@ -24,6 +30,10 @@
 
     <string name="keepalive_title">保活</string>
     <string name="battery_whitelist">加入电池优化白名单</string>
+    <string name="keepalive_hint">ColorOS「清除全部」会强杀未锁定的应用。请先在最近任务里下拉锁定本应用，并打开自启动、后台运行、后台弹出界面。</string>
+    <string name="open_autostart">打开自启动设置</string>
+    <string name="open_background">打开后台运行设置</string>
+    <string name="open_bg_popup">打开后台弹出界面</string>
 
     <string name="schedule_title">定时关闭</string>
     <string name="schedule_note">说明：本机未 Root，系统不允许 App 直接开关移动数据。\n到点时将弹出带声音与震动的提醒通知，您可在通知里点\"关闭数据\"跳转设置页手动关闭。</string>
@@ -36,7 +46,7 @@
     <!-- 悬浮窗 -->
     <string name="overlay_data_on">数据开启</string>
     <string name="overlay_data_off">数据关闭</string>
-    <string name="overlay_traffic_fmt">流量 %1$s</string>
+    <string name="overlay_traffic_fmt">%1$s %2$s</string>
     <string name="overlay_close_data">关闭流量</string>
 
     <!-- 通知 -->
@@ -58,4 +68,11 @@
     <string name="perm_overlay_rationale">需要在屏幕顶部显示悬浮窗，请授予\"显示在其他应用上层\"权限。</string>
     <string name="perm_phone_rationale">需要读取移动数据开关状态，请授予电话权限。</string>
     <string name="perm_notif_rationale">需要发送提醒通知，请允许通知权限。</string>
+
+    <!-- 使用情况访问权限 -->
+    <string name="usage_access_title">使用情况访问权限</string>
+    <string name="usage_access_granted">使用情况访问权限：已授权 ✓</string>
+    <string name="usage_access_denied">使用情况访问权限：未授权（点击设置）</string>
+    <string name="usage_access_hint">需要此权限才能读取移动网络流量。ColorOS：设置 → 隐私 → 权限隐私 / 其他权限 → 使用情况访问；列表里搜「移动数据通知器」。</string>
+    <string name="usage_access_open_toast">请在列表中搜索「移动数据通知器」。若没有，请先覆盖安装本版本后再打开该页。</string>
 </resources>

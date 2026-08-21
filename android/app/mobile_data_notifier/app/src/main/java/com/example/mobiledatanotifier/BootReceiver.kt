@@ -12,11 +12,13 @@ class BootReceiver : BroadcastReceiver() {
             Intent.ACTION_LOCKED_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
             "android.intent.action.QUICKBOOT_POWERON" -> {
+                if (!Prefs.isServiceEnabled(context)) return
                 try { OverlayService.start(context) } catch (_: Exception) {}
                 try { GuardService.start(context) } catch (_: Exception) {}
                 try { KeepAliveJob.schedule(context) } catch (_: Exception) {}
                 try { WatchdogJob.schedule(context) } catch (_: Exception) {}
                 try { AlarmKeeper.register(context) } catch (_: Exception) {}
+                try { AlarmKeeper.scheduleRolling(context) } catch (_: Exception) {}
                 try { ScheduleManager.rescheduleAll(context) } catch (_: Exception) {}
             }
         }

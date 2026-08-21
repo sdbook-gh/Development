@@ -6,7 +6,6 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.provider.Settings
 
 /**
  * 到点提醒接收器：发送高优先级通知（声音+震动），并重新排程次日。
@@ -40,7 +39,7 @@ class ScheduleReceiver : BroadcastReceiver() {
             text = ctx.getString(R.string.reminder_open_text)
         }
 
-        val dataIntent = Intent(Settings.ACTION_DATA_USAGE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val dataIntent = OverlayService.createMobileDataSettingsIntent(ctx)
         val settingsPi = PendingIntent.getActivity(ctx, 1, dataIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 

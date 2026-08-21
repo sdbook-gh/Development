@@ -387,6 +387,8 @@ optimize_gradle_properties() {
   fi
 
   if ! grep -q "kotlin.incremental" "$file" 2>/dev/null; then
+    # 确保文件以换行结尾，避免追加内容粘连到上一行（原文件末行无换行时）
+    [[ -s "$file" && -n "$(tail -c1 "$file")" ]] && echo >> "$file"
     echo "kotlin.incremental=true" >> "$file"
     changed=1
   fi
@@ -421,7 +423,6 @@ write_gradle_properties() {
 # 自动生成 by build.sh - 项目缓存隔离与构建优化
 org.gradle.projectcachedir=$GRADLE_CACHE/project-cache
 org.gradle.daemon=true
-org.gradle.configuration-cache=true
 android.builder.sdkDownload=false
 $proj_jvmargs
 $proj_parallel

@@ -17,6 +17,7 @@ import android.view.View
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.RadioGroup
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -31,6 +32,7 @@ import java.util.Locale
 class MainActivity : Activity() {
 
     private lateinit var tvDataState: TextView
+    private lateinit var rgTrafficScope: RadioGroup
     private lateinit var tvUsageBoot: TextView
     private lateinit var tvUsageCumulative: TextView
     private lateinit var btnEditCumulative: Button
@@ -42,7 +44,11 @@ class MainActivity : Activity() {
     private lateinit var btnHideOverlay: Button
     private lateinit var btnGrantOverlay: Button
     private lateinit var btnBatteryWhitelist: Button
+    private lateinit var btnAutostart: Button
+    private lateinit var btnBackground: Button
+    private lateinit var btnBgPopup: Button
     private lateinit var tvBatteryStatus: TextView
+    private lateinit var tvUsageAccess: TextView
     private lateinit var tvNoPeriods: TextView
     private lateinit var periodsContainer: LinearLayout
     private lateinit var btnAddPeriod: Button
@@ -58,6 +64,7 @@ class MainActivity : Activity() {
         setContentView(R.layout.activity_main)
 
         tvDataState = findViewById(R.id.tv_data_state)
+        rgTrafficScope = findViewById(R.id.rg_traffic_scope)
         tvUsageBoot = findViewById(R.id.tv_usage_boot)
         tvUsageCumulative = findViewById(R.id.tv_usage_cumulative)
         btnEditCumulative = findViewById(R.id.btn_edit_cumulative)
@@ -69,7 +76,15 @@ class MainActivity : Activity() {
         btnHideOverlay = findViewById(R.id.btn_hide_overlay)
         btnGrantOverlay = findViewById(R.id.btn_grant_overlay)
         btnBatteryWhitelist = findViewById(R.id.btn_battery_whitelist)
+        btnAutostart = findViewById(R.id.btn_autostart)
+        btnBackground = findViewById(R.id.btn_background)
+        btnBgPopup = findViewById(R.id.btn_bg_popup)
         tvBatteryStatus = findViewById(R.id.tv_battery_status)
+        tvUsageAccess = findViewById(R.id.tv_usage_access)
+        tvUsageAccess.setOnClickListener {
+            PermUtil.openUsageAccessSettings(this)
+            toast(getString(R.string.usage_access_open_toast))
+        }
         tvNoPeriods = findViewById(R.id.tv_no_periods)
         periodsContainer = findViewById(R.id.periods_container)
         btnAddPeriod = findViewById(R.id.btn_add_period)
@@ -83,22 +98,32 @@ class MainActivity : Activity() {
             toast("累计流量已重置")
         }
         btnResetUsage.setOnClickListener {
-            Prefs.setUsageBaseline(this, DataMonitor.mobileBytesSinceBoot())
+            val cur = DataMonitor.bytesSinceBoot(this)
+            if (cur >= 0L) Prefs.setUsageBaseline(this, cur)
             refreshStatus()
             toast("已重置流量统计")
         }
+        bindTrafficScopeRadios()
         btnStartService.setOnClickListener {
+            Prefs.setServiceEnabled(this, true)
             try { OverlayService.start(this); toast("已启动保活服务") } catch (e: Exception) { toast("启动失败：$e") }
+            try { GuardService.start(this) } catch (_: Exception) {}
         }
         btnStopService.setOnClickListener {
+            Prefs.setServiceEnabled(this, false)
+            try { AlarmKeeper.cancel(this) } catch (_: Exception) {}
             sendServiceAction(OverlayService.ACTION_STOP)
+            GuardService.stop(this)
             toast("已停止服务")
         }
         btnShowOverlay.setOnClickListener {
+            Prefs.setServiceEnabled(this, true)
+            Prefs.setOverlayHiddenByUser(this, false)
             OverlayService.start(this)
             sendServiceAction(OverlayService.ACTION_SHOW_OVERLAY)
         }
         btnHideOverlay.setOnClickListener {
+            Prefs.setOverlayHiddenByUser(this, true)
             sendServiceAction(OverlayService.ACTION_HIDE_OVERLAY)
         }
         btnGrantOverlay.setOnClickListener {
@@ -106,6 +131,15 @@ class MainActivity : Activity() {
         }
         btnBatteryWhitelist.setOnClickListener {
             PermUtil.requestIgnoreBatteryOptimizations(this)
+        }
+        btnAutostart.setOnClickListener {
+            PermUtil.openAutoStartSettings(this)
+        }
+        btnBackground.setOnClickListener {
+            PermUtil.openBackgroundRunSettings(this)
+        }
+        btnBgPopup.setOnClickListener {
+            PermUtil.openBackgroundPopupSettings(this)
         }
         btnAddPeriod.setOnClickListener {
             val p = TimePeriod(Prefs.nextPeriodId(this), 23, 0, 7, 0, enabled = true)
@@ -119,12 +153,14 @@ class MainActivity : Activity() {
         periods = Prefs.getPeriods(this)
         renderPeriods()
         requestRuntimePermissions()
+        Prefs.setServiceEnabled(this, true)
         // 调度兜底保活心跳（首次打开即注册，设备重启后依然生效）
         try { KeepAliveJob.schedule(this) } catch (_: Exception) {}
         try { WatchdogJob.schedule(this) } catch (_: Exception) {}
         try { AlarmKeeper.register(this) } catch (_: Exception) {}
+        try { AlarmKeeper.scheduleRolling(this) } catch (_: Exception) {}
         try { ScheduleManager.rescheduleAll(this) } catch (_: Exception) {}
-        try { if (!GuardService.isRunning) GuardService.start(this) } catch (_: Exception) {}
+        try { if (!ProcessUtil.isGuardAlive(this)) GuardService.start(this) } catch (_: Exception) {}
     }
 
     private fun sendServiceAction(action: String) {
@@ -139,19 +175,23 @@ class MainActivity : Activity() {
         // 打开 App 界面时按需激活：保活服务未运行则启动；悬浮窗未显示则显示
         val justStarted = !OverlayService.isRunning
         if (justStarted) {
+            Prefs.setServiceEnabled(this, true)
             try { OverlayService.start(this) } catch (_: Exception) {}
             try { GuardService.start(this) } catch (_: Exception) {}
             toast("服务已自动恢复")
         }
-        // 服务已在运行但悬浮窗未显示（如曾被隐藏），且具备悬浮窗权限时，补发显示指令
+        // 服务已在运行但悬浮窗未显示，且用户未主动隐藏、具备权限时，补发显示指令
         if (!justStarted && OverlayService.isRunning &&
-            !OverlayService.isOverlayShown && PermUtil.canDrawOverlays(this)) {
+            !OverlayService.isOverlayShown &&
+            !Prefs.isOverlayHiddenByUser(this) &&
+            PermUtil.canDrawOverlays(this)) {
             sendServiceAction(OverlayService.ACTION_SHOW_OVERLAY)
         }
         // 无论如何都重新注册所有保活组件，确保无遗漏
         try { KeepAliveJob.schedule(this) } catch (_: Exception) {}
         try { WatchdogJob.schedule(this) } catch (_: Exception) {}
         try { AlarmKeeper.register(this) } catch (_: Exception) {}
+        try { AlarmKeeper.scheduleRolling(this) } catch (_: Exception) {}
         try { ScheduleManager.rescheduleAll(this) } catch (_: Exception) {}
         handler.post(refreshRunnable)
     }
@@ -171,9 +211,42 @@ class MainActivity : Activity() {
             getColor(if (on) R.color.danger else R.color.accent)
         )
         DataMonitor.autoUpdateCumulative(this)
-        val boot = DataMonitor.mobileBytesSinceBoot()
-        tvUsageBoot.text = "开机以来：" + DataMonitor.formatBytes(boot)
-        tvUsageCumulative.text = "累计流量：" + DataMonitor.formatBytes(Prefs.getCumulativeUsage(this))
+        val scope = Prefs.getTrafficScope(this)
+        val boot = DataMonitor.bytesSinceBoot(this, scope).coerceAtLeast(0L)
+        tvUsageBoot.text = getString(
+            R.string.usage_since_boot_fmt,
+            scopeLabel(scope),
+            DataMonitor.formatBytes(boot)
+        )
+        tvUsageCumulative.text = getString(
+            R.string.usage_cumulative_fmt,
+            DataMonitor.formatBytes(Prefs.getCumulativeUsage(this))
+        )
+    }
+
+    private fun bindTrafficScopeRadios() {
+        val checkedId = when (Prefs.getTrafficScope(this)) {
+            TrafficScope.WIFI -> R.id.rb_scope_wifi
+            TrafficScope.ALL -> R.id.rb_scope_all
+            TrafficScope.MOBILE -> R.id.rb_scope_mobile
+        }
+        rgTrafficScope.check(checkedId)
+        rgTrafficScope.setOnCheckedChangeListener { _, id ->
+            val scope = when (id) {
+                R.id.rb_scope_wifi -> TrafficScope.WIFI
+                R.id.rb_scope_all -> TrafficScope.ALL
+                else -> TrafficScope.MOBILE
+            }
+            DataMonitor.switchTrafficScope(this, scope)
+            refreshStatus()
+            sendServiceAction(OverlayService.ACTION_REFRESH_OVERLAY)
+        }
+    }
+
+    private fun scopeLabel(scope: TrafficScope): String = when (scope) {
+        TrafficScope.MOBILE -> getString(R.string.traffic_scope_mobile)
+        TrafficScope.WIFI -> getString(R.string.traffic_scope_wifi)
+        TrafficScope.ALL -> getString(R.string.traffic_scope_all)
     }
 
     private fun refreshPermStatus() {
@@ -186,6 +259,14 @@ class MainActivity : Activity() {
             tvBatteryStatus.append("  |  精确闹钟：未授权")
             tvBatteryStatus.setOnClickListener { PermUtil.openExactAlarmSettings(this) }
         }
+        // 使用情况访问权限状态（AppOps GET_USAGE_STATS）
+        val usageAccessOk = PermUtil.hasUsageAccess(this)
+        tvUsageAccess.text = getString(
+            if (usageAccessOk) R.string.usage_access_granted else R.string.usage_access_denied
+        )
+        tvUsageAccess.setTextColor(
+            getColor(if (usageAccessOk) R.color.accent else R.color.danger)
+        )
     }
 
     // ---------- 权限 ----------

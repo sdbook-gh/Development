@@ -16,6 +16,7 @@ class WatchdogJob : JobService() {
 
     companion object {
         private const val JOB_ID = 7002
+        private const val JOB_ID_ONESHOT = 7003
         private const val INTERVAL_MS = 15 * 60 * 1000L
 
         fun schedule(ctx: Context) {
@@ -27,14 +28,34 @@ class WatchdogJob : JobService() {
                 .build()
             js.schedule(job)
         }
+
+        /** 划掉任务/进程死亡后的一次性短延迟拉起，不走 15 分钟周期。 */
+        fun scheduleImmediate(ctx: Context, delayMs: Long = 1500L) {
+            if (!Prefs.isServiceEnabled(ctx)) return
+            val js = ctx.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+            val job = JobInfo.Builder(JOB_ID_ONESHOT, ComponentName(ctx, WatchdogJob::class.java))
+                .setMinimumLatency(delayMs)
+                .setOverrideDeadline(delayMs + 2000L)
+                .setPersisted(true)
+                .setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE)
+                .build()
+            js.schedule(job)
+        }
     }
 
     override fun onStartJob(params: JobParameters?): Boolean {
-        if (!OverlayService.isRunning) {
+        if (!Prefs.isServiceEnabled(this)) return false
+        if (!ProcessUtil.isOverlayAlive(this)) {
             try { OverlayService.start(this) } catch (_: Exception) {}
+        }
+        if (!ProcessUtil.isGuardAlive(this)) {
+            try { GuardService.start(this) } catch (_: Exception) {}
         }
         // 确保另外两道保活也在运行
         try { KeepAliveJob.schedule(this) } catch (_: Exception) {}
+        try { schedule(this) } catch (_: Exception) {}
+        try { AlarmKeeper.register(this) } catch (_: Exception) {}
+        try { AlarmKeeper.scheduleRolling(this) } catch (_: Exception) {}
         return false
     }
 
