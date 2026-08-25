@@ -3,6 +3,7 @@
 # 用法:
 #   ./start.sh           # 默认: 正向代理模式 127.0.0.1:8888
 #   ./start.sh fallback  # 备用: hosts 劫持 + reverse 模式(需 sudo, 供 freebuff 不走代理时用)
+#   ./start.sh stop      # 停止已启动的代理(8888; 若 443 有 fallback 代理也一并停)
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -15,6 +16,21 @@ if [ ! -x "$MITMDUMP" ]; then
   exit 1
 fi
 mkdir -p "$CA_DIR"
+
+if [ "${1:-}" = "stop" ]; then
+  killed=0
+  for p in "$PORT" 443; do
+    if ss -ltn 2>/dev/null | awk '{print $4}' | grep -qE "[:.]$p\$"; then
+      echo "端口 $p 有监听进程，停止中..."
+      fuser -k "$p/tcp" 2>/dev/null || sudo fuser -k "$p/tcp"
+      killed=1
+    else
+      echo "端口 $p 无监听，跳过"
+    fi
+  done
+  if [ "$killed" = 1 ]; then echo "已停止"; else echo "没有正在运行的 mitmdump"; fi
+  exit 0
+fi
 
 if [ "${1:-}" = "fallback" ]; then
   IP="$(getent ahostsv4 codebuff.com | awk '{print $1}' | head -1)"
