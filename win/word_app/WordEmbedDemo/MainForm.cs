@@ -44,7 +44,11 @@ namespace WordEmbedDemo
             _menuFile.DropDownItems.Add(_miExit);
 
             _menuEdit = new ToolStripMenuItem("编辑(&E)");
-            _miPaste = new ToolStripMenuItem("粘贴(&P)  Ctrl+V", null, (s, e) => _host.Paste());
+            _miPaste = new ToolStripMenuItem("粘贴(&P)  Ctrl+V", null, (s, e) =>
+            {
+                // 等菜单关闭后再粘贴，避免焦点仍停在 ToolStrip 上
+                BeginInvoke(new Action(() => _host.Paste()));
+            });
             _menuEdit.DropDownItems.Add(_miPaste);
 
             _menu.Items.Add(_menuFile);

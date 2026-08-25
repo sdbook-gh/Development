@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -20,13 +23,15 @@ namespace WordEmbedDemo
     ///     铺满、剥壳、粘贴、退出）都只认这个 PID。
     ///  3) 防御：启动前快照已有 WINWORD 的 PID 集合，启动后校验 p.Id 不在
     ///     该集合内（若被复用则放弃，避免误伤他人进程）。
-    ///  4) 窗口：MainWindowHandle 从我们锁定的 Process 对象读取，只属于
-    ///     这个 PID，绝不会错拿其它 Word 窗口。
+    ///  4) 窗口：通过 EnumWindows 按 PID + 类名(OpusApp) + 可见性精确定位
+    ///     真正的主框架窗口，避免拿到启动画面等过渡窗口；并以内部文档
+    ///     视图 _WwG 出现作为“Word 加载完成”的就绪信号。
     ///  5) 退出：Process.GetProcessById(_pid).Kill() —— 只结束我们自己的
     ///     进程，不影响用户其它 Word。
     ///
-    /// 整个过程只用 Win32 API + Process，不写任何 COM 接口，杜绝 vtable
-    /// 崩溃（如 0xC0000005）。
+    /// 窗口挂靠只用 Win32 API + Process，不写 OLE 就地嵌入接口（避免 vtable
+    /// 崩溃 0xC0000005）。菜单粘贴通过 oleacc 按 HWND 晚期绑定该进程的
+    /// Word.Selection，不使用全局 Word.Application。
     /// </summary>
     public class WordProcessHost : Control
     {
@@ -49,13 +54,17 @@ namespace WordEmbedDemo
         {
             try
             {
+                Log("==== 新会话开始 ====");
                 SnapshotPreExisting();
+                Log("已有 WINWORD 进程快照: " + (_preExisting.Count == 0 ? "(无)" : string.Join(",", _preExisting)));
 
                 string winword = FindWinWordExe();
+                Log("WINWORD 路径: " + (winword ?? "(未找到)"));
                 if (winword == null) return Fail("未找到 WINWORD.EXE，请确认已安装 Microsoft Word。");
 
                 // 生成一个最小空白文档，让 Word 打开真实文档窗口（而非“开始页”）
                 string blank = CreateBlankDocx();
+                Log("空白文档路径: " + (blank ?? "(创建失败)"));
                 if (blank == null) return Fail("无法创建临时空白文档。");
 
                 // /x 强制新实例 + 文档路径：在新实例中打开真实空白文档
@@ -66,6 +75,7 @@ namespace WordEmbedDemo
                 };
                 Process p = Process.Start(psi);
                 if (p == null) return Fail("启动 Word 失败。");
+                Log("Process.Start 返回 PID=" + p.Id);
 
                 // 防御校验：确保返回的进程确实是“新出现”的，而非被复用的已有实例
                 if (_preExisting.Contains(p.Id))
@@ -93,13 +103,134 @@ namespace WordEmbedDemo
             Start();
         }
 
-        /// <summary>聚焦我们自己的 Word 窗口并执行 Ctrl+V 粘贴。</summary>
+        /// <summary>
+        /// 菜单粘贴：按已锁定 HWND 取该 Word 进程的对象模型，调用 Selection.Paste()。
+        /// 与隔离前相同的 COM 粘贴路径，但不走全局 Word.Application。
+        /// </summary>
         public void Paste()
         {
             if (!IsValid()) return;
-            NativeMethods.SetForegroundWindow(_hwnd);
-            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
-            SendKeys.SendWait("^v");
+
+            try
+            {
+                object om = BindWordNativeOm();
+                if (om == null)
+                {
+                    Log("Paste FAIL: AccessibleObjectFromWindow 未返回对象");
+                    MessageBox.Show("无法绑定到嵌入的 Word 窗口，粘贴失败。", "提示",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (TryPasteSelection(om))
+                    return;
+
+                Log("Paste FAIL: 已绑定对象模型，但 Selection.Paste 均失败");
+                MessageBox.Show("粘贴失败：Word 未接受 Selection.Paste。", "提示",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            catch (Exception ex)
+            {
+                Log("Paste FAIL: " + ex.GetType().Name + ": " + ex.Message);
+                MessageBox.Show("粘贴失败：" + ex.Message, "提示",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+        /// <summary>对 _WwG（优先）和 OpusApp 调用 AccessibleObjectFromWindow。</summary>
+        private object BindWordNativeOm()
+        {
+            IntPtr doc = FindDocView();
+            IntPtr[] candidates = doc != IntPtr.Zero
+                ? new[] { doc, _hwnd }
+                : new[] { _hwnd };
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                IntPtr h = candidates[i];
+                Guid iid = NativeMethods.IID_IDispatch;
+                object obj;
+                int hr = NativeMethods.AccessibleObjectFromWindow(
+                    h, NativeMethods.OBJID_NATIVEOM, ref iid, out obj);
+                Log("Paste: AccessibleObjectFromWindow hwnd=0x" + h.ToString("X") +
+                    " class=" + NativeMethods.GetWindowClassName(h) +
+                    " hr=0x" + hr.ToString("X8") + " obj=" + (obj != null));
+                if (hr == 0 && obj != null)
+                    return obj;
+            }
+            return null;
+        }
+
+        /// <summary>兼容 Window / Application 两种 NativeOM 入口。</summary>
+        private bool TryPasteSelection(object om)
+        {
+            try
+            {
+                ComCall(ComGet(om, "Selection"), "Paste");
+                Log("Paste: Selection.Paste OK");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log("Paste: Selection.Paste: " + ex.Message);
+            }
+
+            try
+            {
+                object app = ComGet(om, "Application");
+                ComCall(ComGet(app, "Selection"), "Paste");
+                Log("Paste: Application.Selection.Paste OK");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log("Paste: Application.Selection.Paste: " + ex.Message);
+            }
+
+            try
+            {
+                object win = ComGet(om, "ActiveWindow");
+                ComCall(ComGet(win, "Selection"), "Paste");
+                Log("Paste: ActiveWindow.Selection.Paste OK");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log("Paste: ActiveWindow.Selection.Paste: " + ex.Message);
+            }
+
+            return false;
+        }
+
+        private static object ComGet(object target, string name)
+        {
+            return target.GetType().InvokeMember(name,
+                BindingFlags.GetProperty | BindingFlags.Instance, null, target, null);
+        }
+
+        private static void ComCall(object target, string name)
+        {
+            target.GetType().InvokeMember(name,
+                BindingFlags.InvokeMethod | BindingFlags.Instance, null, target, null);
+        }
+
+        /// <summary>在 OpusApp 子孙窗口中查找可见的文档视图 _WwG。</summary>
+        private IntPtr FindDocView()
+        {
+            IntPtr found = IntPtr.Zero;
+            IntPtr visible = IntPtr.Zero;
+            NativeMethods.EnumChildWindows(_hwnd, (h, l) =>
+            {
+                if (NativeMethods.GetWindowClassName(h) != "_WwG") return true;
+                if (found == IntPtr.Zero) found = h;
+                if (NativeMethods.IsWindowVisible(h))
+                {
+                    visible = h;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            return visible != IntPtr.Zero ? visible : found;
         }
 
         /// <summary>只结束我们自己的 Word 进程（不影响用户其它 Word）。</summary>
@@ -176,27 +307,115 @@ namespace WordEmbedDemo
             catch { return null; }
         }
 
-        /// <summary>轮询等待我们锁定进程的主窗口出现。</summary>
+        /// <summary>
+        /// 轮询等待我们锁定进程的真正主框架窗口（类名 OpusApp）出现。
+        /// 不再依赖 Process.MainWindowHandle（它可能拿到启动画面等过渡窗口）。
+        /// </summary>
         private bool WaitForMainWindow()
         {
-            for (int i = 0; i < 75; i++)   // 最多 ~15 秒
+            int startTick = Environment.TickCount;
+
+            // 辅助门闩：等待消息循环空闲（不作为成功判据）
+            try
             {
-                if (_wordProcess == null) return Fail("Word 进程已退出，无法嵌入。");
-                try { _wordProcess.Refresh(); }
-                catch { return Fail("Word 进程已退出，无法嵌入。"); }
-                if (_wordProcess.HasExited)
+                if (_wordProcess.WaitForInputIdle(8000))
+                    Log("WaitForInputIdle: 消息循环已空闲");
+                else
+                    Log("WaitForInputIdle: 8s 内未空闲，继续轮询窗口");
+            }
+            catch (Exception ex) { Log("WaitForInputIdle 异常(忽略): " + ex.Message); }
+
+            int deadline = Environment.TickCount + 30000;
+            int round = 0;
+            while (Environment.TickCount < deadline)
+            {
+                round++;
+                try { _wordProcess.Refresh(); } catch { }
+                if (_wordProcess == null || _wordProcess.HasExited)
                     return Fail("Word 进程已退出，无法嵌入。");
 
-                IntPtr h = _wordProcess.MainWindowHandle;
+                IntPtr h = FindOpusAppWindow(_pid);
                 if (h != IntPtr.Zero)
                 {
                     _hwnd = h;
-                    Log("取得主窗口 HWND=0x" + h.ToString("X"));
+                    Log("取得主框架窗口 HWND=0x" + h.ToString("X") +
+                        " class=" + NativeMethods.GetWindowClassName(h) +
+                        " 轮次=" + round + " 耗时=" + (Environment.TickCount - startTick) + "ms");
                     return EmbedWindow();
+                }
+
+                // 定期输出该 PID 当前所有顶级窗口快照，便于诊断
+                if (round == 1 || round % 10 == 0)
+                    Log("轮次=" + round + " 未发现 OpusApp。PID 窗口快照: " + DescribePidWindows(_pid));
+                Thread.Sleep(200);
+            }
+            return Fail("等待 Word 主窗口(OpusApp)超时(30s)。最终快照: " + DescribePidWindows(_pid));
+        }
+
+        /// <summary>在指定 PID 的可见顶级窗口中查找类名为 OpusApp 的主框架窗口。</summary>
+        private IntPtr FindOpusAppWindow(int pid)
+        {
+            IntPtr withDoc = IntPtr.Zero, first = IntPtr.Zero;
+            NativeMethods.EnumWindows((h, l) =>
+            {
+                try
+                {
+                    uint wpid;
+                    NativeMethods.GetWindowThreadProcessId(h, out wpid);
+                    if (wpid != (uint)pid) return true;
+                    if (!NativeMethods.IsWindowVisible(h)) return true;
+                    if (NativeMethods.GetWindowClassName(h) != "OpusApp") return true;
+
+                    // 已包含文档视图 _WwG 的为最优（Word 完成加载）
+                    if (NativeMethods.FindWindowEx(h, IntPtr.Zero, "_WwG", null) != IntPtr.Zero)
+                    { withDoc = h; return false; }
+                    if (first == IntPtr.Zero) first = h;
+                }
+                catch { }
+                return true;
+            }, IntPtr.Zero);
+            return withDoc != IntPtr.Zero ? withDoc : first;
+        }
+
+        /// <summary>枚举并描述指定 PID 的所有顶级窗口（类名/可见性），用于日志诊断。</summary>
+        private static string DescribePidWindows(int pid)
+        {
+            var list = new List<string>();
+            NativeMethods.EnumWindows((h, l) =>
+            {
+                try
+                {
+                    uint wpid;
+                    NativeMethods.GetWindowThreadProcessId(h, out wpid);
+                    if (wpid != (uint)pid) return true;
+                    string cls = NativeMethods.GetWindowClassName(h);
+                    bool vis = NativeMethods.IsWindowVisible(h);
+                    list.Add("0x" + h.ToString("X") + "[" + cls + (vis ? ",可见]" : ",隐藏]"));
+                }
+                catch { }
+                return true;
+            }, IntPtr.Zero);
+            return list.Count == 0 ? "(无窗口)" : string.Join(" ", list);
+        }
+
+        /// <summary>等待 OpusApp 内部出现文档视图子窗口 _WwG（Word 完成加载的信号）。</summary>
+        private bool WaitForDocChild(int timeoutMs)
+        {
+            int deadline = Environment.TickCount + timeoutMs;
+            int i = 0;
+            while (Environment.TickCount < deadline)
+            {
+                i++;
+                IntPtr doc = NativeMethods.FindWindowEx(_hwnd, IntPtr.Zero, "_WwG", null);
+                if (doc != IntPtr.Zero)
+                {
+                    Log("_WwG 文档子窗口已出现 HWND=0x" + doc.ToString("X") + " 等待次数=" + i);
+                    return true;
                 }
                 Thread.Sleep(200);
             }
-            return Fail("等待 Word 主窗口超时。");
+            Log("警告: 等待 _WwG 超时(" + timeoutMs + "ms)，继续嵌入流程");
+            return false;
         }
 
         /// <summary>把锁定的主窗口挂靠为本面板子窗口，并铺满、剥壳。</summary>
@@ -205,23 +424,54 @@ namespace WordEmbedDemo
             IntPtr h = _hwnd;
             if (h == IntPtr.Zero) return Fail("无效的 Word 窗口句柄。");
 
-            // 顺序很重要：先隐藏，再改父窗口/样式，最后铺满并显示，
-            // 避免窗口在错误的状态下被 SetParent 导致渲染异常。
+            // 嵌入前校验：句柄有效且仍属于我们锁定的进程
+            if (!NativeMethods.IsWindow(h))
+                return Fail("嵌入前句柄已失效 HWND=0x" + h.ToString("X"));
+            uint ownerPid;
+            NativeMethods.GetWindowThreadProcessId(h, out ownerPid);
+            if (ownerPid != (uint)_pid)
+                return Fail("窗口 0x" + h.ToString("X") + " 不属于锁定 PID " + _pid + "（实际 PID=" + ownerPid + "）");
+
+            Log("嵌入前状态: class=" + NativeMethods.GetWindowClassName(h) +
+                " style=0x" + NativeMethods.GetWindowStyle(h).ToString("X") +
+                " 可见=" + NativeMethods.IsWindowVisible(h) +
+                " 面板=" + ClientSize.Width + "x" + ClientSize.Height);
+
+            // 顺序很重要：先隐藏，再改父窗口/样式，最后铺满并显示
             NativeMethods.ShowWindow(h, NativeMethods.SW_HIDE);
-            NativeMethods.SetParent(h, Handle);
+
+            IntPtr prevParent = NativeMethods.SetParent(h, Handle);
+            int err = Marshal.GetLastWin32Error();
+            Log("SetParent -> 新父=面板 prev=0x" + prevParent.ToString("X") + " GetLastError=" + err);
+            if (prevParent == IntPtr.Zero && err != 0)
+            {
+                NativeMethods.ShowWindow(h, NativeMethods.SW_SHOW); // 恢复可见，避免 Word 凭空消失
+                return Fail("SetParent 失败: " + new Win32Exception(err).Message);
+            }
 
             // 去掉标题栏/边框/系统菜单/最小化最大化，改为子窗口
-            int style = NativeMethods.GetWindowStyle(h);
+            int oldStyle = NativeMethods.GetWindowStyle(h);
+            int style = oldStyle;
             style &= ~(NativeMethods.WS_CAPTION |
                        NativeMethods.WS_THICKFRAME |
                        NativeMethods.WS_SYSMENU |
                        NativeMethods.WS_MINIMIZEBOX |
                        NativeMethods.WS_MAXIMIZEBOX);
             style |= NativeMethods.WS_CHILD | NativeMethods.WS_VISIBLE;
-            NativeMethods.SetWindowStyle(h, style);
+            IntPtr prevStyle = NativeMethods.SetWindowStyle(h, style);
+            err = Marshal.GetLastWin32Error();
+            Log("SetWindowStyle 0x" + oldStyle.ToString("X") + " -> 0x" + style.ToString("X") +
+                " prev=0x" + prevStyle.ToString("X") + " GetLastError=" + err);
+            if (prevStyle == IntPtr.Zero && err != 0)
+                Log("警告: SetWindowStyle 可能失败: " + new Win32Exception(err).Message);
 
             // 铺满面板
-            NativeMethods.MoveWindow(h, 0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height), true);
+            bool moved = NativeMethods.MoveWindow(h, 0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height), true);
+            err = Marshal.GetLastWin32Error();
+            Log("MoveWindow " + ClientSize.Width + "x" + ClientSize.Height + " -> " + moved + " GetLastError=" + err);
+
+            // 等待 Word 完成内部加载（_WwG 出现）后再剥壳
+            WaitForDocChild(10000);
 
             // 隐藏 Ribbon 等界面框架（只对我们自己的窗口）
             StripWordChrome();
@@ -241,8 +491,11 @@ namespace WordEmbedDemo
         {
             IntPtr doc = IntPtr.Zero;
             IntPtr child = IntPtr.Zero;
+            var hidden = new List<string>();
+            bool any = false;
             while ((child = NativeMethods.FindWindowEx(_hwnd, child, null, null)) != IntPtr.Zero)
             {
+                any = true;
                 string cls = NativeMethods.GetWindowClassName(child);
                 if (cls == "_WwG")
                 {
@@ -250,17 +503,37 @@ namespace WordEmbedDemo
                     continue;
                 }
                 if (cls.StartsWith("NUISMDCONTAINER") || cls.StartsWith("Mso"))
-                    NativeMethods.ShowWindow(child, NativeMethods.SW_HIDE);
+                {
+                    bool ok = NativeMethods.ShowWindow(child, NativeMethods.SW_HIDE);
+                    hidden.Add(cls + "(0x" + child.ToString("X") + ",ok=" + ok + ")");
+                }
+                else
+                {
+                    Log("子窗口(保留): 0x" + child.ToString("X") + " class=" + cls);
+                }
             }
+            Log("StripWordChrome: 子窗口" + (any ? "已枚举" : "未发现(Word 内部可能尚未就绪)") +
+                " _WwG=" + (doc != IntPtr.Zero ? "0x" + doc.ToString("X") : "未找到") +
+                (hidden.Count > 0 ? " 已隐藏: " + string.Join(",", hidden) : " 无匹配隐藏项"));
+
             if (doc != IntPtr.Zero && ClientSize.Width > 0 && ClientSize.Height > 0)
-                NativeMethods.MoveWindow(doc, 0, 0, ClientSize.Width, ClientSize.Height, true);
+            {
+                bool ok = NativeMethods.MoveWindow(doc, 0, 0, ClientSize.Width, ClientSize.Height, true);
+                Log("_WwG 铺满 " + ClientSize.Width + "x" + ClientSize.Height + " -> " + ok);
+            }
         }
 
-        /// <summary>把我们自己的 Word 主窗口铺满面板。</summary>
+        /// <summary>把我们自己的 Word 主窗口铺满面板，并同步 _WwG 文档子窗口。</summary>
         private void ResizeToPanel()
         {
             if (_hwnd == IntPtr.Zero || ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
-            NativeMethods.MoveWindow(_hwnd, 0, 0, ClientSize.Width, ClientSize.Height, true);
+            bool ok = NativeMethods.MoveWindow(_hwnd, 0, 0, ClientSize.Width, ClientSize.Height, true);
+            IntPtr doc = NativeMethods.FindWindowEx(_hwnd, IntPtr.Zero, "_WwG", null);
+            bool docOk = false;
+            if (doc != IntPtr.Zero)
+                docOk = NativeMethods.MoveWindow(doc, 0, 0, ClientSize.Width, ClientSize.Height, true);
+            Log("ResizeToPanel size=" + ClientSize.Width + "x" + ClientSize.Height +
+                " 主窗口ok=" + ok + " _WwG=" + (doc != IntPtr.Zero ? ("0x" + doc.ToString("X") + " ok=" + docOk) : "未找到"));
         }
 
         /// <summary>本控制器是否仍指向一个有效的、存活的自有进程。</summary>

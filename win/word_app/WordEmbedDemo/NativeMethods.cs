@@ -28,6 +28,9 @@ namespace WordEmbedDemo
         private static extern IntPtr SetWindowLong64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
 
         [DllImport("user32.dll")]
+        public static extern bool EnumWindows(EnumChildProc lpEnumFunc, IntPtr lParam);
+
+        [DllImport("user32.dll")]
         public static extern bool EnumChildWindows(IntPtr hWndParent, EnumChildProc lpEnumFunc, IntPtr lParam);
 
         public delegate bool EnumChildProc(IntPtr hWnd, IntPtr lParam);
@@ -58,6 +61,21 @@ namespace WordEmbedDemo
         [DllImport("user32.dll")]
         public static extern bool IsWindowVisible(IntPtr hWnd);
 
+        [DllImport("user32.dll")]
+        public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        /// <summary>
+        /// 从指定 HWND 取 Office 原生对象模型（IDispatch）。
+        /// 对 Word 的 _WwG / OpusApp 传入 OBJID_NATIVEOM，得到该窗口所属的 Window/Application，
+        /// 而不会连到 ROT 里的全局 Word.Application。
+        /// </summary>
+        [DllImport("oleacc.dll")]
+        public static extern int AccessibleObjectFromWindow(IntPtr hwnd, uint dwObjectID,
+            ref Guid riid, [MarshalAs(UnmanagedType.IUnknown)] out object ppvObject);
+
+        public static readonly Guid IID_IDispatch = new Guid("00020400-0000-0000-C000-000000000046");
+        public const uint OBJID_NATIVEOM = 0xFFFFFFF0;
+
         public const int SW_HIDE = 0;
         public const int SW_SHOWNORMAL = 1;
         public const int SW_SHOW = 5;
@@ -81,12 +99,11 @@ namespace WordEmbedDemo
             return GetWindowLong32(hWnd, GWL_STYLE);
         }
 
-        public static void SetWindowStyle(IntPtr hWnd, int style)
+        public static IntPtr SetWindowStyle(IntPtr hWnd, int style)
         {
             if (IntPtr.Size == 8)
-                SetWindowLong64(hWnd, GWL_STYLE, (IntPtr)style);
-            else
-                SetWindowLong32(hWnd, GWL_STYLE, style);
+                return SetWindowLong64(hWnd, GWL_STYLE, (IntPtr)style);
+            return (IntPtr)SetWindowLong32(hWnd, GWL_STYLE, style);
         }
     }
 }
