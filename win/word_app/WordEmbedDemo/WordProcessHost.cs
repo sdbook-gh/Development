@@ -54,7 +54,12 @@ namespace WordEmbedDemo
                 string winword = FindWinWordExe();
                 if (winword == null) return Fail("未找到 WINWORD.EXE，请确认已安装 Microsoft Word。");
 
-                var psi = new ProcessStartInfo(winword, "/x")
+                // 生成一个最小空白文档，让 Word 打开真实文档窗口（而非“开始页”）
+                string blank = CreateBlankDocx();
+                if (blank == null) return Fail("无法创建临时空白文档。");
+
+                // /x 强制新实例 + 文档路径：在新实例中打开真实空白文档
+                var psi = new ProcessStartInfo(winword, "/x \"" + blank + "\"")
                 {
                     UseShellExecute = false,
                     CreateNoWindow = true
@@ -154,6 +159,23 @@ namespace WordEmbedDemo
             return null;
         }
 
+        /// <summary>在临时目录生成一个最小有效空白 .docx。</summary>
+        private static string CreateBlankDocx()
+        {
+            try
+            {
+                string dir = Path.Combine(Path.GetTempPath(), "WordEmbedDemo");
+                Directory.CreateDirectory(dir);
+                string path = Path.Combine(dir, "blank.docx");
+                byte[] bytes = Convert.FromBase64String(
+                    "UEsDBBQAAAAIAAAAIQAXmADX6wAAALIBAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbH1QyU4DMQy98xWRr2gmAweEUKc9sByBQ/kAK/HMRM2mOC3t3+NpoQdUONpvs99itQ9e7aiwS7GHm7YDRdEk6+LYw8f6pbkHxRWjRZ8i9XAghtXyarE+ZGIl4sg9TLXmB63ZTBSQ25QpCjKkErDKWEad0WxwJH3bdXfapFgp1qbOHiBmTzTg1lf1vJf96ZJCnkE9nphzWA+Ys3cGq+B6F+2vmOY7ohXlkcOTy3wtBNCXI2bo74Qf4ZuUU5wl9Y6lvmIQmv5MxWqbzDaItP3f58KlaRicobN+dsslGWKW1oNvz0hAF88f6GPlyy9QSwMEFAAAAAgAAAAhAD+t/vqvAAAALAEAAAsAAABfcmVscy8ucmVsc43POw7CMAwA0J1TRN5pWgaEUEMXhNQVlQNEiZtWNB/F4dPbk4EBKgZG/57tunnaid0x0uidgKoogaFTXo/OCLh0p/UOGCXptJy8QwEzEjSHVX3GSaY8Q8MYiGXEkYAhpbDnnNSAVlLhA7pc6X20MuUwGh6kukqDfFOWWx4/DVigrNUCYqsrYN0c8B/c9/2o8OjVzaJLP3YsOrIso8Ek4OGj5vqdLjILPJ/Dv548vABQSwMEFAAAAAgAAAAhAIWE7cmZAAAAywAAABEAAAB3b3JkL2RvY3VtZW50LnhtbEWOwQ7CIBBE734F2bulejCmKfTmF+gHIGBtUnYJi9b+vVAPXt5kM5OZ7YdPmMXbJ54IFRyaFoRHS27CUcHtetmfQXA26MxM6BWsnmHQu37pHNlX8JhFaUDuFgXPnGMnJdunD4Ybih6L96AUTC5nGuVCycVE1jOXgTDLY9ueZDATgi6Vd3Jr1ViRKrIWvaxSmTbGjb+o/L+hv1BLAwQUAAAACAAAACEAKEYlsH4AAACcAAAAHAAAAHdvcmQvX3JlbHMvZG9jdW1lbnQueG1sLnJlbHNVzEEOwiAQheG9pyCzt6ALYwy0ux7A6AEmdARiOxCGGL29LHX58ud9dnpvq3pRlZTZwWEwoIh9XhIHB/fbvD+Dkoa84JqZHHxIYBp39kortv6RmIqojrA4iK2Vi9biI20oQy7EvTxy3bD1WYMu6J8YSB+NOen6a8Bo9R86fgFQSwECFAMUAAAACAAAACEAF5gA1+sAAACyAQAAEwAAAAAAAAAAAAAAgAEAAAAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLAQIUAxQAAAAIAAAAIQA/rf76rwAAACwBAAALAAAAAAAAAAAAAACAARwBAABfcmVscy8ucmVsc1BLAQIUAxQAAAAIAAAAIQCFhO3JmQAAAMsAAAARAAAAAAAAAAAAAACAAfQBAAB3b3JkL2RvY3VtZW50LnhtbFBLAQIUAxQAAAAIAAAAIQAoRiWwfgAAAJwAAAAcAAAAAAAAAAAAAACAAbwCAAB3b3JkL19yZWxzL2RvY3VtZW50LnhtbC5yZWxzUEsFBgAAAAAEAAQAAwEAAHQDAAAAAA==" // precacted minimal blank docx
+                    );
+                File.WriteAllBytes(path, bytes);
+                return path;
+            }
+            catch { return null; }
+        }
+
         /// <summary>轮询等待我们锁定进程的主窗口出现。</summary>
         private bool WaitForMainWindow()
         {
@@ -180,29 +202,34 @@ namespace WordEmbedDemo
         /// <summary>把锁定的主窗口挂靠为本面板子窗口，并铺满、剥壳。</summary>
         private bool EmbedWindow()
         {
-            if (_hwnd == IntPtr.Zero) return Fail("无效的 Word 窗口句柄。");
+            IntPtr h = _hwnd;
+            if (h == IntPtr.Zero) return Fail("无效的 Word 窗口句柄。");
 
-            // 还原再挂靠，避免最大化状态导致铺不满
-            NativeMethods.ShowWindow(_hwnd, NativeMethods.SW_RESTORE);
-
-            NativeMethods.SetParent(_hwnd, Handle);
+            // 顺序很重要：先隐藏，再改父窗口/样式，最后铺满并显示，
+            // 避免窗口在错误的状态下被 SetParent 导致渲染异常。
+            NativeMethods.ShowWindow(h, NativeMethods.SW_HIDE);
+            NativeMethods.SetParent(h, Handle);
 
             // 去掉标题栏/边框/系统菜单/最小化最大化，改为子窗口
-            int style = NativeMethods.GetWindowStyle(_hwnd);
+            int style = NativeMethods.GetWindowStyle(h);
             style &= ~(NativeMethods.WS_CAPTION |
                        NativeMethods.WS_THICKFRAME |
                        NativeMethods.WS_SYSMENU |
                        NativeMethods.WS_MINIMIZEBOX |
                        NativeMethods.WS_MAXIMIZEBOX);
             style |= NativeMethods.WS_CHILD | NativeMethods.WS_VISIBLE;
-            NativeMethods.SetWindowStyle(_hwnd, style);
+            NativeMethods.SetWindowStyle(h, style);
 
-            // 隐藏 Ribbon / 快速访问栏等界面框架（只对我们自己的窗口）
+            // 铺满面板
+            NativeMethods.MoveWindow(h, 0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height), true);
+
+            // 隐藏 Ribbon 等界面框架（只对我们自己的窗口）
             StripWordChrome();
 
-            ResizeToPanel();
+            // 铺满后显示
+            NativeMethods.ShowWindow(h, NativeMethods.SW_SHOW);
             _embedded = true;
-            Log("嵌入完成");
+            Log("嵌入完成 hwnd=0x" + h.ToString("X") + " size=" + ClientSize.Width + "x" + ClientSize.Height);
             return true;
         }
 
