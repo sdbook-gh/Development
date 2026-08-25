@@ -32,6 +32,16 @@ namespace WordEmbedDemo
     public struct MyBorder { public int Left, Top, Right, Bottom; }
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct MyFormatEtc
+    {
+        public short cfFormat;
+        public IntPtr ptd;
+        public uint dwAspect;
+        public int lindex;
+        public uint tymed;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct MyFrameInfo
     {
         public uint cb;
@@ -61,7 +71,8 @@ namespace WordEmbedDemo
         [DllImport("ole32.dll")]
         public static extern int StgCreateDocfileOnILockBytes(IntPtr lb, uint f, int r, out IntPtr st);
         [DllImport("ole32.dll")]
-        public static extern int OleCreate(ref Guid cl, ref Guid riid, IntPtr site, IntPtr st, out IntPtr o);
+        public static extern int OleCreate(ref Guid cl, ref Guid riid, IntPtr pUnkOuter,
+            uint renderopt, ref MyFormatEtc pFormatetc, IntPtr pClientSite, IntPtr pStg, out IntPtr o);
         [DllImport("ole32.dll")] public static extern int OleRun(IntPtr o);
         [DllImport("ole32.dll")] public static extern int OleSetContainedObject(IntPtr o, int f);
 
@@ -191,19 +202,33 @@ namespace WordEmbedDemo
     // =====================================================================
     [ComVisible(true)]
     public class OleWordHost : Control,
-        IOleClientSiteIfc, IOleContainerIfc, IOleWindowIfc, IOleInPlaceSiteIfc
+        IOleClientSiteIfc, IOleContainerIfc, IOleWindowIfc, IOleInPlaceSiteIfc,
+        IOleInPlaceUIWindowIfc, IOleInPlaceFrameIfc
     {
         private IOleObjectIfc _obj;
         private IntPtr _pObj;
+        private IntPtr _storage;
         private static bool _init;
         private bool _run;
 
         public OleWordHost() { Dock = DockStyle.Fill; BackColor = Color.White; }
 
+        private static void Trace(string msg)
+        {
+            try
+            {
+                System.IO.File.AppendAllText(
+                    System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ole_trace.txt"),
+                    DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + Environment.NewLine);
+            }
+            catch { }
+        }
+
         public bool Start()
         {
             try
             {
+                Trace("Start begin");
                 if (!_init) { OleNative.OleInitialize(IntPtr.Zero); _init = true; }
 
                 Guid clsid;
@@ -212,15 +237,25 @@ namespace WordEmbedDemo
                 IntPtr lb;
                 if (OleNative.CreateILockBytesOnHGlobal(IntPtr.Zero, 1, out lb) < 0) return Fail("创建 ILockBytes 失败");
 
-                IntPtr st;
-                if (OleNative.StgCreateDocfileOnILockBytes(lb, OleNative.STGM_READWRITE | OleNative.STGM_EXCL | OleNative.STGM_CREATE, 0, out st) < 0)
+                if (OleNative.StgCreateDocfileOnILockBytes(lb, OleNative.STGM_READWRITE | OleNative.STGM_EXCL | OleNative.STGM_CREATE, 0, out _storage) < 0)
                     return Fail("创建 Storage 失败");
 
                 IntPtr cs = Marshal.GetIUnknownForObject(this);
+
+                // FORMATETC：OLERENDER_DRAW，默认 TYMED_NULL
+                MyFormatEtc fe = new MyFormatEtc();
+                fe.cfFormat = 0;
+                fe.ptd = IntPtr.Zero;
+                fe.dwAspect = OleNative.ASPECT_CONTENT;
+                fe.lindex = -1;
+                fe.tymed = 0; // TYMED_NULL
+
                 IntPtr p;
-                int hr = OleNative.OleCreate(ref clsid, ref OleNative.IID_IOleObject, cs, IntPtr.Zero, out p);
+                int hr = OleNative.OleCreate(ref clsid, ref OleNative.IID_IOleObject, IntPtr.Zero,
+                    1 /*OLERENDER_DRAW*/, ref fe, cs, _storage, out p);
                 Marshal.Release(cs);
                 if (hr < 0) return Fail("OleCreate 失败 0x" + hr.ToString("X8"));
+                Trace("OleCreate ok");
 
                 _pObj = p;
                 _obj = (IOleObjectIfc)Marshal.GetObjectForIUnknown(p);
@@ -231,15 +266,18 @@ namespace WordEmbedDemo
 
                 MySIZEL sz = new MySIZEL { cx = ClientSize.Width, cy = ClientSize.Height };
                 _obj.SetExtent(OleNative.ASPECT_CONTENT, ref sz);
+                Trace("OleCreate + setup ok");
 
                 MyRECT rc = new MyRECT(0, 0, ClientSize.Width, ClientSize.Height);
                 _obj.DoVerb(OleNative.INPLACEACTIVATE, IntPtr.Zero, this, 0, Handle, ref rc);
 
                 _run = true;
                 PositionChild();
+                Trace("Start end (success)");
                 return true;
             }
-            catch (COMException ex) { return Fail(ex.Message); }
+            catch (COMException ex) { Trace("COMException: " + ex.Message); return Fail(ex.Message); }
+            catch (Exception ex) { Trace("Exception: " + ex); return Fail(ex.Message); }
         }
 
         private bool Fail(string m)
@@ -292,6 +330,11 @@ namespace WordEmbedDemo
                 try { Marshal.Release(_pObj); } catch (Exception) { }
                 _pObj = IntPtr.Zero;
             }
+            if (_storage != IntPtr.Zero)
+            {
+                try { Marshal.Release(_storage); } catch (Exception) { }
+                _storage = IntPtr.Zero;
+            }
             _run = false;
         }
 
@@ -323,7 +366,7 @@ namespace WordEmbedDemo
         public void GetWindowContext(out IOleInPlaceFrameIfc f, out IOleInPlaceUIWindowIfc d,
                                      ref MyRECT pos, ref MyRECT clip, ref MyFrameInfo info)
         {
-            f = null; d = null;
+            f = this; d = this;
             pos = new MyRECT(0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height));
             clip = new MyRECT(0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height));
             info.cb = (uint)Marshal.SizeOf(typeof(MyFrameInfo));
@@ -339,6 +382,18 @@ namespace WordEmbedDemo
         public void DiscardUndoState() { }
         public void DeactivateAndUndo() { }
         public void OnPosRectChange(ref MyRECT rc) { }
+
+        // ---- IOleInPlaceUIWindowIfc / IOleInPlaceFrameIfc（就地宿主，不提供菜单/状态栏）----
+        public void GetBorder(out MyRECT rc) { rc = new MyRECT(0, 0, Math.Max(1, ClientSize.Width), Math.Max(1, ClientSize.Height)); }
+        public void RequestBorderSpace(ref MyBorder b) { }
+        public void SetBorderSpace(ref MyBorder b) { }
+        public void SetActiveObject(IntPtr p, string n) { }
+        public int InsertMenus(IntPtr h, IntPtr w) { return unchecked((int)0x80004001); }        // E_NOTIMPL：不往 Word 塞菜单
+        public int SetMenu(IntPtr h, IntPtr o, IntPtr a) { return unchecked((int)0x80004001); }
+        public void RemoveMenus(IntPtr h) { }
+        public int SetStatusText(string s) { return unchecked((int)0x80004001); }
+        public void EnableModeless(bool f) { }
+        public int TranslateAccelerator(ref int m, ushort w) { return 0; }        // 不处理加速键
         #endregion
     }
 }
