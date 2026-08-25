@@ -4,9 +4,9 @@ using System.Windows.Forms;
 namespace WordEmbedDemo
 {
     /// <summary>
-    /// 主窗体：把单个 Word.Document **OLE 嵌入对象**就地编辑在本窗体面板里。
-    /// 与旧实现不同：这里不再抓取全局唯一的 Word.Application 并 SetParent 其
-    /// 顶层窗口 —— 因此你另开 Word 与本应用互不干扰。
+    /// 主窗体：以“独立进程 + 窗口挂靠”方式嵌入本机 Word，
+    /// 且只操作我们自己新创建的 Word 进程（PID 锁定），
+    /// 与用户单独打开的其它 Word 完全隔离互不影响。
     /// </summary>
     public class MainForm : Form
     {
@@ -16,7 +16,7 @@ namespace WordEmbedDemo
         private ToolStripMenuItem _miExit;
         private ToolStripMenuItem _menuEdit;
         private ToolStripMenuItem _miPaste;
-        private OleWordHost _host;
+        private WordProcessHost _host;
         private StatusStrip _status;
         private ToolStripStatusLabel _lblStatus;
 
@@ -54,7 +54,7 @@ namespace WordEmbedDemo
             _lblStatus = new ToolStripStatusLabel("就绪");
             _status.Items.Add(_lblStatus);
 
-            _host = new OleWordHost();
+            _host = new WordProcessHost();
 
             Controls.Add(_host);
             Controls.Add(_status);
@@ -65,9 +65,9 @@ namespace WordEmbedDemo
         private void MainForm_Load(object sender, EventArgs e)
         {
             if (_host.Start())
-                SetStatus("已嵌入空白 Word 文档：直接编辑即可；Ctrl+C/Ctrl+V 均可用。");
+                SetStatus("已嵌入独立 Word 进程；可直接编辑，Ctrl+C/Ctrl+V 可用。");
             else
-                SetStatus("嵌入失败。");
+                SetStatus("嵌入失败：详见日志。");
         }
 
         private void NewDocument()
@@ -76,14 +76,9 @@ namespace WordEmbedDemo
             SetStatus("已新建空白 Word 文档。");
         }
 
-        public void Paste()
-        {
-            _host.Paste();
-        }
-
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            _host.StopEmbedding();
+            _host.Stop();
         }
 
         private void SetStatus(string text)
