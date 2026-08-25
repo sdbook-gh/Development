@@ -1,0 +1,6 @@
+# LLM 配置
+api_base: "https://opencode.ai/zen/v1"  # 大模型服务地址
+api_key: "sk-C8C4UvqF6vluKdcwrAt9BDXSRX5aO5Ck6efaPVV79XeaHyxCckOKX8n2hGVTWEHq"            # API 密钥
+model: "deepseek-v4-flash-free"                  # 模型名称
+temperature: 0.7                        # 生成温度 (0-2)
+max_tokens: 1024                        # 最大输出 token 数
