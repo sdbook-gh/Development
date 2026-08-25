@@ -48,7 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="NativeMethods.cs" />
-    <Compile Include="WordHostControl.cs" />
+    <Compile Include="OleWordHost.cs" />
     <Compile Include="MainForm.cs">
       <SubType>Form</SubType>
     </Compile>

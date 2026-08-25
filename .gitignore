@@ -1,0 +1,8 @@
+# ---- build output ----
+bin/
+obj/
+bin_csc/
+*.user
+
+# ---- screenshots / scratch ----
+*.png

@@ -64,7 +64,7 @@ set "OUT=%PROJ_DIR%\bin_csc"
 if defined CSC (
     echo [build] using CSC: %CSC%
     if not exist "%OUT%" mkdir "%OUT%"
-    "%CSC%" /nologo /target:exe /out:"%OUT%\WordEmbedDemo.exe" "%PROJ_DIR%\NativeMethods.cs" "%PROJ_DIR%\WordHostControl.cs" "%PROJ_DIR%\MainForm.cs" "%PROJ_DIR%\Program.cs" "%PROJ_DIR%\Properties\AssemblyInfo.cs"
+    "%CSC%" /nologo /target:exe /out:"%OUT%\WordEmbedDemo.exe" "%PROJ_DIR%\NativeMethods.cs" "%PROJ_DIR%\OleWordHost.cs" "%PROJ_DIR%\MainForm.cs" "%PROJ_DIR%\Program.cs" "%PROJ_DIR%\Properties\AssemblyInfo.cs"
     if "%ERRORLEVEL%"=="0" (
         echo.
         echo [OK] compiled: %cd%\%OUT%\WordEmbedDemo.exe
