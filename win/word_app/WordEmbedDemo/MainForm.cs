@@ -22,7 +22,8 @@ namespace WordEmbedDemo
 
         public MainForm()
         {
-            Text = "Word 隔离嵌入示例 (.NET Framework 4.8)";
+            Text = AssemblyInfo.FRIENDLY_APP_NAME + " v" + AssemblyInfo.PRODUCT_VERSION
+                   + " - Word 隔离嵌入示例 (.NET Framework 4.8)";
             Width = 1000;
             Height = 720;
             StartPosition = FormStartPosition.CenterScreen;
@@ -44,11 +45,13 @@ namespace WordEmbedDemo
             _menuFile.DropDownItems.Add(_miExit);
 
             _menuEdit = new ToolStripMenuItem("编辑(&E)");
-            _miPaste = new ToolStripMenuItem("粘贴(&P)  Ctrl+V", null, (s, e) =>
+            _miPaste = new ToolStripMenuItem("粘贴(&P)", null, (s, e) =>
             {
                 // 等菜单关闭后再粘贴，避免焦点仍停在 ToolStrip 上
                 BeginInvoke(new Action(() => _host.Paste()));
             });
+            // 真正绑定快捷键（菜单文本会自动显示 Ctrl+V），避免“写了却不生效”
+            _miPaste.ShortcutKeys = Keys.Control | Keys.V;
             _menuEdit.DropDownItems.Add(_miPaste);
 
             _menu.Items.Add(_menuFile);
@@ -59,6 +62,9 @@ namespace WordEmbedDemo
             _status.Items.Add(_lblStatus);
 
             _host = new WordProcessHost();
+            // 控件不直接弹框/改状态栏，统一由窗体处理
+            _host.HostError += OnHostError;
+            _host.HostStateChanged += OnHostStateChanged;
 
             Controls.Add(_host);
             Controls.Add(_status);
@@ -66,18 +72,36 @@ namespace WordEmbedDemo
             MainMenuStrip = _menu;
         }
 
-        private void MainForm_Load(object sender, EventArgs e)
+        private async void MainForm_Load(object sender, EventArgs e)
         {
-            if (_host.Start())
+            SetStatus("正在启动独立 Word 进程…");
+            if (await _host.StartAsync())
                 SetStatus("已嵌入独立 Word 进程；可直接编辑，Ctrl+C/Ctrl+V 可用。");
             else
                 SetStatus("嵌入失败：详见日志。");
         }
 
-        private void NewDocument()
+        private async void NewDocument()
         {
-            _host.NewDocument();
-            SetStatus("已新建空白 Word 文档。");
+            SetStatus("正在新建空白 Word 文档…");
+            if (await _host.NewDocumentAsync())
+                SetStatus("已新建空白 Word 文档。");
+            else
+                SetStatus("新建失败：详见日志。");
+        }
+
+        /// <summary>宿主控件报错上抛：由窗体统一弹框（图标从原来的“警告”统一为“错误”）。</summary>
+        private void OnHostError(string msg)
+        {
+            MessageBox.Show(msg, AssemblyInfo.FRIENDLY_APP_NAME,
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        /// <summary>宿主状态变化：刷新状态栏；Word 自行退出时禁用粘贴。</summary>
+        private void OnHostStateChanged(string text)
+        {
+            SetStatus(text);
+            _miPaste.Enabled = text != "Word 进程已退出";
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
@@ -88,7 +112,6 @@ namespace WordEmbedDemo
         private void SetStatus(string text)
         {
             _lblStatus.Text = text;
-            _status.Refresh();
         }
     }
 }

@@ -49,9 +49,38 @@ namespace WordEmbedDemo
             return GetClassName(hWnd, sb, sb.Capacity) > 0 ? sb.ToString() : string.Empty;
         }
 
+        /// <summary>
+        /// 递归在 parent 的所有后代窗口中按类名查找，优先返回可见者。
+        /// 注意：FindWindowEx 只查【直接子窗口】，Word 的 OpusApp &gt; _WwF &gt; _WwB &gt; _WwG
+        /// 必须靠 EnumChildWindows（递归）才能拿到 _WwG。
+        /// </summary>
+        public static IntPtr FindChildWindowRecursive(IntPtr parent, string className)
+        {
+            IntPtr found = IntPtr.Zero;
+            IntPtr visible = IntPtr.Zero;
+            if (parent == IntPtr.Zero || string.IsNullOrEmpty(className)) return IntPtr.Zero;
+            EnumChildWindows(parent, (h, l) =>
+            {
+                if (GetWindowClassName(h) != className) return true;
+                if (found == IntPtr.Zero) found = h;
+                if (IsWindowVisible(h))
+                {
+                    visible = h;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            return visible != IntPtr.Zero ? visible : found;
+        }
+
         [DllImport("user32.dll")]
         public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
+            int X, int Y, int cx, int cy, uint uFlags);
+
+        // 以下两项当前流程未直接调用，预留给“恢复/还原嵌入窗口”等后续实机调试
         [DllImport("user32.dll")]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
 
@@ -77,9 +106,14 @@ namespace WordEmbedDemo
         public const uint OBJID_NATIVEOM = 0xFFFFFFF0;
 
         public const int SW_HIDE = 0;
-        public const int SW_SHOWNORMAL = 1;
+        public const int SW_SHOWNORMAL = 1;   // 预留：还原显示嵌入窗口时使用
         public const int SW_SHOW = 5;
-        public const int SW_RESTORE = 9;
+        public const int SW_RESTORE = 9;      // 预留：最小化恢复时使用
+
+        public const uint SWP_NOSIZE = 0x0001;
+        public const uint SWP_NOMOVE = 0x0002;
+        public const uint SWP_NOZORDER = 0x0004;
+        public const uint SWP_FRAMECHANGED = 0x0020;
 
         public const int GWL_STYLE = -16;
 
