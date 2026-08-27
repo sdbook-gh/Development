@@ -80,6 +80,12 @@ namespace WordEmbedDemo
         public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter,
             int X, int Y, int cx, int cy, uint uFlags);
 
+        [DllImport("user32.dll", SetLastError = true)]
+        public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        public static extern bool InvalidateRect(IntPtr hWnd, IntPtr lpRect, bool bErase);
+
         // 以下两项当前流程未直接调用，预留给“恢复/还原嵌入窗口”等后续实机调试
         [DllImport("user32.dll")]
         public static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -114,6 +120,8 @@ namespace WordEmbedDemo
         public const uint SWP_NOMOVE = 0x0002;
         public const uint SWP_NOZORDER = 0x0004;
         public const uint SWP_FRAMECHANGED = 0x0020;
+
+        public const uint WM_SETREDRAW = 0x000B;
 
         public const int GWL_STYLE = -16;
 

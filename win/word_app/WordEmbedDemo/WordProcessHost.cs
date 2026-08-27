@@ -46,6 +46,9 @@ namespace WordEmbedDemo
         private readonly HashSet<int> _preExisting = new HashSet<int>();
         private const int LOG_LIMIT = 1024 * 1024;   // 日志超过 1MB 轮转，避免无限膨胀
 
+        // 防抖：拖动缩放时 resize 事件高频触发，合并到定时器到点后再执行“重排+重剥壳”一次
+        private readonly System.Windows.Forms.Timer _resizeDebounce;
+
         /// <summary>出错时上抛给宿主窗体，由窗体决定提示方式（本控件不直接弹框）。</summary>
         public event Action<string> HostError;
 
@@ -56,6 +59,14 @@ namespace WordEmbedDemo
         {
             Dock = DockStyle.Fill;
             BackColor = Color.White;
+
+            _resizeDebounce = new System.Windows.Forms.Timer { Interval = 120 };
+            _resizeDebounce.Tick += (s, e) =>
+            {
+                _resizeDebounce.Stop();
+                if (_embedded && IsValid())
+                    ResizeToPanel();
+            };
         }
 
         // ==================== 公共操作 ====================
@@ -270,6 +281,13 @@ namespace WordEmbedDemo
             target.GetType().InvokeMember(name,
                 BindingFlags.InvokeMethod | BindingFlags.Instance, null, target, null);
         }
+
+        private static void ComSet(object target, string name, object value)
+        {
+            target.GetType().InvokeMember(name,
+                BindingFlags.SetProperty | BindingFlags.Instance, null, target, new object[] { value });
+        }
+
 
         /// <summary>在 OpusApp 后代窗口中查找可见的文档视图 _WwG。</summary>
         /// <remarks>
@@ -633,9 +651,7 @@ namespace WordEmbedDemo
             // 等待 Word 完成内部加载（_WwG 出现）后再剥壳
             await WaitForDocChildAsync(10000);
 
-            // 隐藏 Ribbon 等界面框架（只对我们自己的窗口）
-            StripWordChrome();
-            StripChromeViaOm();
+            RelayoutEmbeddedWord();
 
             // 铺满后显示
             NativeMethods.ShowWindow(h, NativeMethods.SW_SHOW);
@@ -645,12 +661,39 @@ namespace WordEmbedDemo
         }
 
         /// <summary>
-        /// 只枚举我们自己窗口的直接子窗口，隐藏已知 Office 界面框架类
-        /// （NUISMDCONTAINER / Mso*），保留文档视图 _WwG 并铺满。
+        /// 嵌入后统一重排：清零 chrome 占位，按 OpusApp → _WwF → _WwB → _WwG 铺满面板，
+        /// 再用对象模型关标尺/任务窗格并把纸张 PageFit 居中。
+        /// Embed 与 Resize 共用，避免拖拽后又偏回去。
+        /// </summary>
+        private void RelayoutEmbeddedWord()
+        {
+            if (_hwnd == IntPtr.Zero || ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
+
+            NativeMethods.SendMessage(_hwnd, NativeMethods.WM_SETREDRAW, (IntPtr)0, IntPtr.Zero);
+            try
+            {
+                StripWordChrome();
+                FillDocumentChain();
+                StripChromeViaOm();
+                // OM 改 Zoom/标尺会触发布局，再剥一次并铺满
+                StripWordChrome();
+                FillDocumentChain();
+            }
+            finally
+            {
+                NativeMethods.SendMessage(_hwnd, NativeMethods.WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+                NativeMethods.InvalidateRect(_hwnd, IntPtr.Zero, true);
+            }
+
+            Log("RelayoutEmbeddedWord size=" + ClientSize.Width + "x" + ClientSize.Height);
+        }
+
+        /// <summary>
+        /// 只枚举我们自己窗口的直接子窗口，隐藏已知 Office 界面框架
+        /// （NUISMDCONTAINER / Mso* / NetUIHWND），并把它们尺寸清零，避免仍占布局。
         /// </summary>
         private void StripWordChrome()
         {
-            IntPtr doc = IntPtr.Zero;
             IntPtr child = IntPtr.Zero;
             var hidden = new List<string>();
             bool any = false;
@@ -658,14 +701,15 @@ namespace WordEmbedDemo
             {
                 any = true;
                 string cls = NativeMethods.GetWindowClassName(child);
-                if (cls == "_WwG")
-                {
-                    doc = child;
+                if (cls == "_WwF" || cls == "_WwB" || cls == "_WwG")
                     continue;
-                }
-                if (cls.StartsWith("NUISMDCONTAINER") || cls.StartsWith("Mso"))
+                if (cls.StartsWith("NUISMDCONTAINER") || cls.StartsWith("Mso") || cls == "NetUIHWND")
                 {
                     bool ok = NativeMethods.ShowWindow(child, NativeMethods.SW_HIDE);
+                    int childStyle = NativeMethods.GetWindowStyle(child);
+                    childStyle &= ~NativeMethods.WS_VISIBLE;
+                    NativeMethods.SetWindowStyle(child, childStyle);
+                    NativeMethods.MoveWindow(child, 0, 0, 1, 1, true);
                     hidden.Add(cls + "(0x" + child.ToString("X") + ",ok=" + ok + ")");
                 }
                 else
@@ -674,27 +718,51 @@ namespace WordEmbedDemo
                 }
             }
             Log("StripWordChrome: 子窗口" + (any ? "已枚举" : "未发现(Word 内部可能尚未就绪)") +
-                " _WwG=" + (doc != IntPtr.Zero ? "0x" + doc.ToString("X") : "未找到") +
-                (hidden.Count > 0 ? " 已隐藏: " + string.Join(",", hidden) : " 无匹配隐藏项"));
-
-            if (doc == IntPtr.Zero)
-            {
-                // 直接子窗口里没有 _WwG（它在 _WwF &gt; _WwB 里），递归再找一次
-                doc = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwG");
-                if (doc != IntPtr.Zero)
-                    Log("StripWordChrome: 递归定位 _WwG=0x" + doc.ToString("X"));
-            }
-
-            if (doc != IntPtr.Zero && ClientSize.Width > 0 && ClientSize.Height > 0)
-            {
-                bool ok = NativeMethods.MoveWindow(doc, 0, 0, ClientSize.Width, ClientSize.Height, true);
-                Log("_WwG 铺满 " + ClientSize.Width + "x" + ClientSize.Height + " -> " + ok);
-            }
+                (hidden.Count > 0 ? " 已隐藏 " + string.Join(",", hidden) : " 无匹配隐藏项"));
         }
 
         /// <summary>
-        /// 剥壳叠加层：用对象模型关掉 Ribbon / 状态栏，比“隐窗口”更彻底。
-        /// 失败降级：任何异常只记日志，不影响已完成的几何剥壳与嵌入（可单独回退）。
+        /// 按 OpusApp → _WwF → _WwB → _WwG 把文档区铺满宿主面板。
+        /// MoveWindow 坐标相对父窗口，必须一层层铺，不能只动 _WwG。
+        /// </summary>
+        private void FillDocumentChain()
+        {
+            int w = Math.Max(1, ClientSize.Width);
+            int h = Math.Max(1, ClientSize.Height);
+
+            bool okApp = NativeMethods.MoveWindow(_hwnd, 0, 0, w, h, true);
+
+            IntPtr frame = NativeMethods.FindWindowEx(_hwnd, IntPtr.Zero, "_WwF", null);
+            if (frame == IntPtr.Zero)
+                frame = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwF");
+            bool okF = false;
+            if (frame != IntPtr.Zero)
+                okF = NativeMethods.MoveWindow(frame, 0, 0, w, h, true);
+
+            IntPtr border = IntPtr.Zero;
+            if (frame != IntPtr.Zero)
+                border = NativeMethods.FindWindowEx(frame, IntPtr.Zero, "_WwB", null);
+            if (border == IntPtr.Zero)
+                border = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwB");
+            bool okB = false;
+            if (border != IntPtr.Zero)
+                okB = NativeMethods.MoveWindow(border, 0, 0, w, h, true);
+
+            IntPtr doc = FindDocView();
+            bool okG = false;
+            if (doc != IntPtr.Zero)
+                okG = NativeMethods.MoveWindow(doc, 0, 0, w, h, true);
+
+            Log("FillDocumentChain " + w + "x" + h +
+                " OpusApp=" + okApp +
+                " _WwF=" + (frame != IntPtr.Zero ? ("0x" + frame.ToString("X") + "/" + okF) : "未找到") +
+                " _WwB=" + (border != IntPtr.Zero ? ("0x" + border.ToString("X") + "/" + okB) : "未找到") +
+                " _WwG=" + (doc != IntPtr.Zero ? ("0x" + doc.ToString("X") + "/" + okG) : "未找到"));
+        }
+
+        /// <summary>
+        /// 剥壳叠加层：关 Ribbon / 状态栏 / 标尺 / 任务窗格，并把纸张 PageFit 居中。
+        /// 失败降级：任何异常只记日志，不影响几何铺满。
         /// </summary>
         private void StripChromeViaOm()
         {
@@ -716,30 +784,46 @@ namespace WordEmbedDemo
                         object cbs = ComGet(app, "CommandBars");
                         try
                         {
-                            object ribbon = cbs.GetType().InvokeMember("Item",
-                                BindingFlags.GetProperty | BindingFlags.Instance,
-                                null, cbs, new object[] { "Ribbon" });
-                            try
-                            {
-                                ribbon.GetType().InvokeMember("Enabled",
-                                    BindingFlags.SetProperty | BindingFlags.Instance,
-                                    null, ribbon, new object[] { false });
-                                Log("StripChromeViaOm: CommandBars(Ribbon).Enabled=false OK");
-                            }
-                            finally { ReleaseCom(ribbon); }
+                            TrySetCommandBarEnabled(cbs, "Ribbon", false);
+                            TrySetCommandBarVisible(cbs, "Task Pane", false);
+                            TrySetCommandBarVisible(cbs, "Navigation", false);
                         }
                         finally { ReleaseCom(cbs); }
                     }
-                    catch (Exception ex) { Log("StripChromeViaOm: Ribbon: " + ex.Message); }
+                    catch (Exception ex) { Log("StripChromeViaOm: CommandBars: " + ex.Message); }
 
                     try
                     {
-                        app.GetType().InvokeMember("DisplayStatusBar",
-                            BindingFlags.SetProperty | BindingFlags.Instance,
-                            null, app, new object[] { false });
+                        ComSet(app, "DisplayStatusBar", false);
                         Log("StripChromeViaOm: DisplayStatusBar=false OK");
                     }
                     catch (Exception ex) { Log("StripChromeViaOm: DisplayStatusBar: " + ex.Message); }
+
+                    object win = null;
+                    try
+                    {
+                        win = ComGet(app, "ActiveWindow");
+                        try { ComSet(win, "DisplayRulers", false); Log("StripChromeViaOm: DisplayRulers=false OK"); }
+                        catch (Exception ex) { Log("StripChromeViaOm: DisplayRulers: " + ex.Message); }
+                        try { ComSet(win, "DocumentMap", false); Log("StripChromeViaOm: DocumentMap=false OK"); }
+                        catch (Exception ex) { Log("StripChromeViaOm: DocumentMap: " + ex.Message); }
+
+                        object view = null, zoom = null;
+                        try
+                        {
+                            view = ComGet(win, "View");
+                            try { ComSet(view, "Type", 3); Log("StripChromeViaOm: View.Type=wdPrintView OK"); }
+                            catch (Exception ex) { Log("StripChromeViaOm: View.Type: " + ex.Message); }
+                            zoom = ComGet(view, "Zoom");
+                            // wdPageFitFullPage = 1：整页落入窗口，Word 会把纸张放在视图正中
+                            ComSet(zoom, "PageFit", 1);
+                            Log("StripChromeViaOm: Zoom.PageFit=wdPageFitFullPage OK");
+                        }
+                        catch (Exception ex) { Log("StripChromeViaOm: Zoom.PageFit: " + ex.Message); }
+                        finally { ReleaseCom(zoom); ReleaseCom(view); }
+                    }
+                    catch (Exception ex) { Log("StripChromeViaOm: ActiveWindow: " + ex.Message); }
+                    finally { ReleaseCom(win); }
                 }
                 finally { ReleaseCom(app); }
             }
@@ -750,17 +834,44 @@ namespace WordEmbedDemo
             finally { ReleaseCom(om); }
         }
 
-        /// <summary>把我们自己的 Word 主窗口铺满面板，并同步 _WwG 文档子窗口。</summary>
+        private static void TrySetCommandBarEnabled(object commandBars, string name, bool enabled)
+        {
+            object bar = null;
+            try
+            {
+                bar = commandBars.GetType().InvokeMember("Item",
+                    BindingFlags.GetProperty | BindingFlags.Instance,
+                    null, commandBars, new object[] { name });
+                ComSet(bar, "Enabled", enabled);
+                Log("StripChromeViaOm: CommandBars(" + name + ").Enabled=" + enabled + " OK");
+            }
+            catch (Exception ex) { Log("StripChromeViaOm: CommandBars(" + name + ").Enabled: " + ex.Message); }
+            finally { ReleaseCom(bar); }
+        }
+
+        private static void TrySetCommandBarVisible(object commandBars, string name, bool visible)
+        {
+            object bar = null;
+            try
+            {
+                bar = commandBars.GetType().InvokeMember("Item",
+                    BindingFlags.GetProperty | BindingFlags.Instance,
+                    null, commandBars, new object[] { name });
+                ComSet(bar, "Visible", visible);
+                Log("StripChromeViaOm: CommandBars(" + name + ").Visible=" + visible + " OK");
+            }
+            catch (Exception ex) { Log("StripChromeViaOm: CommandBars(" + name + ").Visible: " + ex.Message); }
+            finally { ReleaseCom(bar); }
+        }
+
+        /// <summary>把我们自己的 Word 主窗口铺满面板，并同步文档子窗口与纸张居中。</summary>
+        /// <remarks>
+        /// 调整大小会触发 Word 重新布局内部 UI，被隐藏的菜单栏/工具栏
+        /// 会被它重新显示出来，因此必须走 RelayoutEmbeddedWord（重铺 + 重剥壳）。
+        /// </remarks>
         private void ResizeToPanel()
         {
-            if (_hwnd == IntPtr.Zero || ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
-            bool ok = NativeMethods.MoveWindow(_hwnd, 0, 0, ClientSize.Width, ClientSize.Height, true);
-            IntPtr doc = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwG");
-            bool docOk = false;
-            if (doc != IntPtr.Zero)
-                docOk = NativeMethods.MoveWindow(doc, 0, 0, ClientSize.Width, ClientSize.Height, true);
-            Log("ResizeToPanel size=" + ClientSize.Width + "x" + ClientSize.Height +
-                " 主窗口ok=" + ok + " _WwG=" + (doc != IntPtr.Zero ? ("0x" + doc.ToString("X") + " ok=" + docOk) : "未找到"));
+            RelayoutEmbeddedWord();
         }
 
         /// <summary>本控制器是否仍指向一个有效的、存活的自有进程。</summary>
@@ -779,12 +890,24 @@ namespace WordEmbedDemo
         {
             base.OnResize(e);
             if (_embedded && IsValid())
-                ResizeToPanel();
+            {
+                // 防抖：合并 resize 期间高频事件，120ms 后只执行一次“重排+重剥壳”
+                _resizeDebounce.Stop();
+                _resizeDebounce.Start();
+            }
         }
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) Stop();
+            if (disposing)
+            {
+                if (_resizeDebounce != null)
+                {
+                    _resizeDebounce.Stop();
+                    _resizeDebounce.Dispose();
+                }
+                Stop();
+            }
             base.Dispose(disposing);
         }
 
