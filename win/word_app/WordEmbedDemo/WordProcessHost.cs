@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
+using Microsoft.Win32;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -39,6 +40,9 @@ namespace WordEmbedDemo
     /// </summary>
     public class WordProcessHost : Control
     {
+        /// <summary>宿主运行状态，供窗体刷新状态栏 / 菜单可用性。</summary>
+        public enum HostStatus { Running, Exited, Failed }
+
         private Process _wordProcess;   // 仅指向我们自己启动的进程
         private int _pid;               // 锁定的进程 PID（0 = 未启动）
         private IntPtr _hwnd;           // 该进程的主窗口句柄
@@ -49,11 +53,25 @@ namespace WordEmbedDemo
         // 防抖：拖动缩放时 resize 事件高频触发，合并到定时器到点后再执行“重排+重剥壳”一次
         private readonly System.Windows.Forms.Timer _resizeDebounce;
 
+        // ---- 生命周期 / 并发防护 ----
+        private bool _starting;                     // StartAsync 重入保护
+        private bool _disposed;                     // 窗体已销毁后禁止再上抛错误/状态（防幽灵弹框）
+        private CancellationTokenSource _cts = new CancellationTokenSource();
+        private EventHandler _exitedHandler;        // 命名的 Exited handler，便于 Stop 时解绑
+
+        // 文档链窗口句柄缓存（嵌入后窗口树基本不变，避免每次 resize 递归枚举）
+        private IntPtr _cachedWwF, _cachedWwB, _cachedWwG;
+
+        // Word 对象模型常量（替代魔法数字）
+        private const int wdDoNotSaveChanges = 0;   // 关闭文档时不保存更改
+        private const int wdPrintView = 3;          // 打印版式视图
+        private const int wdPageFitFullPage = 1;    // 整页落入窗口
+
         /// <summary>出错时上抛给宿主窗体，由窗体决定提示方式（本控件不直接弹框）。</summary>
         public event Action<string> HostError;
 
-        /// <summary>宿主状态变化（启动中 / Word 已退出 等），供窗体刷新状态栏。</summary>
-        public event Action<string> HostStateChanged;
+        /// <summary>宿主状态变化（Running / Exited / Failed），供窗体刷新状态栏与菜单。</summary>
+        public event Action<HostStatus> HostStateChanged;
 
         public WordProcessHost()
         {
@@ -78,6 +96,14 @@ namespace WordEmbedDemo
         /// </summary>
         public async Task<bool> StartAsync()
         {
+            if (_starting)
+            {
+                Log("StartAsync: 已有启动流程进行中，忽略本次调用");
+                return false;
+            }
+            _starting = true;
+            if (_cts != null) _cts.Dispose();
+            _cts = new CancellationTokenSource();
             try
             {
                 Log("==== 新会话开始 ====");
@@ -115,11 +141,18 @@ namespace WordEmbedDemo
                 Log("锁定新进程 PID=" + _pid);
                 WatchProcessExit();
 
-                return await WaitForMainWindowAsync();
+                bool ok = await WaitForMainWindowAsync();
+                if (ok)
+                    RaiseState(HostStatus.Running);   // 成功启动，通知窗体恢复粘贴等
+                return ok;
             }
             catch (Exception ex)
             {
                 return FailAndCleanup("启动失败：" + ex.Message);
+            }
+            finally
+            {
+                _starting = false;
             }
         }
 
@@ -128,12 +161,16 @@ namespace WordEmbedDemo
         {
             try
             {
-                _wordProcess.EnableRaisingEvents = true;
-                _wordProcess.Exited += (s, e) =>
+                int pid = _pid;
+                _exitedHandler = (s, e) =>
                 {
-                    Log("Word 进程已退出 PID=" + _pid);
-                    RaiseState("Word 进程已退出");
+                    // 只关心“当前会话”的退出：旧会话被 Stop() 主动关闭时不误报给新会话
+                    if (_pid != pid) return;
+                    Log("Word 进程已退出 PID=" + pid);
+                    RaiseState(HostStatus.Exited);
                 };
+                _wordProcess.EnableRaisingEvents = true;
+                _wordProcess.Exited += _exitedHandler;
             }
             catch (Exception ex) { Log("EnableRaisingEvents 失败(忽略): " + ex.Message); }
         }
@@ -184,10 +221,17 @@ namespace WordEmbedDemo
         /// <summary>对 _WwG（优先）和 OpusApp 调用 AccessibleObjectFromWindow。</summary>
         private object BindWordNativeOm()
         {
-            IntPtr doc = FindDocView();
+            return BindWordNativeOm(_hwnd);
+        }
+
+        /// <summary>按指定顶层窗口句柄绑定其所属 Word 进程的对象模型。</summary>
+        private object BindWordNativeOm(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return null;
+            IntPtr doc = NativeMethods.FindChildWindowRecursive(hwnd, "_WwG");
             IntPtr[] candidates = doc != IntPtr.Zero
-                ? new[] { doc, _hwnd }
-                : new[] { _hwnd };
+                ? new[] { doc, hwnd }
+                : new[] { hwnd };
 
             for (int i = 0; i < candidates.Length; i++)
             {
@@ -296,48 +340,98 @@ namespace WordEmbedDemo
         /// </remarks>
         private IntPtr FindDocView()
         {
-            return NativeMethods.FindChildWindowRecursive(_hwnd, "_WwG");
+            return FindDocView(_hwnd);
         }
 
-        /// <summary>只结束我们自己的 Word 进程（不影响用户其它 Word）。</summary>
+        private IntPtr FindDocView(IntPtr hwnd)
+        {
+            if (hwnd == IntPtr.Zero) return IntPtr.Zero;
+            return NativeMethods.FindChildWindowRecursive(hwnd, "_WwG");
+        }
+
+        /// <summary>只结束我们自己的 Word 进程（不影响用户其它 Word）。默认后台优雅退出，不阻塞调用线程。</summary>
         public void Stop()
         {
-            if (_pid != 0)
-            {
-                // 先试优雅退出（避免内容丢失与下次启动的文档恢复面板），失败才 Kill
-                if (!TryCloseGracefully())
-                {
-                    try
-                    {
-                        var proc = Process.GetProcessById(_pid);
-                        if (proc != null && !proc.HasExited)
-                        {
-                            proc.Kill();
-                            Log("退出方式=kill (PID=" + _pid + ")");
-                        }
-                    }
-                    catch (Exception ex) { Log("kill 异常(忽略): " + ex.Message); }
-                }
-                _pid = 0;
-            }
-            _wordProcess = null;
-            _hwnd = IntPtr.Zero;
-            _embedded = false;
+            Stop(forceKill: false);
         }
 
         /// <summary>
-        /// 优先用已绑定的对象模型优雅退出：ActiveDocument.Close(不保存) + Application.Quit，
-        /// 最多等 5s；未退出则返回 false，由调用方回退 Kill()。
+        /// 结束自有 Word 进程。
+        /// forceKill=true：立即 Kill（窗体关闭等需立即释放的场景，不做优雅退出，避免阻塞 UI）；
+        /// forceKill=false：后台优雅退出（ActiveDocument.Close 不保存 + Application.Quit），
+        /// 不阻塞调用线程，避免关窗 / 新建文档时界面卡死。
         /// </summary>
-        private bool TryCloseGracefully()
+        public void Stop(bool forceKill)
         {
-            if (_pid == 0) return false;
+            int pid = _pid;
+            IntPtr hwnd = _hwnd;
+            var cts = _cts;
+            if (cts != null) cts.Cancel();
+
+            if (pid != 0 && _wordProcess != null)
+            {
+                // 先解绑退出事件，避免 Stop 后旧进程 Exited 再触发状态变化
+                try
+                {
+                    if (_exitedHandler != null) _wordProcess.Exited -= _exitedHandler;
+                    _wordProcess.EnableRaisingEvents = false;
+                }
+                catch (Exception ex) { Log("解绑 Exited 事件(忽略): " + ex.Message); }
+
+                if (forceKill)
+                    KillProcess(pid);
+                else
+                    Task.Run(() => TryCloseGracefully(pid, hwnd));
+            }
+
+            _pid = 0;
+            _wordProcess = null;
+            _hwnd = IntPtr.Zero;
+            _embedded = false;
+            _cachedWwF = _cachedWwB = _cachedWwG = IntPtr.Zero;
+        }
+
+        /// <summary>立即结束指定进程（只结束我们自己的，不影响用户其它 Word）。</summary>
+        private static void KillProcess(int pid)
+        {
+            try
+            {
+                using (var proc = Process.GetProcessById(pid))
+                {
+                    if (!proc.HasExited)
+                    {
+                        proc.Kill();
+                        Log("退出方式=kill (PID=" + pid + ")");
+                    }
+                }
+            }
+            catch (Exception ex) { Log("kill 异常(忽略): " + ex.Message); }
+        }
+
+        /// <summary>指定 PID 的进程是否仍然存活。</summary>
+        private static bool ProcessAlive(int pid)
+        {
+            try
+            {
+                using (var proc = Process.GetProcessById(pid))
+                    return !proc.HasExited;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// 在后台线程执行：优先用对象模型优雅退出 ActiveDocument.Close(不保存) + Application.Quit，
+        /// 最多等 5s，未退出则回退 Kill()。
+        /// </summary>
+        private void TryCloseGracefully(int pid, IntPtr hwnd)
+        {
+            if (pid == 0) return;
 
             object om = null;
             try
             {
-                if (_hwnd != IntPtr.Zero && NativeMethods.IsWindow(_hwnd))
-                    om = BindWordNativeOm();
+                if (hwnd != IntPtr.Zero && NativeMethods.IsWindow(hwnd))
+                    om = BindWordNativeOm(hwnd);
 
                 if (om != null)
                 {
@@ -349,10 +443,10 @@ namespace WordEmbedDemo
                             object doc = ComGet(app, "ActiveDocument");
                             if (doc != null)
                             {
-                                // wdDoNotSaveChanges = 0：不弹“是否保存”，也不丢给下次恢复
+                                // wdDoNotSaveChanges：不弹“是否保存”，也不丢给下次恢复
                                 doc.GetType().InvokeMember("Close",
                                     BindingFlags.InvokeMethod | BindingFlags.Instance,
-                                    null, doc, new object[] { 0 });
+                                    null, doc, new object[] { wdDoNotSaveChanges });
                                 Log("graceful: ActiveDocument.Close(不保存) OK");
                                 ReleaseCom(doc);
                             }
@@ -373,30 +467,23 @@ namespace WordEmbedDemo
             catch (Exception ex) { Log("graceful: 退出异常(转 Kill): " + ex.GetType().Name + ": " + ex.Message); }
             finally { ReleaseCom(om); }
 
-            int deadline = Environment.TickCount + 5000;
-            while (Environment.TickCount < deadline)
+            // 最多等 5s，未退出则回退 Kill
+            var deadline = DateTime.UtcNow.AddSeconds(5);
+            while (DateTime.UtcNow < deadline)
             {
-                try
-                {
-                    var proc = Process.GetProcessById(_pid);
-                    if (proc == null || proc.HasExited) break;
-                }
-                catch { break; }   // 进程已不存在
+                if (!ProcessAlive(pid)) break;
                 Thread.Sleep(100);
             }
 
-            try
+            if (ProcessAlive(pid))
             {
-                var proc = Process.GetProcessById(_pid);
-                if (proc != null && !proc.HasExited)
-                {
-                    Log("graceful: 5s 内未退出，回退 Kill");
-                    return false;
-                }
+                Log("graceful: 5s 内未退出，回退 Kill");
+                KillProcess(pid);
             }
-            catch { }
-            Log("退出方式=graceful (PID=" + _pid + ")");
-            return true;
+            else
+            {
+                Log("退出方式=graceful (PID=" + pid + ")");
+            }
         }
 
         // ==================== 内部实现 ====================
@@ -416,22 +503,54 @@ namespace WordEmbedDemo
         /// <summary>定位 WINWORD.EXE 的完整路径。</summary>
         private static string FindWinWordExe()
         {
+            // 优先从注册表 App Paths 探测（覆盖 2013/2016/2019/365 任意安装路径与自定义安装）
+            string fromRegistry = FindWinWordFromRegistry();
+            if (fromRegistry != null) return fromRegistry;
+
             string[] candidates =
             {
                 @"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
                 @"C:\Program Files (x86)\Microsoft Office\root\Office16\WINWORD.EXE",
                 @"C:\Program Files\Microsoft Office\Office16\WINWORD.EXE",
                 @"C:\Program Files (x86)\Microsoft Office\Office16\WINWORD.EXE",
+                @"C:\Program Files\Microsoft Office\root\Office15\WINWORD.EXE",
+                @"C:\Program Files (x86)\Microsoft Office\root\Office15\WINWORD.EXE",
             };
             foreach (var c in candidates)
                 if (File.Exists(c)) return c;
 
-            // 兜底：从注册表/标准安装路径探测
+            // 兜底：从标准安装路径探测
             try
             {
                 string office = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
                 string p = Path.Combine(office, @"Microsoft Office\root\Office16\WINWORD.EXE");
                 if (File.Exists(p)) return p;
+            }
+            catch { }
+            return null;
+        }
+
+        /// <summary>从注册表 App Paths 读取 WINWORD.EXE 完整路径（最可靠的探测方式）。</summary>
+        private static string FindWinWordFromRegistry()
+        {
+            string[] subKeys =
+            {
+                @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\winword.exe",
+                @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\winword.exe",
+            };
+            try
+            {
+                foreach (var sub in subKeys)
+                {
+                    using (var key = Registry.LocalMachine.OpenSubKey(sub))
+                    {
+                        if (key != null)
+                        {
+                            string v = key.GetValue(null) as string;   // (Default) 值即完整路径
+                            if (!string.IsNullOrEmpty(v) && File.Exists(v)) return v;
+                        }
+                    }
+                }
             }
             catch { }
             return null;
@@ -482,22 +601,25 @@ namespace WordEmbedDemo
         /// </summary>
         private async Task<bool> WaitForMainWindowAsync()
         {
-            int startTick = Environment.TickCount;
+            var startTime = DateTime.UtcNow;
 
-            // 辅助门闩：等待消息循环空闲（不作为成功判据）
+            // 辅助门闩：等待消息循环空闲（不作为成功判据）——放到后台线程，避免阻塞 UI
             try
             {
-                if (_wordProcess.WaitForInputIdle(8000))
+                bool idle = await Task.Run(() => _wordProcess.WaitForInputIdle(8000));
+                if (idle)
                     Log("WaitForInputIdle: 消息循环已空闲");
                 else
                     Log("WaitForInputIdle: 8s 内未空闲，继续轮询窗口");
             }
             catch (Exception ex) { Log("WaitForInputIdle 异常(忽略): " + ex.Message); }
 
-            int deadline = Environment.TickCount + 30000;
+            var deadline = DateTime.UtcNow.AddSeconds(30);
             int round = 0;
-            while (Environment.TickCount < deadline)
+            while (DateTime.UtcNow < deadline)
             {
+                if (_cts.Token.IsCancellationRequested)   // Stop 已触发，静默放弃
+                    return false;
                 round++;
                 if (_wordProcess == null || _wordProcess.HasExited)
                     return FailAndCleanup("Word 进程已退出，无法嵌入。");
@@ -509,7 +631,7 @@ namespace WordEmbedDemo
                     _hwnd = h;
                     Log("取得主框架窗口 HWND=0x" + h.ToString("X") +
                         " class=" + NativeMethods.GetWindowClassName(h) +
-                        " 轮次=" + round + " 耗时=" + (Environment.TickCount - startTick) + "ms");
+                        " 轮次=" + round + " 耗时=" + (DateTime.UtcNow - startTime).TotalMilliseconds + "ms");
                     return await EmbedWindowAsync();
                 }
 
@@ -571,10 +693,11 @@ namespace WordEmbedDemo
         /// <summary>等待 OpusApp 内部出现文档视图子窗口 _WwG（Word 完成加载的信号）。</summary>
         private async Task<bool> WaitForDocChildAsync(int timeoutMs)
         {
-            int deadline = Environment.TickCount + timeoutMs;
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             int i = 0;
-            while (Environment.TickCount < deadline)
+            while (DateTime.UtcNow < deadline)
             {
+                if (_cts.Token.IsCancellationRequested) return false;
                 i++;
                 IntPtr doc = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwG");
                 if (doc != IntPtr.Zero)
@@ -650,6 +773,8 @@ namespace WordEmbedDemo
 
             // 等待 Word 完成内部加载（_WwG 出现）后再剥壳
             await WaitForDocChildAsync(10000);
+            if (_cts.Token.IsCancellationRequested)   // 等待期间被 Stop，放弃嵌入
+                return false;
 
             RelayoutEmbeddedWord();
 
@@ -712,13 +837,12 @@ namespace WordEmbedDemo
                     NativeMethods.MoveWindow(child, 0, 0, 1, 1, true);
                     hidden.Add(cls + "(0x" + child.ToString("X") + ",ok=" + ok + ")");
                 }
-                else
-                {
-                    Log("子窗口(保留): 0x" + child.ToString("X") + " class=" + cls);
-                }
             }
-            Log("StripWordChrome: 子窗口" + (any ? "已枚举" : "未发现(Word 内部可能尚未就绪)") +
-                (hidden.Count > 0 ? " 已隐藏 " + string.Join(",", hidden) : " 无匹配隐藏项"));
+            // resize 高频路径不逐个子窗口记日志，仅在有实质变化时输出
+            if (!any)
+                Log("StripWordChrome: 未发现子窗口(Word 内部可能尚未就绪)");
+            else if (hidden.Count > 0)
+                Log("StripWordChrome: 已隐藏 " + string.Join(",", hidden));
         }
 
         /// <summary>
@@ -732,32 +856,39 @@ namespace WordEmbedDemo
 
             bool okApp = NativeMethods.MoveWindow(_hwnd, 0, 0, w, h, true);
 
-            IntPtr frame = NativeMethods.FindWindowEx(_hwnd, IntPtr.Zero, "_WwF", null);
-            if (frame == IntPtr.Zero)
-                frame = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwF");
+            // 窗口树在嵌入后基本不变，缓存句柄避免每次 resize 都递归枚举
+            IntPtr frame = GetDocChainHandle(ref _cachedWwF, "_WwF");
+            IntPtr border = GetDocChainHandle(ref _cachedWwB, "_WwB");
+            IntPtr doc = GetDocChainHandle(ref _cachedWwG, "_WwG");
+
             bool okF = false;
             if (frame != IntPtr.Zero)
                 okF = NativeMethods.MoveWindow(frame, 0, 0, w, h, true);
-
-            IntPtr border = IntPtr.Zero;
-            if (frame != IntPtr.Zero)
-                border = NativeMethods.FindWindowEx(frame, IntPtr.Zero, "_WwB", null);
-            if (border == IntPtr.Zero)
-                border = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwB");
             bool okB = false;
             if (border != IntPtr.Zero)
                 okB = NativeMethods.MoveWindow(border, 0, 0, w, h, true);
-
-            IntPtr doc = FindDocView();
             bool okG = false;
             if (doc != IntPtr.Zero)
                 okG = NativeMethods.MoveWindow(doc, 0, 0, w, h, true);
 
+            // resize 高频路径只记概要，避免日志刷屏
             Log("FillDocumentChain " + w + "x" + h +
                 " OpusApp=" + okApp +
-                " _WwF=" + (frame != IntPtr.Zero ? ("0x" + frame.ToString("X") + "/" + okF) : "未找到") +
-                " _WwB=" + (border != IntPtr.Zero ? ("0x" + border.ToString("X") + "/" + okB) : "未找到") +
-                " _WwG=" + (doc != IntPtr.Zero ? ("0x" + doc.ToString("X") + "/" + okG) : "未找到"));
+                " _WwF=" + (frame != IntPtr.Zero ? okF.ToString() : "未找到") +
+                " _WwB=" + (border != IntPtr.Zero ? okB.ToString() : "未找到") +
+                " _WwG=" + (doc != IntPtr.Zero ? okG.ToString() : "未找到"));
+        }
+
+        /// <summary>取文档链窗口句柄：缓存命中且仍有效则直接复用，失效才递归重查并刷新缓存。</summary>
+        private IntPtr GetDocChainHandle(ref IntPtr cache, string className)
+        {
+            if (cache != IntPtr.Zero && NativeMethods.IsWindow(cache))
+                return cache;
+            IntPtr h = NativeMethods.FindWindowEx(_hwnd, IntPtr.Zero, className, null);
+            if (h == IntPtr.Zero)
+                h = NativeMethods.FindChildWindowRecursive(_hwnd, className);
+            cache = h;
+            return h;
         }
 
         /// <summary>
@@ -812,11 +943,11 @@ namespace WordEmbedDemo
                         try
                         {
                             view = ComGet(win, "View");
-                            try { ComSet(view, "Type", 3); Log("StripChromeViaOm: View.Type=wdPrintView OK"); }
+                            try { ComSet(view, "Type", wdPrintView); Log("StripChromeViaOm: View.Type=wdPrintView OK"); }
                             catch (Exception ex) { Log("StripChromeViaOm: View.Type: " + ex.Message); }
                             zoom = ComGet(view, "Zoom");
-                            // wdPageFitFullPage = 1：整页落入窗口，Word 会把纸张放在视图正中
-                            ComSet(zoom, "PageFit", 1);
+                            // wdPageFitFullPage：整页落入窗口，Word 会把纸张放在视图正中
+                            ComSet(zoom, "PageFit", wdPageFitFullPage);
                             Log("StripChromeViaOm: Zoom.PageFit=wdPageFitFullPage OK");
                         }
                         catch (Exception ex) { Log("StripChromeViaOm: Zoom.PageFit: " + ex.Message); }
@@ -880,8 +1011,8 @@ namespace WordEmbedDemo
             if (_pid == 0 || _hwnd == IntPtr.Zero) return false;
             try
             {
-                var proc = Process.GetProcessById(_pid);
-                return proc != null && !proc.HasExited && NativeMethods.IsWindow(_hwnd);
+                // HasExited 是 Process 缓存的属性，不抛异常、不枚举进程列表，比 GetProcessById 轻量
+                return _wordProcess != null && !_wordProcess.HasExited && NativeMethods.IsWindow(_hwnd);
             }
             catch { return false; }
         }
@@ -889,6 +1020,7 @@ namespace WordEmbedDemo
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
+            if (_disposed) return;
             if (_embedded && IsValid())
             {
                 // 防抖：合并 resize 期间高频事件，120ms 后只执行一次“重排+重剥壳”
@@ -901,12 +1033,15 @@ namespace WordEmbedDemo
         {
             if (disposing)
             {
+                _disposed = true;
+                try { if (_cts != null) _cts.Cancel(); } catch { }
+                try { if (_cts != null) _cts.Dispose(); } catch { }
                 if (_resizeDebounce != null)
                 {
                     _resizeDebounce.Stop();
                     _resizeDebounce.Dispose();
                 }
-                Stop();
+                Stop(forceKill: true);
             }
             base.Dispose(disposing);
         }
@@ -917,6 +1052,7 @@ namespace WordEmbedDemo
         {
             Log("FAIL: " + msg);
             RaiseError(msg);   // 由宿主窗体决定如何提示，控件不直接弹框
+            RaiseState(HostStatus.Failed);
             return false;
         }
 
@@ -927,46 +1063,54 @@ namespace WordEmbedDemo
             return Fail(msg);
         }
 
-        /// <summary>上抛错误给宿主窗体（约定在 UI 线程调用）。</summary>
+        /// <summary>上抛错误给宿主窗体（约定在 UI 线程调用）。窗体已销毁时静默丢弃，避免幽灵弹框。</summary>
         private void RaiseError(string msg)
         {
+            if (_disposed) return;
             var h = HostError;
             if (h != null) h(msg);
         }
 
-        /// <summary>上抛状态变化；Process.Exited 在线程池线程触发，需切回 UI 线程。</summary>
-        private void RaiseState(string text)
+        /// <summary>上抛状态变化；Process.Exited 在线程池线程触发，需切回 UI 线程。窗体已销毁时静默丢弃。</summary>
+        private void RaiseState(HostStatus status)
         {
+            if (_disposed) return;
             var h = HostStateChanged;
             if (h == null) return;
             try
             {
                 if (IsHandleCreated)
-                    BeginInvoke(new Action(() => h(text)));
+                    BeginInvoke(new Action(() => h(status)));
                 else
-                    h(text);
+                    h(status);
             }
             catch { }
         }
 
         /// <summary>统一日志入口（窗体全局异常处理也写这里，保证单一时间线）。超 1MB 轮转一次。</summary>
+        private static readonly object _logLock = new object();
+
         internal static void Log(string msg)
         {
             try
             {
-                string file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "word_embed_log.txt");
-                try
+                // UI 线程 / 线程池(Exited) / async 续体并发写日志，必须加锁防互相踩踏
+                lock (_logLock)
                 {
-                    var fi = new FileInfo(file);
-                    if (fi.Exists && fi.Length > LOG_LIMIT)
+                    string file = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "word_embed_log.txt");
+                    try
                     {
-                        File.AppendAllText(file + ".1", File.ReadAllText(file));
-                        File.WriteAllText(file, string.Empty);
+                        var fi = new FileInfo(file);
+                        if (fi.Exists && fi.Length > LOG_LIMIT)
+                        {
+                            if (File.Exists(file + ".1")) File.Delete(file + ".1");
+                            File.Move(file, file + ".1");
+                        }
                     }
+                    catch { }
+                    File.AppendAllText(file,
+                        DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + Environment.NewLine);
                 }
-                catch { }
-                File.AppendAllText(file,
-                    DateTime.Now.ToString("HH:mm:ss.fff") + "  " + msg + Environment.NewLine);
             }
             catch { }
         }

@@ -93,20 +93,35 @@ namespace WordEmbedDemo
         /// <summary>宿主控件报错上抛：由窗体统一弹框（图标从原来的“警告”统一为“错误”）。</summary>
         private void OnHostError(string msg)
         {
+            if (IsDisposed || !IsHandleCreated) return;   // 窗体已销毁则不弹框（防幽灵 MessageBox）
             MessageBox.Show(msg, AssemblyInfo.FRIENDLY_APP_NAME,
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        /// <summary>宿主状态变化：刷新状态栏；Word 自行退出时禁用粘贴。</summary>
-        private void OnHostStateChanged(string text)
+        /// <summary>宿主状态变化：按状态刷新状态栏与粘贴菜单可用性（修复新建文档后粘贴永久禁用）。</summary>
+        private void OnHostStateChanged(WordProcessHost.HostStatus status)
         {
-            SetStatus(text);
-            _miPaste.Enabled = text != "Word 进程已退出";
+            switch (status)
+            {
+                case WordProcessHost.HostStatus.Running:
+                    _miPaste.Enabled = true;
+                    SetStatus("已嵌入独立 Word 进程；可直接编辑，Ctrl+C/Ctrl+V 可用。");
+                    break;
+                case WordProcessHost.HostStatus.Exited:
+                    _miPaste.Enabled = false;
+                    SetStatus("Word 进程已退出");
+                    break;
+                case WordProcessHost.HostStatus.Failed:
+                    _miPaste.Enabled = false;
+                    SetStatus("嵌入失败：详见日志。");
+                    break;
+            }
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            _host.Stop();
+            // 立即结束自有 Word 进程，避免关闭窗体时被优雅退出最多卡 5s
+            _host.Stop(forceKill: true);
         }
 
         private void SetStatus(string text)
