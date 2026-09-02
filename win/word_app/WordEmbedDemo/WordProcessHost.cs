@@ -89,6 +89,9 @@ namespace WordEmbedDemo
 
         /// <summary>出错时上抛给宿主窗体，由窗体决定提示方式（本控件不直接弹框）。</summary>
         public event Action<string> HostError;
+        /// <summary>最近一次失败原因，供窗体在 StartAsync 返回 false 时弹框。</summary>
+        public string LastError { get; private set; }
+
 
         /// <summary>宿主状态变化（Running / Exited / Failed），供窗体刷新状态栏与菜单。</summary>
         public event Action<HostStatus> HostStateChanged;
@@ -641,7 +644,7 @@ namespace WordEmbedDemo
         /// <summary>定位 WINWORD.EXE 的完整路径。</summary>
         private static string FindWinWordExe()
         {
-            // 优先从注册表 App Paths 探测（覆盖 2013/2016/2019/365 任意安装路径与自定义安装）
+            // 先从注册表探查（机器安装 + 当前用户安装 + Click-to-Run）
             string fromRegistry = FindWinWordFromRegistry();
             if (fromRegistry != null) return fromRegistry;
 
@@ -655,15 +658,19 @@ namespace WordEmbedDemo
                 @"C:\Program Files (x86)\Microsoft Office\root\Office15\WINWORD.EXE",
             };
             foreach (var c in candidates)
-                if (File.Exists(c)) return c;
+            {
+                string trusted = TryValidateWinWordPath(c, "fallback");
+                if (trusted != null) return trusted;
+            }
 
-            // 兜底：从标准安装路径探测
+            // 兜底：从标准安装路径探查
             try
             {
                 string office = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
                 string p = Path.Combine(office, @"Microsoft Office\root\Office16\WINWORD.EXE");
-                if (File.Exists(p)) return p;
-                Log("FindWinWordExe: 兜底标准路径不存在: " + p);
+                string trusted = TryValidateWinWordPath(p, "ProgramFilesX86");
+                if (trusted != null) return trusted;
+                Log("FindWinWordExe: 兜底标准路径不存在或不信任: " + p);
             }
             catch (Exception ex)
             {
@@ -673,38 +680,152 @@ namespace WordEmbedDemo
             return null;
         }
 
-        /// <summary>从注册表 App Paths 读取 WINWORD.EXE 完整路径（最可靠的探测方式）。</summary>
+        /// <summary>
+        /// 从 HKLM / HKCU 的 App Paths 以及 Click-to-Run 安装根读取 WINWORD.EXE。
+        /// 命中路径必须通过 TryValidateWinWordPath，防止 App Paths 劫持。
+        /// </summary>
         private static string FindWinWordFromRegistry()
         {
-            string[] subKeys =
+            string[] appPathKeys =
             {
                 @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\winword.exe",
                 @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\App Paths\winword.exe",
             };
-            foreach (var sub in subKeys)
+            string[] clickKeys =
             {
-                try
+                @"SOFTWARE\Microsoft\Office\ClickToRun\Configuration",
+                @"SOFTWARE\WOW6432Node\Microsoft\Office\ClickToRun\Configuration",
+            };
+
+            RegistryKey[] hives = new RegistryKey[] { Registry.LocalMachine, Registry.CurrentUser };
+            string[] hiveNames = new string[] { "HKLM", "HKCU" };
+
+            for (int h = 0; h < hives.Length; h++)
+            {
+                for (int i = 0; i < appPathKeys.Length; i++)
                 {
-                    using (var key = Registry.LocalMachine.OpenSubKey(sub))
-                    {
-                        if (key != null)
-                        {
-                            string v = key.GetValue(null) as string;   // (Default) 值即完整路径
-                            if (!string.IsNullOrEmpty(v) && File.Exists(v)) return v;
-                        }
-                        else
-                        {
-                            Log("FindWinWordFromRegistry: 注册表子项不存在: " + sub);
-                        }
-                    }
+                    string found = TryReadAppPaths(hives[h], hiveNames[h], appPathKeys[i]);
+                    if (found != null) return found;
                 }
-                catch (Exception ex)
+            }
+            for (int h = 0; h < hives.Length; h++)
+            {
+                for (int i = 0; i < clickKeys.Length; i++)
                 {
-                    Log("FindWinWordFromRegistry: 读取注册表异常(" + sub + "): " +
-                        ex.GetType().Name + ": " + ex.Message);
+                    string found = TryReadClickToRun(hives[h], hiveNames[h], clickKeys[i]);
+                    if (found != null) return found;
                 }
             }
             return null;
+        }
+
+        private static string TryReadAppPaths(RegistryKey hive, string hiveName, string sub)
+        {
+            try
+            {
+                using (RegistryKey key = hive.OpenSubKey(sub))
+                {
+                    if (key == null)
+                    {
+                        Log("FindWinWordFromRegistry: 注册表子项不存在: " + hiveName + "\\" + sub);
+                        return null;
+                    }
+                    string v = key.GetValue(null) as string;
+                    return TryValidateWinWordPath(v, hiveName + " App Paths");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("FindWinWordFromRegistry: 读取注册表异常(" + hiveName + "\\" + sub + "): " +
+                    ex.GetType().Name + ": " + ex.Message);
+                return null;
+            }
+        }
+
+        private static string TryReadClickToRun(RegistryKey hive, string hiveName, string sub)
+        {
+            try
+            {
+                using (RegistryKey key = hive.OpenSubKey(sub))
+                {
+                    if (key == null) return null;
+                    string install = key.GetValue("InstallationPath") as string;
+                    if (string.IsNullOrEmpty(install))
+                        install = key.GetValue("InstallPath") as string;
+                    string client = key.GetValue("ClientFolder") as string;
+
+                    string[] rels = new string[]
+                    {
+                        @"root\Office16\WINWORD.EXE",
+                        @"Office16\WINWORD.EXE",
+                        @"root\Office15\WINWORD.EXE",
+                        @"Office15\WINWORD.EXE",
+                    };
+                    if (!string.IsNullOrEmpty(install))
+                    {
+                        for (int i = 0; i < rels.Length; i++)
+                        {
+                            string p = Path.Combine(install, rels[i]);
+                            string trusted = TryValidateWinWordPath(p, hiveName + " ClickToRun Install");
+                            if (trusted != null) return trusted;
+                        }
+                    }
+                    if (!string.IsNullOrEmpty(client))
+                    {
+                        string p = Path.Combine(client, "WINWORD.EXE");
+                        string trusted = TryValidateWinWordPath(p, hiveName + " ClickToRun ClientFolder");
+                        if (trusted != null) return trusted;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("FindWinWordFromRegistry: ClickToRun 异常(" + hiveName + "\\" + sub + "): " +
+                    ex.GetType().Name + ": " + ex.Message);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 拒绝 App Paths 劫持：必须存在、文件名是 WINWORD.EXE、路径落在 Office 目录下。
+        /// </summary>
+        private static string TryValidateWinWordPath(string raw, string source)
+        {
+            if (string.IsNullOrEmpty(raw)) return null;
+            try
+            {
+                string trimmed = raw.Trim().Trim('"');
+                if (trimmed.Length == 0) return null;
+                string full = Path.GetFullPath(trimmed);
+                if (!File.Exists(full))
+                {
+                    Log("FindWinWordExe: 路径不存在 (" + source + "): " + full);
+                    return null;
+                }
+                string name = Path.GetFileName(full);
+                if (!string.Equals(name, "WINWORD.EXE", StringComparison.OrdinalIgnoreCase))
+                {
+                    Log("FindWinWordExe: 拒绝非 WINWORD.EXE (" + source + "): " + full);
+                    return null;
+                }
+                string lower = full.Replace('/', '\\').ToLowerInvariant();
+                bool officeDir = lower.IndexOf("\\microsoft office\\") >= 0
+                    || lower.IndexOf("\\office16\\") >= 0
+                    || lower.IndexOf("\\office15\\") >= 0;
+                if (!officeDir)
+                {
+                    Log("FindWinWordExe: 拒绝非 Office 目录 (" + source + "): " + full);
+                    return null;
+                }
+                Log("FindWinWordExe: 采用 (" + source + "): " + full);
+                return full;
+            }
+            catch (Exception ex)
+            {
+                Log("FindWinWordExe: 校验路径异常 (" + source + "): " +
+                    ex.GetType().Name + ": " + ex.Message);
+                return null;
+            }
         }
 
         /// <summary>在临时目录生成一个最小有效空白 .docx。</summary>
@@ -1385,8 +1506,9 @@ namespace WordEmbedDemo
 
         private bool Fail(string msg)
         {
+            LastError = msg;
             Log("FAIL: " + msg);
-            RaiseError(msg);   // 由宿主窗体决定如何提示，控件不直接弹框
+            RaiseError(msg);   // 交给订阅者（主窗体）显示，控件不直接弹框
             RaiseState(HostStatus.Failed);
             return false;
         }
@@ -1481,8 +1603,10 @@ namespace WordEmbedDemo
         private void RaiseError(string msg)
         {
             if (_disposed) return;
-            var h = HostError;
-            if (h != null) h(msg);
+            if (!string.IsNullOrEmpty(msg))
+                LastError = msg;
+            var eh = HostError;
+            if (eh != null) eh(msg);
         }
 
         /// <summary>上抛状态变化；Process.Exited 在线程池线程触发，需切回 UI 线程。窗体已销毁时静默丢弃。</summary>

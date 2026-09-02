@@ -73,7 +73,9 @@ namespace WordEmbedDemo
         {
             try
             {
-                await _host.StartAsync();
+                bool ok = await _host.StartAsync();
+                if (!ok)
+                    ShowStartFailure(_host.LastError);
             }
             catch (OperationCanceledException)
             {
@@ -95,8 +97,42 @@ namespace WordEmbedDemo
         /// <summary>宿主控件报错上抛：由窗体统一弹框（图标从原来的“警告”统一为“错误”）。</summary>
         private void OnHostError(string msg)
         {
-            if (IsDisposed || !IsHandleCreated) return;   // 窗体已销毁则不弹框（防幽灵 MessageBox）
-            MessageBox.Show(msg, AssemblyInfo.FRIENDLY_APP_NAME,
+            ShowErrorBox(msg);
+        }
+
+        /// <summary>
+        /// 启动失败兜底弹框。找不到 WINWORD 时用明确文案；
+        /// 若 HostError 已经弹过同一句话，ShowErrorBox 仍再弹一次也可以接受，
+        /// 因此用 _startErrorShown 去重。
+        /// </summary>
+        private bool _startErrorShown;
+
+        private void ShowStartFailure(string detail)
+        {
+            if (_startErrorShown) return;
+            bool notFound = !string.IsNullOrEmpty(detail) &&
+                (detail.IndexOf("WINWORD", StringComparison.OrdinalIgnoreCase) >= 0
+                 || detail.IndexOf("未找到") >= 0);
+            string msg;
+            if (notFound)
+            {
+                msg = "未找到 Microsoft Word。请确认已安装 Word 后重试。";
+                if (!string.IsNullOrEmpty(detail))
+                    msg = msg + Environment.NewLine + Environment.NewLine + detail;
+            }
+            else if (!string.IsNullOrEmpty(detail))
+                msg = detail;
+            else
+                msg = "嵌入 Word 失败。";
+            ShowErrorBox(msg);
+        }
+
+        private void ShowErrorBox(string msg)
+        {
+            if (string.IsNullOrEmpty(msg)) return;
+            if (IsDisposed || !IsHandleCreated) return;
+            _startErrorShown = true;
+            MessageBox.Show(this, msg, AssemblyInfo.FRIENDLY_APP_NAME,
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
