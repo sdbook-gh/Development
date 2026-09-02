@@ -49,11 +49,12 @@ class MainActivity : Activity() {
     private lateinit var btnBgPopup: Button
     private lateinit var tvBatteryStatus: TextView
     private lateinit var tvUsageAccess: TextView
-    private lateinit var tvNoPeriods: TextView
-    private lateinit var periodsContainer: LinearLayout
-    private lateinit var btnAddPeriod: Button
-
-    private var periods: MutableList<TimePeriod> = mutableListOf()
+    // ---- 定时关闭部分已隐藏 ----
+    // private lateinit var tvNoPeriods: TextView
+    // private lateinit var periodsContainer: LinearLayout
+    // private lateinit var btnAddPeriod: Button
+    // private var periods: MutableList<TimePeriod> = mutableListOf()
+    // ---- 定时关闭部分已隐藏 ----
     private val handler = Handler(Looper.getMainLooper())
     private val refreshRunnable = object : Runnable {
         override fun run() { refreshStatus(); handler.postDelayed(this, 3000) }
@@ -85,9 +86,11 @@ class MainActivity : Activity() {
             PermUtil.openUsageAccessSettings(this)
             toast(getString(R.string.usage_access_open_toast))
         }
-        tvNoPeriods = findViewById(R.id.tv_no_periods)
-        periodsContainer = findViewById(R.id.periods_container)
-        btnAddPeriod = findViewById(R.id.btn_add_period)
+        // ---- 定时关闭部分已隐藏 ----
+        // tvNoPeriods = findViewById(R.id.tv_no_periods)
+        // periodsContainer = findViewById(R.id.periods_container)
+        // btnAddPeriod = findViewById(R.id.btn_add_period)
+        // ---- 定时关闭部分已隐藏 ----
 
         btnEditCumulative.setOnClickListener {
             showEditCumulativeDialog()
@@ -141,17 +144,18 @@ class MainActivity : Activity() {
         btnBgPopup.setOnClickListener {
             PermUtil.openBackgroundPopupSettings(this)
         }
-        btnAddPeriod.setOnClickListener {
-            val p = TimePeriod(Prefs.nextPeriodId(this), 23, 0, 7, 0, enabled = true)
-            periods.add(p)
-            Prefs.savePeriods(this, periods)
-            renderPeriods()
-            ScheduleManager.rescheduleAll(this)
-            toast("已添加时段")
-        }
-
-        periods = Prefs.getPeriods(this)
-        renderPeriods()
+        // ---- 定时关闭部分已隐藏 ----
+        // btnAddPeriod.setOnClickListener {
+        //     val p = TimePeriod(Prefs.nextPeriodId(this), 23, 0, 7, 0, enabled = true)
+        //     periods.add(p)
+        //     Prefs.savePeriods(this, periods)
+        //     renderPeriods()
+        //     ScheduleManager.rescheduleAll(this)
+        //     toast("已添加时段")
+        // }
+        // periods = Prefs.getPeriods(this)
+        // renderPeriods()
+        // ---- 定时关闭部分已隐藏 ----
         requestRuntimePermissions()
         Prefs.setServiceEnabled(this, true)
         // 调度兜底保活心跳（首次打开即注册，设备重启后依然生效）
@@ -292,61 +296,56 @@ class MainActivity : Activity() {
         }
     }
 
-    // ---------- 时段列表 ----------
-    private fun renderPeriods() {
-        periodsContainer.removeAllViews()
-        tvNoPeriods.visibility = if (periods.isEmpty()) View.VISIBLE else View.GONE
-        for (p in periods) {
-            addPeriodRow(p)
-        }
-    }
-
-    private fun addPeriodRow(p: TimePeriod) {
-        val row = LayoutInflater.from(this).inflate(R.layout.item_time_period, periodsContainer, false)
-        val tvStart = row.findViewById<TextView>(R.id.tv_start)
-        val tvEnd = row.findViewById<TextView>(R.id.tv_end)
-        val sw = row.findViewById<Switch>(R.id.sw_enabled)
-        val btnDel = row.findViewById<Button>(R.id.btn_delete)
-
-        tvStart.text = "开始 " + p.startLabel()
-        tvEnd.text = "结束 " + p.endLabel()
-        sw.isChecked = p.enabled
-
-        tvStart.setOnClickListener {
-            show24hTimePicker(p.startHour, p.startMin) { h, m ->
-                p.startHour = h; p.startMin = m
-                tvStart.text = "开始 " + p.startLabel()
-                Prefs.savePeriods(this, periods)
-                ScheduleManager.rescheduleAll(this)
-            }
-        }
-        tvEnd.setOnClickListener {
-            show24hTimePicker(p.endHour, p.endMin) { h, m ->
-                p.endHour = h; p.endMin = m
-                tvEnd.text = "结束 " + p.endLabel()
-                Prefs.savePeriods(this, periods)
-                ScheduleManager.rescheduleAll(this)
-            }
-        }
-        sw.setOnCheckedChangeListener { _, isChecked ->
-            p.enabled = isChecked
-            Prefs.savePeriods(this, periods)
-            ScheduleManager.rescheduleAll(this)
-        }
-        btnDel.setOnClickListener {
-            periods.remove(p)
-            Prefs.savePeriods(this, periods)
-            renderPeriods()
-            ScheduleManager.rescheduleAll(this)
-        }
-
-        periodsContainer.addView(row)
-    }
-
-    /** 24 小时制时间选择器（is24HourView=true 强制 24h）。 */
-    private fun show24hTimePicker(hour: Int, minute: Int, onSet: (Int, Int) -> Unit) {
-        TimePickerDialog(this, { _, h, m -> onSet(h, m) }, hour, minute, true).show()
-    }
+    // ---------- 时段列表（已隐藏）----------
+    // private fun renderPeriods() {
+    //     periodsContainer.removeAllViews()
+    //     tvNoPeriods.visibility = if (periods.isEmpty()) View.VISIBLE else View.GONE
+    //     for (p in periods) {
+    //         addPeriodRow(p)
+    //     }
+    // }
+    // private fun addPeriodRow(p: TimePeriod) {
+    //     val row = LayoutInflater.from(this).inflate(R.layout.item_time_period, periodsContainer, false)
+    //     val tvStart = row.findViewById<TextView>(R.id.tv_start)
+    //     val tvEnd = row.findViewById<TextView>(R.id.tv_end)
+    //     val sw = row.findViewById<Switch>(R.id.sw_enabled)
+    //     val btnDel = row.findViewById<Button>(R.id.btn_delete)
+    //     tvStart.text = "开始 " + p.startLabel()
+    //     tvEnd.text = "结束 " + p.endLabel()
+    //     sw.isChecked = p.enabled
+    //     tvStart.setOnClickListener {
+    //         show24hTimePicker(p.startHour, p.startMin) { h, m ->
+    //             p.startHour = h; p.startMin = m
+    //             tvStart.text = "开始 " + p.startLabel()
+    //             Prefs.savePeriods(this, periods)
+    //             ScheduleManager.rescheduleAll(this)
+    //         }
+    //     }
+    //     tvEnd.setOnClickListener {
+    //         show24hTimePicker(p.endHour, p.endMin) { h, m ->
+    //             p.endHour = h; p.endMin = m
+    //             tvEnd.text = "结束 " + p.endLabel()
+    //             Prefs.savePeriods(this, periods)
+    //             ScheduleManager.rescheduleAll(this)
+    //         }
+    //     }
+    //     sw.setOnCheckedChangeListener { _, isChecked ->
+    //         p.enabled = isChecked
+    //         Prefs.savePeriods(this, periods)
+    //         ScheduleManager.rescheduleAll(this)
+    //     }
+    //     btnDel.setOnClickListener {
+    //         periods.remove(p)
+    //         Prefs.savePeriods(this, periods)
+    //         renderPeriods()
+    //         ScheduleManager.rescheduleAll(this)
+    //     }
+    //     periodsContainer.addView(row)
+    // }
+    // /** 24 小时制时间选择器（is24HourView=true 强制 24h）。 */
+    // private fun show24hTimePicker(hour: Int, minute: Int, onSet: (Int, Int) -> Unit) {
+    //     TimePickerDialog(this, { _, h, m -> onSet(h, m) }, hour, minute, true).show()
+    // }
 
     private fun showEditCumulativeDialog() {
         val current = DataMonitor.formatBytes(Prefs.getCumulativeUsage(this))

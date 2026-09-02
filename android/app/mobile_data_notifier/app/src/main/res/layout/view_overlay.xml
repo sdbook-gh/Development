@@ -25,6 +25,7 @@
         android:layout_marginTop="2dp"
         android:includeFontPadding="false" />
 
+    <!-- 关闭流量按钮：已隐藏，功能迁移到长按菜单
     <Button
         android:id="@+id/btn_close_data"
         android:layout_width="wrap_content"
@@ -40,5 +41,6 @@
         android:paddingTop="3dp"
         android:paddingBottom="3dp"
         android:layout_marginTop="4dp" />
+    -->
 
 </LinearLayout>

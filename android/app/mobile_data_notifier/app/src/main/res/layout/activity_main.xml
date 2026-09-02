@@ -285,7 +285,7 @@
                 android:textSize="12sp" />
         </LinearLayout>
 
-        <!-- ===== 定时关闭 ===== -->
+        <!-- ===== 定时关闭部分已隐藏（功能注释 未删除） ====
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
@@ -333,6 +333,7 @@
                 android:layout_marginTop="8dp"
                 android:textAllCaps="false" />
         </LinearLayout>
+-->
 
     </LinearLayout>
 </ScrollView>

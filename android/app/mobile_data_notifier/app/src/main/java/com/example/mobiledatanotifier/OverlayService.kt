@@ -23,12 +23,17 @@ import android.provider.Settings
 import android.telephony.PhoneStateListener
 import android.telephony.ServiceState
 import android.telephony.TelephonyManager
+import android.app.AlertDialog
+import android.media.AudioManager
+import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.PopupMenu
+import android.widget.SeekBar
 import android.widget.TextView
 
 /**
@@ -320,7 +325,8 @@ class OverlayService : Service() {
         params.gravity = Gravity.TOP or Gravity.START
         params.x = 0
         params.y = 0
-        v.findViewById<Button>(R.id.btn_close_data).setOnClickListener { openDataSettings() }
+        // 关闭流量按钮已隐藏至长按菜单
+        // v.findViewById<Button>(R.id.btn_close_data).setOnClickListener { openDataSettings() }
         enableDrag(v, params)
         try {
             wm.addView(v, params)
@@ -344,24 +350,101 @@ class OverlayService : Service() {
 
     private fun enableDrag(v: View, params: WindowManager.LayoutParams) {
         var initX = 0; var initY = 0; var touchX = 0f; var touchY = 0f; var moved = false
+        val longPressRunnable = Runnable { showPopupMenu(v) }
         v.setOnTouchListener { _, e ->
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
                     initX = params.x; initY = params.y
                     touchX = e.rawX; touchY = e.rawY; moved = false
+                    // 启动长按计时器，未移动且满 4 秒则弹菜单
+                    handler.removeCallbacks(longPressRunnable)
+                    handler.postDelayed(longPressRunnable, 4000L)
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = (e.rawX - touchX).toInt()
                     val dy = (e.rawY - touchY).toInt()
-                    if (dx * dx + dy * dy > 25) moved = true
+                    if (dx * dx + dy * dy > 25) {
+                        moved = true
+                        handler.removeCallbacks(longPressRunnable)
+                    }
                     params.x = initX + dx
                     params.y = initY + dy
                     try { wm.updateViewLayout(v, params) } catch (_: Exception) {}
                 }
-                MotionEvent.ACTION_UP -> if (moved) return@setOnTouchListener true
+                MotionEvent.ACTION_UP -> {
+                    handler.removeCallbacks(longPressRunnable)
+                    if (moved) return@setOnTouchListener true
+                }
             }
             false
         }
+    }
+
+    /** 长按浮窗满 4 秒后弹出操作菜单。 */
+    private fun showPopupMenu(anchor: View) {
+        val idClose = 0x0001_0001
+        val idVolume = 0x0001_0002
+        val menu = PopupMenu(this, anchor)
+        menu.menu.add(0, idClose, 0, getString(R.string.overlay_close_data))
+        menu.menu.add(0, idVolume, 1, "调节音量")
+        menu.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                idClose -> {
+                    openDataSettings()
+                    true
+                }
+                idVolume -> {
+                    showVolumeDialog()
+                    true
+                }
+                else -> false
+            }
+        }
+        try { menu.show() } catch (_: Exception) {}
+    }
+
+    /** 弹出音量调节对话框（SeekBar 实时控制媒体音量）。 */
+    private fun showVolumeDialog() {
+        val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        val cur = am.getStreamVolume(AudioManager.STREAM_MUSIC)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(64, 24, 64, 24)
+        }
+        val seekBar = SeekBar(this).apply {
+            this.max = if (max > 0) max else 1
+            progress = cur.coerceIn(0, this.max)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        val tvCur = TextView(this).apply {
+            text = "当前音量：$cur / $max"
+            textSize = 14f
+        }
+        layout.addView(seekBar)
+        layout.addView(tvCur)
+        seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
+                if (fromUser) {
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, p, 0)
+                    tvCur.text = "当前音量：$p / $max"
+                }
+            }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        })
+        val builder = AlertDialog.Builder(ContextThemeWrapper(this, android.R.style.Theme_Material_Light_Dialog_Alert))
+            .setTitle("调节音量")
+            .setView(layout)
+            .setNegativeButton("关闭", null)
+            .setOnDismissListener { handler.post { refreshOverlay() } }
+        val dialog = builder.create()
+        try {
+            dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
+        } catch (_: Exception) {}
+        dialog.show()
     }
 
     private fun openDataSettings() {
