@@ -53,7 +53,7 @@ rem ---- Primary: use the .NET Framework csc.exe bundled with Windows 10
 if defined CSC (
     echo [build] using CSC: %CSC%
     if not exist "%OUT%" mkdir "%OUT%"
-    "%CSC%" /nologo /target:winexe /win32manifest:"%PROJ_DIR%\app.manifest" ^
+    "%CSC%" /nologo /target:winexe /platform:x64 /codepage:65001 /win32manifest:"%PROJ_DIR%\app.manifest" ^
         /r:System.dll /r:System.Core.dll /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
         /out:"%OUT%\WordEmbedDemo.exe" ^
         "%PROJ_DIR%\NativeMethods.cs" "%PROJ_DIR%\WordProcessHost.cs" "%PROJ_DIR%\MainForm.cs" "%PROJ_DIR%\Program.cs" "%PROJ_DIR%\Properties\AssemblyInfo.cs"
@@ -98,4 +98,4 @@ echo.
 :done
 echo.
 endlocal
-timeout /t 5 /nobreak >nul 2>nul
+timeout /t 5 /nobreak >nul 2>nul

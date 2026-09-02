@@ -1,4 +1,4 @@
-// AssemblyInfo.cs -- project metadata for WordEmbedDemo.
+﻿// AssemblyInfo.cs -- project metadata for WordEmbedDemo.
 // This file is referenced by build.cmd and WordEmbedDemo.csproj for csc
 // (one-file compile) and msbuild respectively.
 
