@@ -56,6 +56,8 @@ namespace WordEmbedDemo
         // ---- 生命周期 / 并发防护 ----
         private bool _starting;                     // StartAsync 重入保护
         private bool _disposed;                     // 窗体已销毁后禁止再上抛错误/状态（防幽灵弹框）
+        private bool _stopping;                    // Stop 期间禁止 Relayout/剥壳
+        private string _blankDocxPath;             // 本次会话空白文档，退出后删除
         private CancellationTokenSource _cts = new CancellationTokenSource();
         private EventHandler _exitedHandler;        // 命名的 Exited handler，便于 Stop 时解绑
 
@@ -91,6 +93,8 @@ namespace WordEmbedDemo
         public event Action<string> HostError;
         /// <summary>最近一次失败原因，供窗体在 StartAsync 返回 false 时弹框。</summary>
         public string LastError { get; private set; }
+        /// <summary>取消启动时 LastError 标记；窗体不弹「嵌入失败」。</summary>
+        public const string CancelledSentinel = "CANCELLED";
 
 
         /// <summary>宿主状态变化（Running / Exited / Failed），供窗体刷新状态栏与菜单。</summary>
@@ -105,7 +109,7 @@ namespace WordEmbedDemo
             _resizeDebounce.Tick += (s, e) =>
             {
                 _resizeDebounce.Stop();
-                if (_embedded && IsValid())
+                if (!_stopping && _embedded && IsValid())
                     ResizeToPanel();
             };
         }
@@ -136,6 +140,7 @@ namespace WordEmbedDemo
                     Log("StartAsync: 发现仍在运行的宿主 Word (PID=" + _pid + ")，先强制结束");
                     EnsureHostedWordStopped(true);
                 }
+                _stopping = false;
                 SnapshotPreExisting();
                 Log("已有 WINWORD 进程快照: " + (_preExisting.Count == 0 ? "(无)" : string.Join(",", _preExisting)));
 
@@ -149,6 +154,7 @@ namespace WordEmbedDemo
 
                 // 生成一个最小空白文档，让 Word 打开真实文档窗口（而非“开始页”）
                 string blank = CreateBlankDocx();
+                _blankDocxPath = blank;
                 Log("空白文档路径: " + (blank ?? "(创建失败)"));
                 if (blank == null) return FailAndCleanup("无法创建临时空白文档。");
 
@@ -179,6 +185,12 @@ namespace WordEmbedDemo
                     RaiseState(HostStatus.Running);   // 成功启动，通知窗体恢复粘贴等
                 return ok;
             }
+            catch (OperationCanceledException)
+            {
+                LastError = CancelledSentinel;
+                Log("StartAsync: 已取消，不弹出嵌入失败");
+                throw;
+            }
             catch (Exception ex)
             {
                 return FailAndCleanup("启动失败：" + ex.Message);
@@ -199,7 +211,22 @@ namespace WordEmbedDemo
                 {
                     // 只关心“当前会话”的退出：旧会话被 Stop() 主动关闭时不误报给新会话
                     if (_pid != pid) return;
+                    if (_stopping) return;   // FormClosing/Stop 已在还原，勿二次 Quit
                     Log("Word 进程已退出 PID=" + pid);
+                    _embedded = false;
+                    try
+                    {
+                        if (_resizeDebounce != null)
+                        {
+                            _resizeDebounce.Stop();
+                            _resizeDebounce.Enabled = false;
+                        }
+                    }
+                    catch { }
+                    // 最佳努力：仅在正在退出的实例上还原剥壳，不另启 WINWORD
+                    if (_chrome.Captured)
+                        TryRestoreChromeOnUi(_hwnd);
+                    try { CleanupTempDocuments(); } catch { }
                     RaiseState(HostStatus.Exited);
                 };
                 _wordProcess.EnableRaisingEvents = true;
@@ -404,6 +431,19 @@ namespace WordEmbedDemo
         /// </summary>
         public void Stop(bool forceKill)
         {
+            // 一开始就禁止 Relayout/剥壳，避免优雅退出等待期间二次 Strip 把还原冲掉
+            _stopping = true;
+            _embedded = false;
+            try
+            {
+                if (_resizeDebounce != null)
+                {
+                    _resizeDebounce.Stop();
+                    _resizeDebounce.Enabled = false;
+                }
+            }
+            catch (Exception ex) { Log("Stop: 停止 resize 定时器(忽略): " + ex.Message); }
+
             int pid = _pid;
             IntPtr hwnd = _hwnd;
             var cts = _cts;
@@ -445,6 +485,9 @@ namespace WordEmbedDemo
             _embedded = false;
             _cachedWwF = _cachedWwB = _cachedWwG = IntPtr.Zero;
             _chrome.Captured = false;
+
+            // 进程已退出后再删空白文档与 Word 锁文件
+            CleanupTempDocuments();
         }
 
         /// <summary>立即结束指定进程（只结束我们自己的，不影响用户其它 Word）。</summary>
@@ -481,22 +524,12 @@ namespace WordEmbedDemo
         }
 
         /// <summary>
-        /// 在 UI 线程等待退出时泵消息，避免 Application.Quit 的 COM 回调用不到 STA 而卡死；
-        /// 非 UI 线程则退回 WaitForExit。
+        /// 等待进程退出，不泵 WinForms 消息（避免 OnResize/Timer 在 Quit 期间再次剥壳）。
+        /// Restore+Quit 已在 UI/STA 发出；此处只等进程句柄。
         /// </summary>
         private bool WaitForProcessExitPump(int pid, int timeoutMs)
         {
-            if (pid == 0) return true;
-            if (!IsHandleCreated || InvokeRequired)
-                return WaitForProcessExit(pid, timeoutMs);
-            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-            while (DateTime.UtcNow < deadline)
-            {
-                if (!ProcessAlive(pid)) return true;
-                try { Application.DoEvents(); } catch { }
-                Thread.Sleep(50);
-            }
-            return !ProcessAlive(pid);
+            return WaitForProcessExit(pid, timeoutMs);
         }
 
         /// <summary>本宿主锁定的 Word 进程是否仍在运行。</summary>
@@ -613,9 +646,12 @@ namespace WordEmbedDemo
                     object om = null;
                     try
                     {
-                        if (hwnd != IntPtr.Zero && NativeMethods.IsWindow(hwnd))
-                            om = BindWordNativeOm(hwnd);
-                        if (om == null) return;
+                        om = TryBindOmForRestore(hwnd);
+                        if (om == null)
+                        {
+                            Log("TryRestoreChromeOnUi: 句柄已失效，无法在退出实例上还原剥壳属性");
+                            return;
+                        }
                         object app = ComGet(om, "Application");
                         try { RestoreChrome(app); }
                         finally { ReleaseCom(app); }
@@ -627,18 +663,54 @@ namespace WordEmbedDemo
             catch (Exception ex) { Log("TryRestoreChromeOnUi invoke: " + ex.Message); }
         }
 
+        /// <summary>最佳努力绑定正在退出实例的 NativeOM；不另启 WINWORD。</summary>
+        private object TryBindOmForRestore(IntPtr hwnd)
+        {
+            if (hwnd != IntPtr.Zero && NativeMethods.IsWindow(hwnd))
+            {
+                object om = BindWordNativeOm(hwnd);
+                if (om != null) return om;
+            }
+            if (_cachedWwG != IntPtr.Zero && NativeMethods.IsWindow(_cachedWwG))
+            {
+                object om = BindWordNativeOm(_cachedWwG);
+                if (om != null) return om;
+            }
+            if (_hwnd != IntPtr.Zero && _hwnd != hwnd && NativeMethods.IsWindow(_hwnd))
+            {
+                object om = BindWordNativeOm(_hwnd);
+                if (om != null) return om;
+            }
+            return null;
+        }
+
         // ==================== 内部实现 ====================
 
         /// <summary>启动前快照当前所有 WINWORD 进程的 PID。</summary>
         private void SnapshotPreExisting()
         {
             _preExisting.Clear();
+            Process[] procs = null;
             try
             {
-                foreach (var pr in Process.GetProcessesByName("WINWORD"))
-                    _preExisting.Add(pr.Id);
+                procs = Process.GetProcessesByName("WINWORD");
+                if (procs != null)
+                {
+                    for (int i = 0; i < procs.Length; i++)
+                        _preExisting.Add(procs[i].Id);
+                }
             }
             catch { }
+            finally
+            {
+                if (procs != null)
+                {
+                    for (int i = 0; i < procs.Length; i++)
+                    {
+                        try { procs[i].Dispose(); } catch { }
+                    }
+                }
+            }
         }
 
         /// <summary>定位 WINWORD.EXE 的完整路径。</summary>
@@ -838,14 +910,9 @@ namespace WordEmbedDemo
 
                 // 先清理历史遗留的空白文档：固定文件名会因上个进程未释放而
                 // 触发 Word 的“文件正在使用中 / 只读”模态框，阻塞嵌入
-                try
-                {
-                    foreach (var old in Directory.GetFiles(dir, "blank-*.docx"))
-                    {
-                        try { File.Delete(old); } catch { }   // 仍被占用则忽略
-                    }
-                }
-                catch { }
+                // 下一次启动也要清 blank-*.docx 与 ~$*.docx（Word 锁 ~$ank-* 匹配不到 blank-*.docx）
+                TryDeleteGlob(dir, "blank-*.docx");
+                TryDeleteGlob(dir, "~$*.docx");
 
                 string path = Path.Combine(dir, "blank-" + Guid.NewGuid().ToString("N") + ".docx");
                 byte[] bytes = Convert.FromBase64String(
@@ -865,6 +932,59 @@ namespace WordEmbedDemo
                 Log("FAIL: 创建空白 docx 异常: " + ex.GetType().Name + ": " + ex.Message);
                 return null;
             }
+        }
+
+        private static string GetEmbedTempDir()
+        {
+            return Path.Combine(Path.GetTempPath(), "WordEmbedDemo");
+        }
+
+        private static void TryDeleteFile(string path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            try { File.Delete(path); }
+            catch { }   // 仍被锁定则忽略
+        }
+
+        private static void TryDeleteGlob(string dir, string pattern)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(dir) || !Directory.Exists(dir)) return;
+                string[] files = Directory.GetFiles(dir, pattern);
+                for (int i = 0; i < files.Length; i++)
+                    TryDeleteFile(files[i]);
+            }
+            catch { }
+        }
+
+        /// <summary>Quit/Kill 并等待退出后删除本次空白文档及 Word 锁文件 ~$*.docx。</summary>
+        private void CleanupTempDocuments()
+        {
+            try
+            {
+                string path = _blankDocxPath;
+                if (!string.IsNullOrEmpty(path))
+                {
+                    TryDeleteFile(path);
+                    try
+                    {
+                        string dir = Path.GetDirectoryName(path);
+                        string name = Path.GetFileName(path);
+                        // Word 锁文件：~$ + 去掉前两个字符（blank-xxx.docx → ~$ank-xxx.docx）
+                        if (!string.IsNullOrEmpty(dir) && !string.IsNullOrEmpty(name) && name.Length >= 2)
+                            TryDeleteFile(Path.Combine(dir, "~$" + name.Substring(2)));
+                        TryDeleteGlob(dir, "~$*.docx");
+                    }
+                    catch { }
+                }
+                else
+                {
+                    TryDeleteGlob(GetEmbedTempDir(), "~$*.docx");
+                }
+            }
+            catch { }
+            _blankDocxPath = null;
         }
 
         /// <summary>
@@ -888,13 +1008,13 @@ namespace WordEmbedDemo
                     Log("WaitForInputIdle: 8s 内未空闲，继续轮询窗口");
             }
             catch (Exception ex) { Log("WaitForInputIdle 异常(忽略): " + ex.Message); }
+            token.ThrowIfCancellationRequested();
 
             var deadline = DateTime.UtcNow.AddSeconds(30);
             int round = 0;
             while (DateTime.UtcNow < deadline)
             {
-                if (token.IsCancellationRequested)   // Stop 已触发，静默放弃
-                    return false;
+                token.ThrowIfCancellationRequested();   // 取消与失败区分：抛 OCE，不当嵌入失败
                 round++;
                 if (_wordProcess == null || _wordProcess.HasExited)
                     return FailAndCleanup("Word 进程已退出，无法嵌入。");
@@ -913,8 +1033,9 @@ namespace WordEmbedDemo
                 // 定期输出该 PID 当前所有顶级窗口快照，便于诊断
                 if (round == 1 || round % 10 == 0)
                     Log("轮次=" + round + " 未发现 OpusApp。PID 窗口快照: " + DescribePidWindows(_pid));
-                await Task.Delay(200);
+                await Task.Delay(200, token);
             }
+            token.ThrowIfCancellationRequested();
             return FailAndCleanup("等待 Word 主窗口(OpusApp)超时(30s)。最终快照: " + DescribePidWindows(_pid));
         }
 
@@ -974,7 +1095,7 @@ namespace WordEmbedDemo
             int i = 0;
             while (DateTime.UtcNow < deadline)
             {
-                if (token.IsCancellationRequested) return false;
+                token.ThrowIfCancellationRequested();
                 i++;
                 IntPtr doc = NativeMethods.FindChildWindowRecursive(_hwnd, "_WwG");
                 if (doc != IntPtr.Zero)
@@ -982,7 +1103,7 @@ namespace WordEmbedDemo
                     Log("_WwG 文档子窗口已出现 HWND=0x" + doc.ToString("X") + " 等待次数=" + i);
                     return true;
                 }
-                await Task.Delay(200);
+                await Task.Delay(200, token);
             }
             Log("警告: 等待 _WwG 超时(" + timeoutMs + "ms)，继续嵌入流程");
             return false;
@@ -1052,14 +1173,21 @@ namespace WordEmbedDemo
 
             // 等待 Word 完成内部加载（_WwG 出现）后再剥壳
             await WaitForDocChildAsync(10000);
-            if (token.IsCancellationRequested)   // 等待期间被 Stop，放弃嵌入
-                return false;
+            token.ThrowIfCancellationRequested();   // 等待期间被 Stop，不当嵌入失败
+            if (_stopping)
+                throw new OperationCanceledException(token);
 
+            // 先置 _embedded，使 Relayout 的守卫能放过初始铺满；Stop 会立刻清回 false
+            _embedded = true;
             RelayoutEmbeddedWord();
+            if (_stopping)
+            {
+                _embedded = false;
+                throw new OperationCanceledException(token);
+            }
 
             // 铺满后显示
             NativeMethods.ShowWindow(h, NativeMethods.SW_SHOW);
-            _embedded = true;
             Log("嵌入完成 hwnd=0x" + h.ToString("X") + " size=" + ClientSize.Width + "x" + ClientSize.Height);
             return true;
         }
@@ -1073,6 +1201,7 @@ namespace WordEmbedDemo
         /// </summary>
         private void RelayoutEmbeddedWord()
         {
+            if (_stopping || !_embedded) return;
             if (_hwnd == IntPtr.Zero || ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
 
             NativeMethods.SendMessage(_hwnd, NativeMethods.WM_SETREDRAW, (IntPtr)0, IntPtr.Zero);
@@ -1180,6 +1309,7 @@ namespace WordEmbedDemo
         /// </summary>
         private bool StripChromeViaOm()
         {
+            if (_stopping || !_embedded) return false;
             // OM 必须在创建本控件的 UI/STA 线程上
             if (IsHandleCreated && InvokeRequired)
                 return (bool)Invoke(new Func<bool>(StripChromeViaOmCore));
@@ -1188,6 +1318,7 @@ namespace WordEmbedDemo
 
         private bool StripChromeViaOmCore()
         {
+            if (_stopping || !_embedded) return false;
             object om = null;
             try
             {
@@ -1473,7 +1604,7 @@ namespace WordEmbedDemo
         protected override void OnResize(EventArgs e)
         {
             base.OnResize(e);
-            if (_disposed) return;
+            if (_disposed || _stopping) return;
             if (_embedded && IsValid())
             {
                 // 防抖：合并 resize 期间高频事件，120ms 后只执行一次“重排+重剥壳”

@@ -18,6 +18,7 @@ namespace WordEmbedDemo
         private StatusStrip _status;
         private ToolStripStatusLabel _lblStatus;
         private WordProcessHost _host;
+        private bool _closing;   // FormClosing 后 Load 续流不再弹「嵌入失败」
 
         public MainForm()
         {
@@ -74,29 +75,31 @@ namespace WordEmbedDemo
             try
             {
                 bool ok = await _host.StartAsync();
+                if (_closing || IsCancelledError(_host.LastError))
+                    return;
                 if (!ok)
                     ShowStartFailure(_host.LastError);
             }
             catch (OperationCanceledException)
             {
+                if (_closing) return;
                 SetStatus("启动已取消。");
             }
             catch (Exception ex)
             {
+                if (_closing || IsCancelledError(_host.LastError)) return;
                 string msg = "Word 嵌入启动失败：" + ex.Message;
                 SetStatus(msg);
                 // 仅当窗体仍存活时弹框；若启动流程本身已走 HostError，此处作为兜底保护。
                 if (!IsDisposed && IsHandleCreated)
-                {
-                    MessageBox.Show(msg, AssemblyInfo.FRIENDLY_APP_NAME,
-                        MessageBoxButtons.OK, MessageBoxIcon.Error);
-                }
+                    ShowErrorBox(msg);
             }
         }
 
         /// <summary>宿主控件报错上抛：由窗体统一弹框（图标从原来的“警告”统一为“错误”）。</summary>
         private void OnHostError(string msg)
         {
+            if (_closing || IsCancelledError(msg)) return;
             ShowErrorBox(msg);
         }
 
@@ -107,8 +110,14 @@ namespace WordEmbedDemo
         /// </summary>
         private bool _startErrorShown;
 
+        private static bool IsCancelledError(string detail)
+        {
+            return detail == WordProcessHost.CancelledSentinel;
+        }
+
         private void ShowStartFailure(string detail)
         {
+            if (_closing || IsCancelledError(detail)) return;
             if (_startErrorShown) return;
             bool notFound = !string.IsNullOrEmpty(detail) &&
                 (detail.IndexOf("WINWORD", StringComparison.OrdinalIgnoreCase) >= 0
@@ -129,6 +138,7 @@ namespace WordEmbedDemo
 
         private void ShowErrorBox(string msg)
         {
+            if (_closing || IsCancelledError(msg)) return;
             if (string.IsNullOrEmpty(msg)) return;
             if (IsDisposed || !IsHandleCreated) return;
             _startErrorShown = true;
@@ -158,6 +168,7 @@ namespace WordEmbedDemo
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
+            _closing = true;
             // 必须走还原 + Quit + 超时 Kill：不能 forceKill 跳过还原，
             // 否则用户自己的 Word 会留下无 Ribbon / 无状态栏。
             _host.Stop(forceKill: false);
