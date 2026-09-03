@@ -25,6 +25,7 @@ import android.telephony.ServiceState
 import android.telephony.TelephonyManager
 import android.app.AlertDialog
 import android.media.AudioManager
+import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -428,12 +429,15 @@ class OverlayService : Service() {
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(sb: SeekBar?, p: Int, fromUser: Boolean) {
                 if (fromUser) {
-                    am.setStreamVolume(AudioManager.STREAM_MUSIC, p, 0)
+                    setMusicVolume(am, p)
                     tvCur.text = "当前音量：$p / $max"
                 }
             }
             override fun onStartTrackingTouch(sb: SeekBar?) {}
-            override fun onStopTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {
+                // 兜底：部分系统仅在松手时才提交音量更改
+                setMusicVolume(am, seekBar.progress)
+            }
         })
         val builder = AlertDialog.Builder(ContextThemeWrapper(this, android.R.style.Theme_Material_Light_Dialog_Alert))
             .setTitle("调节音量")
@@ -445,6 +449,20 @@ class OverlayService : Service() {
             dialog.window?.setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY)
         } catch (_: Exception) {}
         dialog.show()
+    }
+
+    /** 设置媒体音量，携带 FLAG_SHOW_UI 确保更改生效并回显系统音量面板。 */
+    private fun setMusicVolume(am: AudioManager, vol: Int) {
+        val safe = vol.coerceIn(0, am.getStreamMaxVolume(AudioManager.STREAM_MUSIC))
+        try {
+            am.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                safe,
+                AudioManager.FLAG_SHOW_UI or AudioManager.FLAG_PLAY_SOUND
+            )
+        } catch (e: Exception) {
+            Log.w("OverlayService", "setStreamVolume failed: ${e.javaClass.simpleName}: ${e.message}")
+        }
     }
 
     private fun openDataSettings() {

@@ -28,6 +28,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- 闹钟唤醒 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- 使用情况访问：系统「使用情况访问」列表只显示声明了此权限的应用 -->
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
