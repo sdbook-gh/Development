@@ -4,8 +4,8 @@
 # 启动:  ./run.sh   或   python -m llmproxy -c config.yaml [--host H] [--port P]
 #
 # 要点:
-# - api_key 使用 ${ENV_VAR} 环境变量引用（密钥放 .env，已被 .gitignore 忽略；
-#   run.sh 启动前自动 source .env）
+# - api_key 直接写在本文件中（本地密钥文件；config.yaml 已加入 .gitignore，
+#   请勿提交到公开仓库）
 # - 所有键名不可拼错：未知键会直接报错（防止配置项静默失效）
 # - 未定义同名虚拟模型的 upstream 会自动获得隐式直连路由（model 填 upstream 名即可直达）
 # =============================================================================
@@ -24,7 +24,7 @@ upstreams:
   # ---- 商汤 SenseNova（直连，按 NO_PROXY 规则不走代理）----
   - name: sensenova
     base_url: https://token.sensenova.cn/v1
-    api_key: ${SHANGTANG_API_KEY}
+    api_key: sk-4NSWmLjv892UGLYnKatoOuFPCSOkCGxZ
     model: sensenova-6.8-flash-lite
     proxy: none
     rate_limit: { mode: none }
@@ -32,7 +32,7 @@ upstreams:
   # ---- RunInfra qwen3-8-27b（直连）----
   - name: runinfra
     base_url: https://api.runinfra.ai/v1
-    api_key: ${RUNINFRA_API_KEY}
+    api_key: rp_9hn5f7izcw6rqh3bt8jtxs1p47o0ux0kzesgmp1p
     model: qwen3-8-27b
     proxy: none
     rate_limit: { mode: none }
@@ -40,7 +40,7 @@ upstreams:
   # ---- OpenCode zen mimo（直连）----
   - name: opencode
     base_url: https://opencode.ai/zen/v1
-    api_key: ${OPENCODE_API_KEY}
+    api_key: sk-C8C4UvqF6vluKdcwrAt9BDXSRX5aO5Ck6efaPVV79XeaHyxCckOKX8n2hGVTWEHq
     model: mimo-v2.5-free
     headers:
       x-opencode-project: vscode
@@ -54,7 +54,7 @@ upstreams:
   # ---- b.ai deepseek（域名为 api.b.ai，不在 NO_PROXY 内 → 走 home 代理）----
   - name: bai
     base_url: https://api.b.ai/v1
-    api_key: ${BAI_API_KEY}
+    api_key: sk-ejk7xgcaiesj2iuhhipr9dkhyj8v0pgp
     model: glm-5.3-flash
     proxy: home
     rate_limit: { mode: none }
@@ -64,7 +64,7 @@ virtual_models:
   # 对应 LiteLLM 的 agent-auto 多 entry 虚拟 failover：按序切换
   agent-auto:
     strategy: round_robin             # round_robin | least_load | failover | weighted_random
-    upstreams: [opencode, bai, runinfra, sensenova]   # 与 LiteLLM 配置同序
+    upstreams: [opencode, runinfra, sensenova]   # 与 LiteLLM 配置同序
     retry:
       max_attempts: 4              # 4 个候选都可尝试
       retryable_status: [408, 429, 500, 502, 503, 504, 400]

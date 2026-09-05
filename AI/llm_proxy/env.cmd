@@ -1,4 +1,6 @@
 @echo off
+chcp 65001 >nul
+set PYTHONIOENCODING=utf-8
 rem llmproxy 环境初始化：创建 venv 并安装 Python 依赖（幂等）
 setlocal
 cd /d "%~dp0"

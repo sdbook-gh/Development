@@ -365,12 +365,19 @@ class AppConfig:
 
 
 def load_config(path: str | Path) -> AppConfig:
-    """加载并校验配置文件。文件缺失 / YAML 语法错误 / 校验失败均抛 :class:`ConfigError`。"""
+    """加载并校验配置文件。文件缺失 / YAML 语法错误 / 校验失败均抛 :class:`ConfigError`。
+
+    配置文件兼容 LF / CRLF 换行符（及 UTF-8 BOM）。
+    """
     path = Path(path)
     if not path.is_file():
         raise ConfigError(f"配置文件不存在: {path}")
     try:
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        text = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n").decode("utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        raise ConfigError(f"配置文件读取/编码错误 ({path}): {e}") from e
+    try:
+        raw = yaml.safe_load(text)
     except yaml.YAMLError as e:
         raise ConfigError(f"配置文件 YAML 语法错误 ({path}): {e}") from e
     if raw is None:

@@ -55,7 +55,7 @@ proxies:
 upstreams:
   - name: glm-free
     base_url: https://api.z.ai/api/paas/v4
-    api_key: ${GLM_API_KEY}          # 支持环境变量引用，避免明文入库
+    api_key: sk-xxxxxxxxxxxxxxxx    # 密钥直接写入
     model: coding-glm-5.3-free
     proxy: home                      # none=直连 / 代理名=走代理
     headers:                         # 可选：扩展 HTTP 头（可覆盖 User-Agent 等默认头）
@@ -90,7 +90,7 @@ virtual_models:
 | `proxies` | 命名代理列表，upstream 通过名字引用 |
 | `upstreams[].proxy` | `none`=直连；代理名=走该代理 |
 | `upstreams[].rate_limit.mode` | `none` 不控制 / `min_interval` 最小间隔 / `rpm` 每分钟配额 |
-| `upstreams[].api_key` | 支持 `${ENV_VAR}` 环境变量引用 |
+| `upstreams[].api_key` | 密钥直接写入 |
 | `upstreams[].headers` | 可选，扩展 HTTP 头（字符串映射，值支持 `${ENV_VAR}`）；合并顺序在默认头之后，可覆盖 `User-Agent` 等默认头；仅该 upstream 生效 |
 | `virtual_models.<name>.strategy` | 该虚拟模型的负载均衡策略 |
 | `retry.retryable_status` | 触发切换的状态码；400 默认包含（部分 provider 对超长上下文返回 400），可移除 |
@@ -161,7 +161,7 @@ virtual_models:
 ./env.sh
 
 # 2. 配置
-cp config.yaml config.yaml   # 按需修改；api_key 建议用环境变量放 .env
+# 按需修改 config.yaml
 
 # 3. 启动
 ./run.sh                     # 或 ./venv/bin/python -m llmproxy
@@ -177,7 +177,7 @@ pi -e ./pi_llmproxy/index.ts
 env.cmd
 
 :: 2. 配置
-copy config.yaml config.yaml   :: 按需修改；api_key 建议用环境变量放 .env
+:: 按需修改 config.yaml
 
 :: 3. 启动
 run.cmd                        :: 或 venv\Scripts\python.exe -m llmproxy
