@@ -1,0 +1,78 @@
+# =============================================================================
+# llmproxy 主配置
+#
+# 启动:  ./run.sh   或   python -m llmproxy -c config.yaml [--host H] [--port P]
+#
+# 要点:
+# - api_key 使用 ${ENV_VAR} 环境变量引用（密钥放 .env，已被 .gitignore 忽略；
+#   run.sh 启动前自动 source .env）
+# - 所有键名不可拼错：未知键会直接报错（防止配置项静默失效）
+# - 未定义同名虚拟模型的 upstream 会自动获得隐式直连路由（model 填 upstream 名即可直达）
+# =============================================================================
+
+server:
+  host: 127.0.0.1
+  port: 4400                       # 命令行 --port 可覆盖
+  log_level: info                  # debug | info | warning | error
+  log_file: logs/llmproxy.log      # 滚动文件：5MB/份，保留 3 份备份
+
+# 可选：命名出站代理，供 upstreams[].proxy 按名字引用
+proxies:
+  home: http://172.19.16.1:4067
+
+upstreams:
+  # ---- 商汤 SenseNova（直连，按 NO_PROXY 规则不走代理）----
+  - name: sensenova
+    base_url: https://token.sensenova.cn/v1
+    api_key: ${SHANGTANG_API_KEY}
+    model: sensenova-6.8-flash-lite
+    proxy: none
+    rate_limit: { mode: none }
+
+  # ---- RunInfra qwen3-8-27b（直连）----
+  - name: runinfra
+    base_url: https://api.runinfra.ai/v1
+    api_key: ${RUNINFRA_API_KEY}
+    model: qwen3-8-27b
+    proxy: none
+    rate_limit: { mode: none }
+
+  # ---- OpenCode zen mimo（直连）----
+  - name: opencode
+    base_url: https://opencode.ai/zen/v1
+    api_key: ${OPENCODE_API_KEY}
+    model: mimo-v2.5-free
+    headers:
+      x-opencode-project: vscode
+      x-opencode-session: a3f1c2d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+      x-opencode-request: req-a1b2c3d4e5f6
+      x-opencode-client: tui
+      User-Agent: opencode/1.18.23
+    proxy: none
+    rate_limit: { mode: none }
+
+  # ---- b.ai deepseek（域名为 api.b.ai，不在 NO_PROXY 内 → 走 home 代理）----
+  - name: bai
+    base_url: https://api.b.ai/v1
+    api_key: ${BAI_API_KEY}
+    model: glm-5.3-flash
+    proxy: home
+    rate_limit: { mode: none }
+
+virtual_models:
+  # 虚拟模型名：pi / OpenAI 客户端里填这个名字
+  # 对应 LiteLLM 的 agent-auto 多 entry 虚拟 failover：按序切换
+  agent-auto:
+    strategy: round_robin             # round_robin | least_load | failover | weighted_random
+    upstreams: [opencode, bai, runinfra, sensenova]   # 与 LiteLLM 配置同序
+    retry:
+      max_attempts: 4              # 4 个候选都可尝试
+      retryable_status: [408, 429, 500, 502, 503, 504, 400]
+      # 400 默认包含：部分 provider 对超长上下文返回 400；不需要可移除
+      cooldown_seconds: 30         # 熔断冷却时长（429 优先用 Retry-After）
+      failure_threshold: 3         # 连续失败 N 次触发熔断
+      # 非 429 失败触发熔断后，用最小请求（"ping", max_tokens=probe_max_tokens）
+      # 主动探测该 upstream 是否恢复：成功立即闭合熔断，不再等冷却；
+      # 探测失败仅维持冷却，且配额类错误在计费前被拒（0 token 消耗）。
+      active_probe: true           # 设为 false 可关闭主动探测，回到纯被动冷却
+      probe_max_tokens: 3          # 探测输出上限（部分 provider 要求 >2，故默认 3）

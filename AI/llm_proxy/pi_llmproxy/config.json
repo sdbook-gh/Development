@@ -1,0 +1,7 @@
+{
+  "proxyUrl": "http://127.0.0.1:4400",
+  "pollMs": 30000,
+  "probe": true,
+  "probePrompt": "ping",
+  "probeMaxTokens": 3
+}
